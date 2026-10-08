@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "run_id": "demo-run-001",
+  "match_id": "demo",
+  "state_version": 5,
+  "period": 1,
+  "match_time_ms": 15000,
+  "home_team": {
+    "id": "harbor",
+    "name": "Harbor Comets"
+  },
+  "away_team": {
+    "id": "vale",
+    "name": "Vale Owls"
+  },
+  "score": {
+    "home": 0,
+    "away": 0
+  },
+  "latest_event_sequence": 5,
+  "replay_status": "paused",
+  "synthetic": true
+}

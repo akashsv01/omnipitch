@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "run_id": "demo-run-001",
+  "match_id": "demo",
+  "event_id": "pass-0001",
+  "sequence": 1,
+  "period": 1,
+  "match_time_ms": 3000,
+  "emitted_at": "2026-01-01T12:00:03Z",
+  "team_id": "harbor",
+  "player_id": "harbor-01",
+  "possession_id": "possession-001",
+  "type": "pass",
+  "outcome": "completed",
+  "start": {
+    "x": 35.0,
+    "y": 34.0
+  },
+  "end": {
+    "x": 36.18,
+    "y": 27.02
+  },
+  "attacking_direction": "positive_x",
+  "synthetic": true
+}

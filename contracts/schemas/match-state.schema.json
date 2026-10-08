@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnipitch.local/contracts/match-state.schema.json",
+  "title": "match-state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "match_id",
+    "state_version",
+    "period",
+    "match_time_ms",
+    "home_team",
+    "away_team",
+    "score",
+    "latest_event_sequence",
+    "replay_status",
+    "synthetic"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "match_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "period": {
+      "type": "integer",
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "match_time_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "home_team": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "away_team": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "score": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "home",
+        "away"
+      ],
+      "properties": {
+        "home": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "away": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "latest_event_sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "replay_status": {
+      "type": "string",
+      "enum": [
+        "paused",
+        "playing",
+        "finished"
+      ]
+    },
+    "synthetic": {
+      "const": true
+    }
+  }
+}

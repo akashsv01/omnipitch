@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnipitch.local/contracts/event.schema.json",
+  "title": "event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "match_id",
+    "event_id",
+    "sequence",
+    "period",
+    "match_time_ms",
+    "emitted_at",
+    "team_id",
+    "player_id",
+    "possession_id",
+    "type",
+    "outcome",
+    "start",
+    "end",
+    "attacking_direction",
+    "synthetic"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "match_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "period": {
+      "type": "integer",
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "match_time_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "emitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "team_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "player_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "possession_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "const": "pass"
+    },
+    "outcome": {
+      "const": "completed"
+    },
+    "start": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 105
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 68
+        }
+      }
+    },
+    "end": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 105
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 68
+        }
+      }
+    },
+    "attacking_direction": {
+      "type": "string",
+      "enum": [
+        "positive_x",
+        "negative_x"
+      ]
+    },
+    "synthetic": {
+      "const": true
+    }
+  }
+}

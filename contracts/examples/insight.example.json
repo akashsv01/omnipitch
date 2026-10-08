@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "run_id": "demo-run-001",
+  "match_id": "demo",
+  "moment_id": "moment-001",
+  "headline": "Harbor Comets complete a five-pass sequence",
+  "casual_text": "Harbor kept the ball through five completed passes.",
+  "analyst_text": "Five connected passes share possession-001. This fixture demonstrates continuity only; no tactical pattern has been inferred.",
+  "language": "en",
+  "evidence_ids": [
+    "pass-0001",
+    "pass-0002",
+    "pass-0003",
+    "pass-0004",
+    "pass-0005"
+  ],
+  "metrics": [
+    {
+      "name": "completed_passes",
+      "value": 5,
+      "unit": "passes"
+    }
+  ],
+  "limitations": [
+    "Synthetic fixture; not AI-generated.",
+    "No player tracking or off-ball positions are available.",
+    "Pass continuity alone does not establish a tactical pattern."
+  ],
+  "generation_mode": "fixture"
+}

@@ -1,0 +1,13 @@
+---
+description: OmniPitch project context and documentation maintenance
+alwaysApply: true
+---
+
+- Read root `AGENTS.md`.
+- Read `docs/CONTEXT.md` and `docs/HANDOFF.md` before meaningful work.
+- Inspect relevant code and tests rather than relying on old summaries.
+- Follow the documentation-update workflow in `AGENTS.md`.
+- Preserve the current task's scope.
+- Never record planned or unverified work as completed.
+
+This is an instruction convention; it does not guarantee compliance by every LLM.
