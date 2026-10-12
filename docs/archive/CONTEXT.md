@@ -2,7 +2,7 @@
 
 OmniPitch transforms synthetic, football-realistic events into explainable match intelligence for fans, analysts, and broadcast producers, with reusable datasets for AI and analytics.
 
-Two developers work in small vertical slices: agree contracts first, split frontend/backend work, review each other's changes, and keep handoffs current. Coding agents follow `AGENTS.md`.
+Work in small vertical slices and agree contracts before implementation. Coding agents follow `AGENTS.md`.
 
 Current phase: Phase 0, local scaffold and contracts.
 
@@ -20,4 +20,4 @@ Known blocker: Innovation Studio access is blocked by a hardware-token authentic
 
 Azure and Fabric access have not been verified. Repository license decision is pending.
 
-Details: [Architecture](ARCHITECTURE.md), [Roadmap](ROADMAP.md), [Decisions](DECISIONS.md), [Progress](PROGRESS.md), [Handoff](HANDOFF.md), [local commands](../README.md).
+Details: [Architecture](../ARCHITECTURE.md), [Roadmap](../ROADMAP.md), [Decisions](DECISIONS.md), [Progress](PROGRESS.md), [Handoff](HANDOFF.md), [local commands](../../README.md).
