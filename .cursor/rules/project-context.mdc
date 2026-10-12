@@ -4,7 +4,7 @@ alwaysApply: true
 ---
 
 - Read root `AGENTS.md`.
-- Read `docs/CONTEXT.md` and `docs/HANDOFF.md` before meaningful work.
+- Read `README.md`, `docs/ROADMAP.md` and relevant sections of `docs/ARCHITECTURE.md` before meaningful work.
 - Inspect relevant code and tests rather than relying on old summaries.
 - Follow the documentation-update workflow in `AGENTS.md`.
 - Preserve the current task's scope.

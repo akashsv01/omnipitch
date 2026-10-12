@@ -10,7 +10,7 @@ npm ci
 npm run dev
 ```
 
-Set `VITE_API_BASE_URL=http://localhost:8000` in `.env`; restart Vite after edits. It is a public URL, never a place for credentials. Defaults to the same localhost URL. Vite serves `http://localhost:5173` with a strict port, matching API CORS. FastAPI must run separately; see [root startup](../../README.md).
+Set `VITE_API_BASE_URL=http://localhost:8000` in `.env`; restart Vite after edits. It is a public URL, never a place for credentials. Defaults to the same localhost URL. Vite serves `http://localhost:5173` with a strict port, matching API CORS. FastAPI must run separately; see [root startup](../../../../README.md).
 
 ```powershell
 npm run test:contracts

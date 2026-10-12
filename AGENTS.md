@@ -1,12 +1,11 @@
 # OmniPitch coding-agent instructions
 
 ## Before starting
-1. Read `AGENTS.md`.
-2. Read `docs/CONTEXT.md`.
-3. Read `docs/HANDOFF.md`.
-4. Read the relevant architecture, decisions, and roadmap sections.
-5. Inspect actual code and tests before assuming documentation is current.
-6. Check the working tree and preserve unrelated changes.
+1. Read `AGENTS.md` and `README.md`.
+2. Read the current status, blockers and assigned task in `docs/ROADMAP.md`.
+3. Read relevant interfaces, requirements and decisions in `docs/ARCHITECTURE.md`.
+4. Inspect actual code and tests before assuming documentation is current.
+5. Check the working tree and preserve unrelated changes.
 
 ## Source of truth
 - Code and reproducible verification establish implemented behavior.
@@ -33,15 +32,14 @@
 - Keep changes small and understandable.
 
 ## Documentation maintenance
-At the end of every meaningful implementation task:
-- Update `docs/PROGRESS.md` with completed work and actual verification.
-- Update `docs/HANDOFF.md` with current state, blockers, and next steps.
-- Update `docs/CONTEXT.md` when current capabilities or scope change.
-- Update `docs/ARCHITECTURE.md` when actual interfaces or data flow change.
-- Add consequential decisions to `docs/DECISIONS.md`.
-- Update README instructions when commands or configuration change.
+Maintain four active documents; historical material lives in `docs/archive/`.
+At the end of meaningful work:
+- Update `docs/ROADMAP.md` with completed work, dated actual verification, blockers and next tasks.
+- Update `docs/ARCHITECTURE.md` when interfaces, data flow, technical requirements or consequential decisions change.
+- Update `README.md` when current capabilities, setup commands or repository structure change.
+- Update `AGENTS.md` only when coding-agent policies change.
 
-Do not modify every document mechanically for a trivial edit. Update affected documents and keep status truthful.
+Archive entries are historical references, not current instructions. Preserve prior decisions and results; do not present old checks as newly run. Update affected documents rather than every file mechanically.
 
 ## Final response
 Report what changed, what was actually tested, known limitations or blockers, and the next recommended task.

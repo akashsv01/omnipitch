@@ -1,2 +1,3 @@
 # Claude onboarding
-Read and follow `AGENTS.md`, `docs/CONTEXT.md`, and `docs/HANDOFF.md` before meaningful work. Inspect relevant code and verification results; preserve scope and unrelated changes.
+
+Follow [AGENTS.md](AGENTS.md), the primary coding-agent instructions. Read [README.md](README.md), [current tasks and blockers](docs/ROADMAP.md), and the relevant [technical reference](docs/ARCHITECTURE.md) before meaningful work.
