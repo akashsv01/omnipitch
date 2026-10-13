@@ -98,3 +98,14 @@ class EventsResponse(WireModel):
 class HealthResponse(WireModel):
     status: Literal["ok"] = "ok"
     application: Literal["omnipitch-api"] = "omnipitch-api"
+
+
+class ReplaySnapshot(WireModel):
+    state: MatchState
+    events: list[Event]
+    total_events: Annotated[int, Field(ge=1, le=1000)]
+
+
+class ReplayControl(WireModel):
+    run_id: Identifier
+    action: Literal["play", "pause", "reset"]

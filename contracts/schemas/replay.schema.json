@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnipitch.local/contracts/replay.schema.json",
+  "title": "Replay snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["state", "events", "total_events"],
+  "properties": {
+    "state": { "$ref": "match-state.schema.json" },
+    "events": { "type": "array", "maxItems": 1000, "items": { "$ref": "event.schema.json" } },
+    "total_events": { "type": "integer", "minimum": 1, "maximum": 1000 }
+  }
+}

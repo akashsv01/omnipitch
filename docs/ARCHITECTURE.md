@@ -7,13 +7,25 @@ flowchart LR
   React[React development screen] -->|HTTP GET + schema validation| API[FastAPI]
   API --> Fixtures[Deterministic sample data]
   Simulator[Simulator CLI] --> JSONL[Local JSONL output]
+  JSONL -->|Browser file upload| Replay[API in-memory replay]
+  React -->|Poll snapshot + POST controls| Replay
 ```
 
-React fetches `/api/v1/matches/demo/state` and `/api/v1/matches/demo/events` from the configured API. It renders loading, error and success states; refresh repeats the requests. FastAPI validates explicit Pydantic response models and exposes `/health`. Local CORS admits explicitly configured localhost origins with credentials disabled.
+React polls the atomic `/api/v1/replay` snapshot at 500 ms intervals after each completed request. It renders loading, error, success and disconnected states; refresh/reconnect retrieves current progress rather than creating a run. FastAPI validates explicit Pydantic response models and exposes `/health`. Local CORS admits explicitly configured localhost origins with credentials disabled; GET and POST are allowed.
+
+The frontend renders only revealed replay events. `PassExplorer` follows the newest pass until a user selects one through keyboard-accessible buttons. Selection uses run/event identity and updates both `Pitch` and event details; changing runs clears selection. The responsive SVG uses one viewBox unit per metre in the fixed 105 × 68 frame (x right, y down), with no halftime or attack-direction rotation. Start/end markers, the pass arrow, direction labels and an SVG text description expose the selected path; no player positions are inferred. Empty sequences display an empty pitch and message.
 
 The API imports the local simulator module through one repository-relative path in `sample_data.py`; this keeps one deterministic pass algorithm without introducing packaging tooling. It reads the committed match-state fixture. Tests verify that state agrees with the final event and that examples agree with responses. API sample responses are static, with paused replay status.
 
-The simulator CLI accepts seed, run ID, output path, optional count and fixed UTC baseline. It validates each generated event against the shared schema before writing JSONL. `data/generated/` is gitignored. There is no stream or JSONL ingestion endpoint. A later task can explicitly load and validate a selected JSONL replay into the API; do not assume that connection exists now.
+The simulator CLI accepts seed, run ID, output path, optional count and fixed UTC baseline. It validates each generated event against the shared schema before writing JSONL. `data/generated/` is gitignored. The browser uploads selected JSONL content to the replay endpoint; the server never opens a client-provided path. There is no cloud event stream.
+
+### Local replay behavior
+
+`ReplayStore` holds one shared replay with a lock, initialized from the five-pass generator. Play/pause uses a server monotonic clock and preserves elapsed intervals; snapshots reveal all due events in sequence. The displayed match clock is the latest revealed event's period-local time, not a continuously interpolated clock. Crossing periods uses the previous period's last event as the offset, without an invented halftime delay. Final arrival changes status to `finished`; use reset to replay again.
+
+Loading validates the complete UTF-8 JSONL before replacement: at most 1 MiB and 1000 events, one source run/match, unique event IDs, contiguous sequences starting at 1, and nondecreasing time within ordered periods. File lines may be out of order; events are sorted by sequence. Only completed passes for match `demo` and teams `harbor`/`vale` are supported, because match metadata still comes from the fixture. Load/reset creates a new run ID, remaps events to it, preserves event IDs/geometry/timestamps and starts paused with zero revealed events. Control/load requests include the expected run ID; stale requests return 409. Invalid uploads preserve the loaded run. Custom errors use `detail: {code, message}`; request-model failures use FastAPI's normal 422 validation response.
+
+An atomic snapshot bundles state, revealed events and total count; the browser validates its schema, ordering, progress and identity. UI mutation requests invalidate earlier poll results. A failed poll preserves the last snapshot and disables controls until reconnect. This local controller has no authentication or persistence and must run with one API worker; multiple viewers share the same controls. Separate host permissions and durable/cloud processing remain future work. No background event publisher is present: elapsed replay progress is materialized when snapshots or controls are requested.
 
 JSON Schemas in `contracts/schemas/` are the wire reference. Pydantic and TypeScript are maintained manually. Python and frontend checks validate fixtures; browser responses are validated with the same schemas. AJV is used for boundary validation, not code generation. The insight fixture is not served or generated by an agent.
 
@@ -66,6 +78,8 @@ Insight `generation_mode: fixture` means a hand-authored example, distinct from 
 
 Schemas: [event](../contracts/schemas/event.schema.json), [match state](../contracts/schemas/match-state.schema.json), [insight](../contracts/schemas/insight.schema.json). Models: [Pydantic](../services/api/app/schemas.py) and [TypeScript](../apps/web/src/types/contracts.ts). Changing a contract requires aligned examples, models, boundary validation, tests and documentation.
 
+The additional [replay snapshot schema](../contracts/schemas/replay.schema.json) references the existing event/state schemas; its [example](../contracts/examples/replay.example.json) represents an initial paused run. Existing event/state/insight contracts and static sample endpoints remain unchanged.
+
 ## API and configuration
 
 | Endpoint | Response |
@@ -73,6 +87,9 @@ Schemas: [event](../contracts/schemas/event.schema.json), [match state](../contr
 | `GET /health` | `{"status": "ok", "application": "omnipitch-api"}` |
 | `GET /api/v1/matches/demo/state` | Committed match-state fixture |
 | `GET /api/v1/matches/demo/events` | `{"events": [...]}` from the shared five-pass generator |
+| `GET /api/v1/replay` | Atomic `{state, events, total_events}` snapshot of the current replay |
+| `POST /api/v1/replay/control` | JSON `{run_id, action}`; action is `play`, `pause` or `reset`; returns snapshot |
+| `POST /api/v1/replay/load?run_id=...` | UTF-8 JSONL file content (`text/plain`); validates/replaces run and returns snapshot |
 | `/docs` | Interactive OpenAPI documentation |
 
 `CORS_ORIGINS` defaults to `http://localhost:5173` and accepts comma-separated explicit localhost origins without paths. Arbitrary origins and credentialed CORS are disabled. The backend does not auto-load `.env`; its `.env.example` documents shell configuration.
@@ -113,6 +130,7 @@ Frontend checks:
 ```powershell
 cd apps/web
 npm run test:contracts
+npm run test:pitch
 npm run typecheck
 npm run build
 ```
@@ -124,6 +142,10 @@ Optional combined HTTP smoke check from root, with dependencies installed and po
 ```
 
 The smoke runner starts temporary API/Vite processes, validates responses/CORS, requests frontend modules/shared schemas, invokes the simulator CLI, writes logs/output under `data/generated/`, and stops the processes. It does not automate browser interaction.
+
+`test:pitch` renders the actual TSX components through React server rendering and checks both attack directions, inclusive coordinate boundaries, the empty state and initial event selection. It uses existing TypeScript/React dependencies without a separate test framework; it does not automate browser clicks or verify visual appearance.
+
+`npm run test:replay:browser` from `apps/web` is an optional headless Chrome integration check using Node's built-in WebSocket client. It starts temporary API/Vite servers, loads out-of-order JSONL through the real file picker, verifies play/pause/resume/finish, pitch selection, page-refresh recovery, invalid upload preservation and reset identity, then stops the processes. Install the existing Python/frontend dependencies and keep ports 8000/5173 free. Chrome defaults to `C:/Program Files/Google/Chrome/Application/chrome.exe`; set `CHROME_PATH` for another installation. Logs, test JSONL, isolated browser profiles and a screenshot are written under gitignored `data/generated/`. No browser-testing dependency is added.
 
 macOS/Linux variants (documented, not verified): from root, `python3 -m venv .venv`, `source .venv/bin/activate`, `python -m pip install -r services/api/requirements-dev.txt`, then `CORS_ORIGINS=http://localhost:5173 python -m uvicorn app.main:app --app-dir services/api --host localhost --port 8000`. In another terminal: `cd apps/web`, `cp .env.example .env`, `npm ci`, `npm run dev`. Simulator: `PYTHONPATH=services/simulator .venv/bin/python -m simulator.generate --seed 7 --run-id demo-run-001 --output data/generated/demo.jsonl`.
 
@@ -140,10 +162,11 @@ The [archived decision log](archive/DECISIONS.md) preserves original rationale a
 | D005 | Fictional teams/players and completed passes only; preserve continuity without implying real tracking or evaluation. |
 | D006 | JSON Schema draft 2020-12 wire reference, manually aligned models and boundary validation; no code generation. |
 | D007 | Add cloud SDKs only for an authorized integration that requires them. |
-| D008 | Share the simulator algorithm through a repository-relative import; state stays a fixture. Independent packaging and JSONL ingestion are future work. |
+| D008 | Share the simulator algorithm through a repository-relative import; demo metadata stays a fixture. JSONL replay ingestion was added on 2026-10-13; independent packaging remains future work. |
 | D009 | License remains pending owner decision; no LICENSE file has been selected. |
 | D010 | Keep the recorded tested dependency baseline and RFC3339 validation; this is not a claim that packages are latest. |
 | D011 | Maintain README, AGENTS, ROADMAP and ARCHITECTURE; archive duplicate guides and history after preserving current requirements. Approved documentation consolidation on 2026-10-11. |
+| D012 | Use an atomic snapshot and server-timed, single-process in-memory replay for Phase 1. Validate uploaded content before replacement, reject stale controls and create new run IDs on load/reset. This avoids separate state/events races without introducing persistence or streaming services. Recorded 2026-10-13. |
 
 Recorded October 7 runtimes: Node 24.11.0, npm 11.6.1, Python 3.13.7 and venv pip 25.2. Frontend pins: React/React DOM 19.1.0, TypeScript 5.8.3, Vite 8.3.3, React plugin 6.1.2, React types 19.1.2, AJV 8.20.0 and ajv-formats 3.0.1. Backend pins: FastAPI 0.115.12, Pydantic 2.11.4, Uvicorn 0.34.2. Check dependencies: pytest 8.3.5, httpx 0.28.1, jsonschema 4.23.0 and rfc3339-validator 0.1.4.
 
