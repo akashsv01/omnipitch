@@ -13,6 +13,21 @@ button:focus-visible { outline: 3px solid #5bade4; outline-offset: 3px; }
 .score { font-size: 2.4rem; font-weight: 700; margin: 14px 0; }
 .muted, footer { color: #526963; font-size: .9rem; overflow-wrap: anywhere; }
 .error { color: #a02020; }
+.pitch-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sample-badge { background: #eaf3ed; color: #176449; padding: 6px 10px; border-radius: 6px; font-size: .8rem; font-weight: 600; }
+.pitch { margin: 20px 0; }
+.pitch svg { display: block; width: 100%; height: auto; background: #153e30; border-radius: 10px; }
+.pitch-grass { fill: #226347; }
+.pitch-lines { fill: none; stroke: #e4f1e9; stroke-width: .45; }
+.pass-path { color: #ffe18a; }
+.pass-path line { stroke: currentColor; stroke-width: .8; }
+.pass-start { fill: #226347; stroke: currentColor; stroke-width: .6; }
+.pass-end { fill: currentColor; stroke: #153e30; stroke-width: .4; }
+.pitch figcaption { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 12px; font-size: .85rem; }
+.event-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); padding: 0; list-style: none; gap: 8px; }
+.event-list button { display: grid; gap: 5px; width: 100%; padding: 12px; text-align: left; border: 2px solid #d3ded9; color: #172d29; background: #f6f9f7; }
+.event-list button span { font-size: .75rem; }
+.event-list button[aria-pressed="true"] { background: #d8eae3; border-color: #176449; }
 dl { display: grid; grid-template-columns: 160px 1fr; gap: 12px; }
 dt { font-weight: 600; }
 dd { margin: 0; overflow-wrap: anywhere; }

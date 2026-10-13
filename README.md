@@ -4,9 +4,9 @@ OmniPitch is a hackathon project turning synthetic football events into explaina
 
 ## Current status
 
-Implemented: React/TypeScript sample-data UI with refresh and loading/error states; FastAPI health, match-state and five-pass endpoints; deterministic JSONL fixture generator; shared schemas, examples and validation checks. All teams and players are fictional.
+Implemented: React/TypeScript sample-data UI with refresh, loading/error states, an interactive 2D pass explorer and event details; FastAPI health, match-state and five-pass endpoints; deterministic JSONL fixture generator; shared schemas, examples and validation checks. All teams and players are fictional.
 
-Replay, a 2D pitch, analytics, AI agents, persistence and cloud integration are **planned**. See the [roadmap](docs/ROADMAP.md) and [technical reference](docs/ARCHITECTURE.md).
+Replay playback, analytics, AI agents, persistence and cloud integration are **planned**. The pitch displays a selectable static pass sequence. See the [roadmap](docs/ROADMAP.md) and [technical reference](docs/ARCHITECTURE.md).
 
 ## Local setup
 

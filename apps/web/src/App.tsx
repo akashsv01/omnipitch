@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LatestEvent } from './components/LatestEvent';
+import { PassExplorer } from './components/PassExplorer';
 import { API_BASE_URL, fetchDemo } from './lib/api';
 import type { Event, MatchState } from './types/contracts';
 import './style.css';
@@ -35,7 +35,7 @@ export default function App() {
         <p className="muted">Run: {view.state.run_id} · All data is synthetic.</p>
       </>}
     </section>
-    {view.status === 'success' && <LatestEvent event={view.events.at(-1)} />}
+    {view.status === 'success' && <PassExplorer events={view.events} />}
     <footer>Fixed fictional fixtures. Analytics and AI explanations are planned.</footer>
   </main>;
 }

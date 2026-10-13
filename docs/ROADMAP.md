@@ -4,9 +4,9 @@ Phases describe intended work, not committed completion dates. Implement only th
 
 ## Current state
 
-Current phase: local scaffold and contracts. No AI inference, replay playback, pitch visualization, analytics engine, persistence or cloud integration exists. The English insight is a contract fixture, not an API narrative endpoint.
+Current phase: Phase 1, interactive 2D pitch. The local frontend displays selectable static synthetic passes on a pitch with event details. No AI inference, replay playback, analytics engine, persistence or cloud integration exists. The English insight is a contract fixture, not an API narrative endpoint.
 
-Next slice: draw the existing synthetic pass on a 2D pitch using the current generator and event endpoint. Then add selected JSONL replay with run reset, ordered playback and controls, followed by one deterministic pass metric with units and evidence references.
+Next slice: load a selected validated JSONL replay with run reset, ordered playback and API-backed controls. Then define one deterministic pass metric with units and evidence references. Current event selection is inspection of static data, not playback.
 
 Last recorded application verification (2026-10-07): 25 Python tests passed with one upstream deprecation warning; pip check, three frontend fixture checks, TypeScript/production build and final live HTTP smoke check passed. npm installation audit reported zero vulnerabilities then; no Python security audit, browser interaction test or cloud access check was run. Details: [historical progress](archive/PROGRESS.md).
 
@@ -25,9 +25,13 @@ Documentation wording cleanup (2026-10-11): simplified project descriptions and 
 
 ## Phase 1 — synthetic replay and interactive 2D pitch
 
-- [ ] Draw a synthetic pass on a 2D React pitch using the existing generator and event endpoint.
+- [x] Draw a synthetic pass on a 2D React pitch using the existing generator and event endpoint; select passes and inspect event details.
 - [ ] Load a selected JSONL replay with run resets and ordered playback.
 - [ ] Add pause/resume controls and explicit coordinate/attack labels.
+
+Coordinate and attack labels are implemented on the static pitch; pause/resume depends on the replay slice and remains pending.
+
+2026-10-13 frontend slice: added a responsive SVG pitch, selectable API pass cards and synchronized event details with empty-state handling and accessible labels. Verification: `npm run test:contracts` passed for all three fixtures; `npm run test:pitch` passed both-direction/boundary, empty-state and initial-selection checks; `npm run build` passed including TypeScript; `git diff --check` passed. Existing locked dependencies were installed; no new dependencies or Microsoft services were added. Browser interaction/visual checks, live HTTP smoke and backend tests were not run for this frontend slice. No commit or push made.
 
 ## Phase 2 — verified metrics and moment detection
 

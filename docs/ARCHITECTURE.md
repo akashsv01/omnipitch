@@ -11,6 +11,8 @@ flowchart LR
 
 React fetches `/api/v1/matches/demo/state` and `/api/v1/matches/demo/events` from the configured API. It renders loading, error and success states; refresh repeats the requests. FastAPI validates explicit Pydantic response models and exposes `/health`. Local CORS admits explicitly configured localhost origins with credentials disabled.
 
+The frontend renders a static pass explorer using those validated API events. `PassExplorer` selects the latest event initially and lets users choose another pass through keyboard-accessible buttons. Selection uses run/event identity and updates both `Pitch` and the event details. The responsive SVG uses one viewBox unit per metre in the fixed 105 × 68 frame (x right, y down), with no halftime or attack-direction rotation. Start/end markers, the pass arrow, direction labels and an SVG text description expose the selected path; no player positions are inferred. Empty sequences display an empty pitch and message. No replay timer or backend playback controls exist yet.
+
 The API imports the local simulator module through one repository-relative path in `sample_data.py`; this keeps one deterministic pass algorithm without introducing packaging tooling. It reads the committed match-state fixture. Tests verify that state agrees with the final event and that examples agree with responses. API sample responses are static, with paused replay status.
 
 The simulator CLI accepts seed, run ID, output path, optional count and fixed UTC baseline. It validates each generated event against the shared schema before writing JSONL. `data/generated/` is gitignored. There is no stream or JSONL ingestion endpoint. A later task can explicitly load and validate a selected JSONL replay into the API; do not assume that connection exists now.
@@ -113,6 +115,7 @@ Frontend checks:
 ```powershell
 cd apps/web
 npm run test:contracts
+npm run test:pitch
 npm run typecheck
 npm run build
 ```
@@ -124,6 +127,8 @@ Optional combined HTTP smoke check from root, with dependencies installed and po
 ```
 
 The smoke runner starts temporary API/Vite processes, validates responses/CORS, requests frontend modules/shared schemas, invokes the simulator CLI, writes logs/output under `data/generated/`, and stops the processes. It does not automate browser interaction.
+
+`test:pitch` renders the actual TSX components through React server rendering and checks both attack directions, inclusive coordinate boundaries, the empty state and initial event selection. It uses existing TypeScript/React dependencies without a separate test framework; it does not automate browser clicks or verify visual appearance.
 
 macOS/Linux variants (documented, not verified): from root, `python3 -m venv .venv`, `source .venv/bin/activate`, `python -m pip install -r services/api/requirements-dev.txt`, then `CORS_ORIGINS=http://localhost:5173 python -m uvicorn app.main:app --app-dir services/api --host localhost --port 8000`. In another terminal: `cd apps/web`, `cp .env.example .env`, `npm ci`, `npm run dev`. Simulator: `PYTHONPATH=services/simulator .venv/bin/python -m simulator.generate --seed 7 --run-id demo-run-001 --output data/generated/demo.jsonl`.
 
