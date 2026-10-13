@@ -45,6 +45,6 @@ const html = render(PassExplorer, { events: [fixture, next] });
 assert.equal((html.match(/aria-pressed="true"/g) ?? []).length, 1);
 assert.match(html, /x1="50" y1="20" x2="60" y2="30"/);
 assert.match(html, /Selected event/);
-assert.match(html, /Static|static/);
+assert.match(html, /revealed pass/);
 
 console.log('Pitch checks passed: both attack directions, boundary coordinates, empty state, and initial event selection.');

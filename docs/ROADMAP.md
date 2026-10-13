@@ -4,9 +4,9 @@ Phases describe intended work, not committed completion dates. Implement only th
 
 ## Current state
 
-Current phase: Phase 1, interactive 2D pitch. The local frontend displays selectable static synthetic passes on a pitch with event details. No AI inference, replay playback, analytics engine, persistence or cloud integration exists. The English insight is a contract fixture, not an API narrative endpoint.
+Current phase: Phase 1 local replay implemented and verified. The frontend loads validated JSONL, plays ordered passes on the 2D pitch, pauses/resumes and resets into new runs. No AI inference, analytics engine, persistence or cloud integration exists. The English insight is a contract fixture, not an API narrative endpoint.
 
-Next slice: load a selected validated JSONL replay with run reset, ordered playback and API-backed controls. Then define one deterministic pass metric with units and evidence references. Current event selection is inspection of static data, not playback.
+Next recommended task: Phase 2, define and test one deterministic pass metric with explicit units and run-scoped evidence references. Do not start it automatically.
 
 Last recorded application verification (2026-10-07): 25 Python tests passed with one upstream deprecation warning; pip check, three frontend fixture checks, TypeScript/production build and final live HTTP smoke check passed. npm installation audit reported zero vulnerabilities then; no Python security audit, browser interaction test or cloud access check was run. Details: [historical progress](archive/PROGRESS.md).
 
@@ -26,12 +26,14 @@ Documentation wording cleanup (2026-10-11): simplified project descriptions and 
 ## Phase 1 — synthetic replay and interactive 2D pitch
 
 - [x] Draw a synthetic pass on a 2D React pitch using the existing generator and event endpoint; select passes and inspect event details.
-- [ ] Load a selected JSONL replay with run resets and ordered playback.
-- [ ] Add pause/resume controls and explicit coordinate/attack labels.
+- [x] Load a selected JSONL replay with run resets and ordered playback.
+- [x] Add pause/resume controls and explicit coordinate/attack labels.
 
-Coordinate and attack labels are implemented on the static pitch; pause/resume depends on the replay slice and remains pending.
+Phase 1 is complete for the local roadmap: coordinate/direction labels, validated replay loading, server-timed ordered playback, pause/resume and new-run resets are implemented. In-memory state is shared by one API worker and lost on restart; only the existing demo match/completed-pass contract is supported. Authentication, durable recovery, speed selection and cloud streaming are not part of this completed slice.
 
 2026-10-13 frontend slice: added a responsive SVG pitch, selectable API pass cards and synchronized event details with empty-state handling and accessible labels. Verification: `npm run test:contracts` passed for all three fixtures; `npm run test:pitch` passed both-direction/boundary, empty-state and initial-selection checks; `npm run build` passed including TypeScript; `git diff --check` passed. Existing locked dependencies were installed; no new dependencies or Microsoft services were added. Browser interaction/visual checks, live HTTP smoke and backend tests were not run for this frontend slice. No commit or push made.
+
+2026-10-13 replay slice: added atomic replay snapshot schema/example, JSONL upload validation, locked API replay clock/control endpoints and polled frontend controls/progress. Verification: 42 Python tests passed (one upstream deprecation warning); four frontend contract fixtures, pitch checks, TypeScript/production build and `git diff --check` passed. A real headless Chrome run passed upload/order, play/pause/resume/finish, pass selection, page refresh, invalid-file preservation and reset-ID checks; the reset-state screenshot was inspected. Windows runtimes: Python 3.11.3, Node 24.13.1/npm 11.8.0. No new dependencies, Microsoft services, cloud access checks, commits or pushes. The original combined HTTP smoke script was not rerun; the new browser smoke exercised live API/Vite and replay paths.
 
 ## Phase 2 — verified metrics and moment detection
 

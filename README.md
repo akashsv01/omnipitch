@@ -4,13 +4,13 @@ OmniPitch is a hackathon project turning synthetic football events into explaina
 
 ## Current status
 
-Implemented: React/TypeScript sample-data UI with refresh, loading/error states, an interactive 2D pass explorer and event details; FastAPI health, match-state and five-pass endpoints; deterministic JSONL fixture generator; shared schemas, examples and validation checks. All teams and players are fictional.
+Implemented: React/TypeScript 2D pass explorer with JSONL loading, API-timed play/pause/resume, new-run reset, progress and event details; FastAPI replay and sample endpoints; deterministic JSONL fixture generator; shared schemas, examples and validation checks. All teams and players are fictional.
 
-Replay playback, analytics, AI agents, persistence and cloud integration are **planned**. The pitch displays a selectable static pass sequence. See the [roadmap](docs/ROADMAP.md) and [technical reference](docs/ARCHITECTURE.md).
+Replay is local, in memory and shared by one API process; restarting the API loses the loaded replay. Analytics, AI agents, persistence and cloud integration are **planned**. See the [roadmap](docs/ROADMAP.md) and [technical reference](docs/ARCHITECTURE.md).
 
 ## Local setup
 
-No cloud credentials are needed. The recorded October 7 baseline used Node 24.11.0/npm 11.6.1 and Python 3.13.7 on Windows; other runtime/platform combinations have not been verified. Start from your Git repository root.
+No cloud credentials are needed. Windows checks passed on Node 24.13.1/npm 11.8.0 and Python 3.11.3 on October 13; the original baseline used Node 24.11.0/npm 11.6.1 and Python 3.13.7. Other platforms have not been verified. Start from your Git repository root.
 
 Terminal 1 (PowerShell):
 
@@ -33,6 +33,8 @@ npm run dev
 Open [localhost:5173](http://localhost:5173) and [API docs](http://localhost:8000/docs). Frontend `.env` uses `VITE_API_BASE_URL=http://localhost:8000`; restart Vite after edits. The API reads shell variables, not `.env`. Keep credentials out of browser configuration. Vite requires port 5173 to be free.
 
 For simulator commands, verification and macOS/Linux variants, see [local tools and verification](docs/ARCHITECTURE.md#local-tools-and-verification).
+
+To try replay, click **Play**: the default five passes appear at three-second intervals. **Pause/Resume** preserves timing; **Reset run** clears progress and creates a new run ID. Generate JSONL using the linked simulator command, then choose it with **Load JSONL**. Valid files load paused; invalid files leave the current run intact. Run the API with one worker for this local demo.
 
 ## Repository structure
 

@@ -44,3 +44,9 @@ export interface Insight extends RunScoped {
   generation_mode: 'fixture';
 }
 export interface EventsResponse { events: Event[] }
+
+export interface ReplaySnapshot {
+  state: MatchState;
+  events: Event[];
+  total_events: number;
+}

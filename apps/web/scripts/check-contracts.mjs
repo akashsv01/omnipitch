@@ -3,7 +3,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 const ajv = new Ajv2020();
 addFormats(ajv);
-for (const name of ['event', 'insight', 'match-state']) {
+for (const name of ['event', 'insight', 'match-state', 'replay']) {
   const read = path => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
   const schema = read(`../../../contracts/schemas/${name}.schema.json`);
   const fixture = read(`../../../contracts/examples/${name}.example.json`);

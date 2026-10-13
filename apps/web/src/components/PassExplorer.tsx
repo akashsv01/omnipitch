@@ -10,7 +10,7 @@ export function PassExplorer({ events }: { events: Event[] }) {
   return <>
     <section aria-labelledby="pitch-heading">
       <div className="pitch-heading"><h2 id="pitch-heading">Pass explorer</h2><span className="sample-badge">Synthetic sample</span></div>
-      <p className="muted">Select a completed pass to inspect its path. This is a static event sequence.</p>
+      <p className="muted">Select a revealed pass to inspect its path. The newest pass is selected automatically until you choose one.</p>
       <Pitch event={selected} />
       {events.length > 0 ? <ol className="event-list" aria-label="Completed passes">
         {events.map(event => <li key={`${event.run_id}:${event.event_id}`}>
