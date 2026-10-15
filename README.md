@@ -16,7 +16,7 @@ Implemented locally (no cloud credentials needed):
 
 **Cloud status (2026-10-15).**
 
-- **Event Hubs:** live and verified. The simulator publishes to Event Hubs with Entra ID (no keys).
+- **Event Hubs:** verified live on 2026-10-15. The simulator publishes with Entra ID (no keys). The namespace was then deleted to save credit; `infra/eventhubs.ps1` recreates it in about 2 minutes.
 - **Fabric Eventstream → Eventhouse:** code and KQL are ready, but **not yet connected**. The Fabric workspace is still being set up.
 - **API:** has an explicit `azure` mode that reads Eventhouse and never falls back silently.
 - **Later phases:** Cosmos DB, Foundry/Agent Framework and Web PubSub are planned, not connected.
@@ -69,7 +69,8 @@ services/api/        FastAPI, SQLite ledger/state, replay and tests
 services/simulator/  Seeded state-machine match simulator and CLI
 services/analytics/  Deterministic metrics and moment detection (Python adapter)
 services/agents/     Role prompts, validator, fallback narrator, eval fixtures
-analytics/           Versioned illustrative threat grid
+analytics/           Versioned illustrative threat grid and KQL (setup + queries)
+infra/               Azure CLI script that recreates the Event Hubs resources
 contracts/           Shared JSON Schemas (v1.1) and committed examples
 docs/                Architecture, roadmap, and archived history
 AGENTS.md            Primary coding-agent instructions

@@ -158,7 +158,7 @@ flowchart LR
 | Component | Code | State (2026-10-15) |
 | --- | --- | --- |
 | Publisher | `services/simulator/simulator/publish.py` | **Verified live.** Validates every event against the schema, sends with `DefaultAzureCredential` (or `AzureCliCredential` pinned by `EVENTHUB_TENANT_ID`), partition key `run_id:match_id`, optional duplicate re-delivery, report in `data/generated/publish-<run>.json`. The namespace `IncomingMessages` metric confirmed a 20-event probe. Runs of 5 and 400+25 events were also sent. |
-| Event Hubs | Provisioned with Azure CLI (no IaC yet) | **Exists.** Azure for Students subscription, `rg-omnipitch-dev` (East US). Namespace `omnipitch-ehns-qn36t` (Standard, 1 TU), hub `match-events` (2 partitions, 24 h retention), consumer group `fabric-eventstream`. Hub-scoped `Azure Event Hubs Data Sender` for the developer. Listen-only SAS rule `eventstream-listen` exists for Eventstream; its key is never stored in the repo. |
+| Event Hubs | `infra/eventhubs.ps1` (idempotent Azure CLI script) | **Deleted on 2026-10-15 to save credit** until the Fabric side is ready; recreate with `infra/eventhubs.ps1` (same names). When it existed it was: Azure for Students subscription, `rg-omnipitch-dev` (East US). Namespace `omnipitch-ehns-qn36t` (Standard, 1 TU), hub `match-events` (2 partitions, 24 h retention), consumer group `fabric-eventstream`. Hub-scoped `Azure Event Hubs Data Sender` for the developer. Listen-only SAS rule `eventstream-listen` exists for Eventstream; its key is never stored in the repo. |
 | Eventstream | Portal (no code) | **Not created.** UMD has disabled Fabric trials; the UF teammate's tenant allows them. |
 | Eventhouse / KQL | `analytics/kql/*.kql`, `services/api/app/eventhouse.py` | **Code written, unverified live.** `setup.kql` creates the table, JSON mapping and ingestion-time policy. Queries are parameterized (`declare query_parameters`), never string-built from user input. |
 | API | `services/api/app/main.py`, `config.py` | **Code written, tested with a fake reader.** `/ready` probes Eventhouse in azure mode. `POST /api/v1/replay/eventhouse` loads a run and keeps its cloud `run_id`. `GET /api/v1/eventhouse/runs[/{id}]` returns raw vs unique rows and KQL-vs-Python parity. |
@@ -240,7 +240,7 @@ Start the API with `OMNIPITCH_BACKEND_MODE=azure` first. The script runs these s
 
 The report is written to `data/generated/cloud-smoke-<run>.json`. Browser display is the one manual check: Data quality → load the run, then the top bar reads `Azure · Eventhouse` and the parity table matches. Use `--skip-publish` when another identity published the run.
 
-Cost note: the Standard namespace draws about $0.73/day of Azure credit until `az group delete -n rg-omnipitch-dev`. A paid Fabric F2 would cost $0.36/h while running.
+Cost note: the Standard namespace draws about $0.73/day of Azure credit while it exists. Create it with `infra/eventhubs.ps1` only when the Eventstream is about to be connected, and remove it with `az group delete -n rg-omnipitch-dev --yes`. A paid Fabric F2 would cost $0.36/h while running.
 
 ## Later-phase cloud flow — not implemented
 

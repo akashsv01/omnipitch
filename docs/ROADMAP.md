@@ -17,11 +17,11 @@ Current phase: Phase 1 and the local scope of Phase 2 are implemented and verifi
 | Browser shows the cloud run | Unverified | Needs a live Eventhouse. |
 | Dedup, fixture calculations, sparse windows | Verified locally; cloud checks scripted | Checks are in `services/api/tests/cloud_smoke.py`. |
 
-Resources created on 2026-10-15 in Azure for Students (Owner): provider `Microsoft.EventHub` registered; `rg-omnipitch-dev` (East US); namespace `omnipitch-ehns-qn36t` (Standard, 1 TU, about $0.73/day of credit); hub `match-events`; consumer group `fabric-eventstream`; `Azure Event Hubs Data Sender` for the developer at hub scope; listen-only SAS rule `eventstream-listen`. No Fabric capacity was purchased. Verification on 2026-10-15: 77 Python tests passed, frontend contract and pitch checks and the build passed, and `cloud_smoke.py` reported Event Hubs PASS and the Eventhouse stage UNVERIFIED (not configured).
+Resources created on 2026-10-15 in Azure for Students (Owner), then **deleted the same day (00:31 UTC) at the owner's request to save credit**. Total usage was about 30 minutes of 1 TU; afterwards the subscription has 0 resources. `infra/eventhubs.ps1` recreates the same names. The script has been syntax-checked but not run since. What existed: provider `Microsoft.EventHub` registered; `rg-omnipitch-dev` (East US); namespace `omnipitch-ehns-qn36t` (Standard, 1 TU, about $0.73/day of credit); hub `match-events`; consumer group `fabric-eventstream`; `Azure Event Hubs Data Sender` for the developer at hub scope; listen-only SAS rule `eventstream-listen`. No Fabric capacity was purchased. Verification on 2026-10-15: 77 Python tests passed, frontend contract and pitch checks and the build passed, and `cloud_smoke.py` reported Event Hubs PASS and the Eventhouse stage UNVERIFIED (not configured).
 
 Next tasks, in order:
 
-1. The teammate completes the Fabric setup (trial, workspace, Eventhouse `omnipitch-eh` / database `omnipitch`, `analytics/kql/setup.kql`, Eventstream from `match-events`).
+1. The owner recreates Event Hubs with `infra/eventhubs.ps1` when the teammate is ready for the Eventstream step. Then the teammate completes the Fabric setup (trial, workspace, Eventhouse `omnipitch-eh` / database `omnipitch`, `analytics/kql/setup.kql`, Eventstream from `match-events`).
 2. Publish a fresh run, then run `cloud_smoke.py` with `--api` against the live Eventhouse, check the browser, and record actual results here.
 3. Only after that, Phase 3: connect a Foundry model behind `agents.validation.finalize`.
 
