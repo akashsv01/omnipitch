@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://omnipitch.local/contracts/event.schema.json",
   "title": "event",
+  "description": "One synthetic match action. Version 1.1 adds shots, defensive actions, incomplete passes and period markers; 1.0 completed-pass files remain readable.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -13,19 +14,16 @@
     "period",
     "match_time_ms",
     "emitted_at",
-    "team_id",
-    "player_id",
-    "possession_id",
     "type",
     "outcome",
-    "start",
-    "end",
-    "attacking_direction",
     "synthetic"
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "enum": [
+        "1.0",
+        "1.1"
+      ]
     },
     "run_id": {
       "type": "string",
@@ -60,72 +58,480 @@
       "pattern": "Z$"
     },
     "team_id": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "minLength": 1
     },
     "player_id": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "minLength": 1
     },
     "possession_id": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "minLength": 1
     },
     "type": {
-      "const": "pass"
+      "enum": [
+        "pass",
+        "shot",
+        "tackle",
+        "interception",
+        "challenge",
+        "foul",
+        "period_start",
+        "period_end"
+      ]
     },
     "outcome": {
-      "const": "completed"
+      "enum": [
+        "completed",
+        "incomplete",
+        "goal",
+        "saved",
+        "off_target",
+        "blocked",
+        "won",
+        "lost",
+        "committed",
+        "none"
+      ]
     },
     "start": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "x",
-        "y"
-      ],
-      "properties": {
-        "x": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 105
+      "oneOf": [
+        {
+          "type": "null"
         },
-        "y": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 68
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y"
+          ],
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 105
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 68
+            }
+          }
         }
-      }
+      ]
     },
     "end": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "x",
-        "y"
-      ],
-      "properties": {
-        "x": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 105
+      "oneOf": [
+        {
+          "type": "null"
         },
-        "y": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 68
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y"
+          ],
+          "properties": {
+            "x": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 105
+            },
+            "y": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 68
+            }
+          }
         }
-      }
+      ]
     },
     "attacking_direction": {
-      "type": "string",
       "enum": [
         "positive_x",
-        "negative_x"
+        "negative_x",
+        null
+      ]
+    },
+    "on_target": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "is_goal": {
+      "type": [
+        "boolean",
+        "null"
       ]
     },
     "synthetic": {
       "const": true
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "1.0"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "type": {
+            "const": "pass"
+          },
+          "outcome": {
+            "const": "completed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "period_start",
+              "period_end"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "const": "none"
+          },
+          "team_id": {
+            "type": "null"
+          },
+          "player_id": {
+            "type": "null"
+          },
+          "possession_id": {
+            "type": "null"
+          },
+          "start": {
+            "type": "null"
+          },
+          "end": {
+            "type": "null"
+          },
+          "attacking_direction": {
+            "type": "null"
+          },
+          "on_target": {
+            "type": "null"
+          },
+          "is_goal": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "required": [
+          "team_id",
+          "player_id",
+          "possession_id",
+          "start",
+          "attacking_direction"
+        ],
+        "properties": {
+          "team_id": {
+            "type": "string"
+          },
+          "player_id": {
+            "type": "string"
+          },
+          "possession_id": {
+            "type": "string"
+          },
+          "start": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 105
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 68
+              }
+            }
+          },
+          "attacking_direction": {
+            "enum": [
+              "positive_x",
+              "negative_x"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "pass"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "end"
+        ],
+        "properties": {
+          "outcome": {
+            "enum": [
+              "completed",
+              "incomplete"
+            ]
+          },
+          "end": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 105
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 68
+              }
+            }
+          },
+          "on_target": {
+            "type": "null"
+          },
+          "is_goal": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "shot"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "end",
+          "on_target",
+          "is_goal"
+        ],
+        "properties": {
+          "outcome": {
+            "enum": [
+              "goal",
+              "saved",
+              "off_target",
+              "blocked"
+            ]
+          },
+          "end": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 105
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 68
+              }
+            }
+          },
+          "on_target": {
+            "type": "boolean"
+          },
+          "is_goal": {
+            "type": "boolean"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "outcome": {
+                  "const": "goal"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "on_target": {
+                  "const": true
+                },
+                "is_goal": {
+                  "const": true
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "outcome": {
+                  "const": "saved"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "on_target": {
+                  "const": true
+                },
+                "is_goal": {
+                  "const": false
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "outcome": {
+                  "enum": [
+                    "off_target",
+                    "blocked"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "on_target": {
+                  "const": false
+                },
+                "is_goal": {
+                  "const": false
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "tackle",
+              "challenge"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "won",
+              "lost"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "interception"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "const": "won"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "foul"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "const": "committed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "tackle",
+              "challenge",
+              "interception",
+              "foul"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "end": {
+            "type": "null"
+          },
+          "on_target": {
+            "type": "null"
+          },
+          "is_goal": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
 }

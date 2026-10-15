@@ -7,9 +7,10 @@ from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
-from app import main
+from app import main, replay as replay_module
+from app.db import Database
 from app.replay import ReplayStore, parse_jsonl
-from app.schemas import ReplaySnapshot
+from app.schemas import Event, ReplaySnapshot
 from simulator.generate import generate_events
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -18,8 +19,10 @@ ROOT = Path(__file__).resolve().parents[3]
 @pytest.fixture
 def replay(monkeypatch):
     now = [0.0]
-    store = ReplayStore(clock=lambda: now[0])
-    monkeypatch.setattr(main, "replay_store", store)
+    source = [Event.model_validate(event) for event in generate_events()]
+    store = ReplayStore(clock=lambda: now[0], db=Database(":memory:"), source=source)
+    store.speed = 1  # Timing assertions below use real-time match milliseconds.
+    monkeypatch.setattr(replay_module, "replay_store", store)
     return store, now, TestClient(main.app)
 
 
@@ -84,6 +87,8 @@ def test_load_orders_remaps_and_resets_selected_dataset(replay):
     lambda events: [dict(events[0], run_id="different"), *events[1:]],
     lambda events: [dict(events[0], match_id="other"), *events[1:]],
     lambda events: [dict(events[0], team_id="unknown"), *events[1:]],
+    lambda events: [dict(events[0], type="shot"), *events[1:]],
+    lambda events: [dict(events[0], schema_version="1.0", outcome="incomplete"), *events[1:]],
     lambda events: [dict(events[0], sequence=2), *events[1:]],
     lambda events: [events[0], events[2]],
     lambda events: [events[0], dict(events[1], match_time_ms=0), *events[2:]],
@@ -104,14 +109,16 @@ def test_file_limits_encoding_and_control_validation(replay):
     store, _, client = replay
     run = store.snapshot().state.run_id
     endpoint = f"/api/v1/replay/load?run_id={run}"
-    assert client.post(endpoint, content=b"x" * 1_048_577).status_code == 413
+    assert client.post(endpoint, content=b"x" * (2 * 1_048_576 + 1)).status_code == 413
     assert client.post(endpoint, content=b"\xff").status_code == 422
     assert client.post(endpoint, content="not json").status_code == 422
     assert client.post(endpoint, content="\ufeff" + jsonl(generate_events(count=1))).status_code == 200
     assert client.post(endpoint, content=jsonl(generate_events())).status_code == 409
     assert client.post("/api/v1/replay/control", json={"run_id": run, "action": "unknown"}).status_code == 422
-    with pytest.raises(HTTPException, match="1000"):
-        parse_jsonl(jsonl(generate_events(count=1000) + [generate_events()[0]]))
+    many = generate_events(count=1000)
+    too_many = many + [dict(e, event_id=f"x-{e['event_id']}", sequence=e["sequence"] + 1000) for e in many] * 2
+    with pytest.raises(HTTPException, match="2500"):
+        parse_jsonl(jsonl(too_many[:2501]))
 
 
 def test_period_local_clock_and_order(replay):

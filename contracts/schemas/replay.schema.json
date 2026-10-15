@@ -2,12 +2,168 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://omnipitch.local/contracts/replay.schema.json",
   "title": "Replay snapshot",
+  "description": "Atomic replay snapshot. events and moments hold items with sequence or source_sequence after events_offset (incremental polling); analysis describes the whole revealed prefix.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["state", "events", "total_events"],
+  "required": [
+    "state",
+    "events",
+    "events_offset",
+    "total_events",
+    "replay",
+    "analysis",
+    "moments"
+  ],
   "properties": {
-    "state": { "$ref": "match-state.schema.json" },
-    "events": { "type": "array", "maxItems": 1000, "items": { "$ref": "event.schema.json" } },
-    "total_events": { "type": "integer", "minimum": 1, "maximum": 1000 }
+    "state": {
+      "$ref": "match-state.schema.json"
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 2500,
+      "items": {
+        "$ref": "event.schema.json"
+      }
+    },
+    "events_offset": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_events": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2500
+    },
+    "replay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "seed",
+        "scenario",
+        "speed",
+        "elapsed_ms",
+        "duration_ms",
+        "clock_period",
+        "clock_ms",
+        "restored",
+        "roster",
+        "backend_mode",
+        "source_run_id",
+        "source_detail"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "simulator",
+            "upload",
+            "eventhouse"
+          ]
+        },
+        "seed": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "scenario": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "speed": {
+          "enum": [
+            1,
+            5,
+            10,
+            20,
+            40,
+            80
+          ]
+        },
+        "elapsed_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "clock_period": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "clock_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "restored": {
+          "type": "boolean"
+        },
+        "roster": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "player_id",
+              "team_id",
+              "name",
+              "shirt",
+              "position"
+            ],
+            "properties": {
+              "player_id": {
+                "type": "string"
+              },
+              "team_id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "shirt": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 99
+              },
+              "position": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "backend_mode": {
+          "enum": [
+            "local",
+            "azure"
+          ]
+        },
+        "source_run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "analysis": {
+      "$ref": "analysis.schema.json"
+    },
+    "moments": {
+      "type": "array",
+      "items": {
+        "$ref": "moment.schema.json"
+      }
+    }
   }
 }

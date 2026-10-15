@@ -4,32 +4,245 @@
 
 ```mermaid
 flowchart LR
-  React[React development screen] -->|HTTP GET + schema validation| API[FastAPI]
-  API --> Fixtures[Deterministic sample data]
-  Simulator[Simulator CLI] --> JSONL[Local JSONL output]
-  JSONL -->|Browser file upload| Replay[API in-memory replay]
-  React -->|Poll snapshot + POST controls| Replay
+  Sim[Seeded match simulator] -->|validated events| Replay[API replay clock]
+  JSONL[Uploaded JSONL] -->|validated, sorted| Replay
+  Replay -->|revealed prefix, idempotent| Ledger[(SQLite ledger)]
+  Producer[External producer] -->|POST ingest| Ledger
+  Replay --> Analytics[Python analytics adapter]
+  Analytics --> Detect[Moment rules]
+  Detect -->|conditional create| Moments[(SQLite moments)]
+  Moments --> Narrate[Fallback narrator + validator]
+  Replay -->|atomic snapshot, incremental| UI[React match room]
+  Analytics --> UI
+  Narrate --> UI
 ```
 
-React polls the atomic `/api/v1/replay` snapshot at 500 ms intervals after each completed request. It renders loading, error, success and disconnected states; refresh/reconnect retrieves current progress rather than creating a run. FastAPI validates explicit Pydantic response models and exposes `/health`. Local CORS admits explicitly configured localhost origins with credentials disabled; GET and POST are allowed.
+This is the local stand-in for the guide's reference architecture. SQLite plays the role of Eventhouse (event ledger) and Cosmos DB (replay state and moments). The Python analytics adapter is the guide's documented day-two fallback for Fabric/KQL. Detection, the evidence packets and the validator are shaped so that a bridge worker, Cosmos change feed and a Foundry model can replace their local counterparts without changing the contracts.
 
-The frontend renders only revealed replay events. `PassExplorer` follows the newest pass until a user selects one through keyboard-accessible buttons. Selection uses run/event identity and updates both `Pitch` and event details; changing runs clears selection. The responsive SVG uses one viewBox unit per metre in the fixed 105 × 68 frame (x right, y down), with no halftime or attack-direction rotation. Start/end markers, the pass arrow, direction labels and an SVG text description expose the selected path; no player positions are inferred. Empty sequences display an empty pitch and message.
+### Replay and recovery
 
-The API imports the local simulator module through one repository-relative path in `sample_data.py`; this keeps one deterministic pass algorithm without introducing packaging tooling. It reads the committed match-state fixture. Tests verify that state agrees with the final event and that examples agree with responses. API sample responses are static, with paused replay status.
+`ReplayStore` owns one shared run under a lock. On a new process, it restores the last saved run from `replay_state`: same run ID and events, paused at the stored position (status `finished` stays finished). Otherwise it simulates seed 7, `standard`. The replay clock is server-monotonic: `elapsed × speed` maps to match time across both periods, and period 2 starts after period 1's last recorded event, with no invented halftime delay. Speeds are 1, 5, 10, 20, 40 or 80×. A seek reveals exactly the events at or before the target. Speed changes fold elapsed time first, so position is preserved. Reset, load and generate create a new `run_id`. Every control or load request carries the expected run ID; stale requests return 409.
 
-The simulator CLI accepts seed, run ID, output path, optional count and fixed UTC baseline. It validates each generated event against the shared schema before writing JSONL. `data/generated/` is gitignored. The browser uploads selected JSONL content to the replay endpoint; the server never opens a client-provided path. There is no cloud event stream.
+Revealed events are inserted into the ledger once, in sequence order. Analysis and moments are computed from the revealed prefix and cached by `(run_id, latest_sequence)`. Moments are stored with `INSERT OR IGNORE`, so evidence is frozen at detection time. Snapshots serve stored moments filtered by `source_sequence ≤ latest`, so seeking backwards hides later moments.
 
-### Local replay behavior
+Snapshots are atomic and incremental. `GET /api/v1/replay?run_id=R&after_sequence=N` returns events after N and moments with `source_sequence > N` when R is current; otherwise it returns everything (`events_offset = 0`). The browser validates every response with AJV against the shared schemas, merges increments, polls every 450 ms (2 s while hidden), and invalidates in-flight polls whenever it sends a control. A failed poll keeps the last state visible and disables controls until reconnection.
 
-`ReplayStore` holds one shared replay with a lock, initialized from the five-pass generator. Play/pause uses a server monotonic clock and preserves elapsed intervals; snapshots reveal all due events in sequence. The displayed match clock is the latest revealed event's period-local time, not a continuously interpolated clock. Crossing periods uses the previous period's last event as the offset, without an invented halftime delay. Final arrival changes status to `finished`; use reset to replay again.
+### Ingestion ledger
 
-Loading validates the complete UTF-8 JSONL before replacement: at most 1 MiB and 1000 events, one source run/match, unique event IDs, contiguous sequences starting at 1, and nondecreasing time within ordered periods. File lines may be out of order; events are sorted by sequence. Only completed passes for match `demo` and teams `harbor`/`vale` are supported, because match metadata still comes from the fixture. Load/reset creates a new run ID, remaps events to it, preserves event IDs/geometry/timestamps and starts paused with zero revealed events. Control/load requests include the expected run ID; stale requests return 409. Invalid uploads preserve the loaded run. Custom errors use `detail: {code, message}`; request-model failures use FastAPI's normal 422 validation response.
+`POST /api/v1/runs/{run_id}/ingest` accepts UTF-8 JSONL (≤ 2 MiB, ≤ 2500 lines) and validates each line independently:
 
-An atomic snapshot bundles state, revealed events and total count; the browser validates its schema, ordering, progress and identity. UI mutation requests invalidate earlier poll results. A failed poll preserves the last snapshot and disables controls until reconnect. This local controller has no authentication or persistence and must run with one API worker; multiple viewers share the same controls. Separate host permissions and durable/cloud processing remain future work. No background event publisher is present: elapsed replay progress is materialized when snapshots or controls are requested.
+- Identity is `(run_id, event_id)`.
+- An identical repeat counts as a duplicate and changes nothing.
+- A different payload under an existing identity is rejected as `conflicting_duplicate`, and the first version is kept.
+- Invalid lines, wrong-run events and unknown teams go to `diagnostics` with reasons.
+- `GET /runs/{id}/metrics` recomputes metrics only over the contiguous `sequence` prefix, so a gap stops windowed metrics instead of silently skipping events.
+- `GET /runs/{id}/ledger` reports received, unique, duplicate, rejected and missing-sequence counts.
 
-JSON Schemas in `contracts/schemas/` are the wire reference. Pydantic and TypeScript are maintained manually. Python and frontend checks validate fixtures; browser responses are validated with the same schemas. AJV is used for boundary validation, not code generation. The insight fixture is not served or generated by an agent.
+## Wire contracts (schema version 1.1)
 
-## Planned cloud flow — not implemented
+Schemas in `contracts/schemas/`: `event`, `match-state`, `insight`, `moment`, `analysis` and `replay`. Pydantic (`services/api/app/schemas.py`) and TypeScript (`apps/web/src/types/contracts.ts`) are aligned manually. Python tests and `npm run test:contracts` validate the fixtures, and the browser validates responses.
+
+Events cover these types:
+
+- `pass` (completed or incomplete)
+- `shot` (goal, saved, off_target or blocked, with consistent `on_target`/`is_goal`)
+- `tackle` and `challenge` (won or lost), `interception` (won) and `foul` (committed)
+- `period_start` and `period_end`
+
+Period markers carry no team, player, possession or location. Every team action carries team, player, possession, `start` and `attacking_direction`; only passes and shots have `end`. Schema 1.0 files (completed passes only) remain readable. Each `insight` has `generation_mode` set to `fixture`, `ai` or `fallback`, plus optional `knowledge_source_ids`.
+
+### Coordinates and clocks
+
+The pitch is 105 × 68 m with one fixed global frame: x along the length, y across, and no rotation at halftime. Harbor attack +x in period 1, Vale attack +x in period 2. Metrics use a team-relative attacking frame: for `negative_x`, `x' = 105 − x` and `y' = 68 − y`. `match_time_ms` is period-local and includes stoppage; `emitted_at` is UTC wall-clock. Event identity is `(run_id, event_id)`. Player tracking is never inferred.
+
+## Simulator
+
+`services/simulator/simulator/match.py` is a state machine. It tracks period, clock, score, ball location (team-relative), possession and carrier, and chooses the next action from that state:
+
+- **Pass**: completion probability falls with distance, final-third depth and pressure. An incomplete pass turns over possession.
+- **Defensive action**: opponent tackle, interception (recorded after the cut-out pass), challenge or foul. Pressure raises this in the opponent's build-up zone.
+- **Shot**: probability rises inside the final third. Goals restart from the centre and increment the score; other outcomes give the defending team a goal kick.
+- **Counterattack**: a turnover in an advanced area can trigger rapid forward passes.
+
+Scenarios only bias probabilities. `standard` has a Vale pressing spell around 22–34′ of period 1, a Harbor press early in period 2 and late pressure. `high_press` has Vale pressing throughout. `quiet` has low progression and few shots. Rosters are fictional (11 per team). The same seed and scenario give identical events; output validates against the schema. The CLI: `python -m simulator.generate --seed 7 --run-id R --output F [--scenario quiet] [--mode passes --count 5]`.
+
+## Metrics (`metrics-v1`, `services/analytics`)
+
+| Metric | Definition |
+| --- | --- |
+| Pass distance | Euclidean metres between start and end. |
+| Forward progress | `end_x' − start_x'` in the passer's attacking frame. Team totals sum positive progress of completed passes only. |
+| Final-third / box entry | Completed pass from outside to inside `x' ≥ 70` / the penalty box (`x' ≥ 88.5`, `13.84 ≤ y' ≤ 54.16`). |
+| Illustrative threat | `analytics/threat-grid-v1.json`: a hand-designed 16 × 12 grid with cell `min(15, ⌊x/105·16⌋)`, `min(11, ⌊y/68·12⌋)`. Delta is the end cell value minus the start cell value, for completed passes only. Not calibrated, not a probability. |
+| PPDA | Opponent pass attempts ÷ defending-team defensive actions, both with start `x > 42 m` in the defending team's attacking frame, over `[start, end)` period-local windows. Zero actions gives `null` plus a reason. Below 10 passes or 3 actions gives `insufficient_sample` (value shown, no claim). Series windows are non-overlapping 5-minute windows and never cross halftime. |
+| Momentum | Positive illustrative threat added by completed passes per 5-minute bucket. |
+| Pass share | Team pass attempts ÷ all pass attempts. Not time in possession. |
+| Player mean location | Average action start in the team's attacking frame; it is not tracking. |
+| Pass network | Count of consecutive same-team actors within a possession after a completed pass (≥ 3). |
+
+### Moment rules (`v1`)
+
+Every rule is prefix-stable: a moment detected after N events is identical after N + k. `moment_id = {run}:{rule}:v1:{anchor}`.
+
+| Rule | Trigger | Evidence |
+| --- | --- | --- |
+| goal | Validated shot with `is_goal` | Up to six same-team possession events; shot distance; score after |
+| chance | On-target, non-goal shot from 18 m or closer | Possession chain; distance (no xG) |
+| threat_gain | First completed pass per possession with threat Δ ≥ 0.1 | Pass, grid cells and values, entries |
+| transition | Tackle or interception won, then ≥ 35 m forward progress or a shot within 12 s, same period | Turnover plus chain |
+| pressing_change | Closed PPDA window with status `ok` and value ≤ 60% of the previous valid window in the same period; 10-minute cooldown | Window counts and both windows' values |
+
+Thresholds are configurable design defaults tuned on the seed-7 fixture, not universal truths. Each moment carries limitations, such as synthetic data, no tracking, an uncalibrated grid, association rather than causation, and PPDA describing intensity rather than success.
+
+## Narration (`services/agents`)
+
+- `prompts.py` defines the shared instruction contract, plus the Analyst, Coach and Broadcaster role specs. `evidence_packet` is the only match-specific material a model may see; `build_messages` builds the message list. No model call exists yet.
+- `validation.validate_insight` checks:
+  - required and unexpected fields
+  - run, match and moment identity
+  - evidence IDs ⊆ moment evidence
+  - each metric's name, unit and value against the evidence
+  - forbidden claims: probability/xG, percentages, speed, bypassed defenders, heat maps, causal pressing
+  - every number in the text, which must be derivable from metrics, facts or the clock label
+  - player names, which must belong to evidence actors
+- `finalize` publishes a valid candidate; otherwise it returns the deterministic fallback with `generation_mode: fallback`.
+- `narrate.build_fallback_insight` writes fan and analyst text from typed fields only, so it always validates.
+- `fixtures/eval_set.json`, rebuilt by `build_eval_set.py`, holds 34 cases: 18 fallback outputs across four seeds and scenarios, 15 adversarial outputs and one acceptable rewording. Tests assert each verdict.
+
+## API and configuration
+
+| Endpoint | Response |
+| --- | --- |
+| `GET /health` | `{"status": "ok", "application": "omnipitch-api"}` |
+| `GET /ready` | SQLite reachable; analytics `python-adapter`; narration `fallback-only` |
+| `GET /api/v1/replay[?run_id&after_sequence]` | Atomic snapshot `{state, events, events_offset, total_events, replay, analysis, moments}` |
+| `POST /api/v1/replay/control` | `{run_id, action: play\|pause\|reset\|speed\|seek, speed?, elapsed_ms?}` |
+| `POST /api/v1/replay/generate` | `{run_id, seed, scenario}`; creates a new run |
+| `POST /api/v1/replay/load?run_id=` | UTF-8 JSONL body (≤ 2 MiB, ≤ 2500 events); validated before replacement |
+| `POST /api/v1/runs/{run_id}/ingest` | JSONL; returns accepted, duplicates, conflicts, rejected and ledger |
+| `GET /api/v1/runs/{run_id}/events?after&limit` | Paginated ledger events (≤ 500) |
+| `GET /api/v1/runs/{run_id}/ledger` | Ledger summary and recent diagnostics |
+| `GET /api/v1/runs/{run_id}/metrics` | Team metrics over the gap-free ledger prefix |
+| `GET /api/v1/runs/{run_id}/moments` | Stored moments with frozen evidence |
+| `GET /api/v1/backend` | Mode and non-secret cloud identifiers; current replay source |
+| `GET /api/v1/eventhouse/runs` | Azure mode: recently ingested runs (409 in local mode) |
+| `GET /api/v1/eventhouse/runs/{run_id}` | Azure mode: raw vs unique rows, KQL-vs-Python parity, metrics over Eventhouse rows |
+| `POST /api/v1/replay/eventhouse` | Azure mode: `{run_id, source_run_id}`; replay the deduplicated Eventhouse run under its cloud run ID |
+| `GET /api/v1/matches/demo/state`, `/events` | Static five-pass fixture (contract examples) |
+
+Environment: `CORS_ORIGINS` (explicit localhost origins only; default `http://localhost:5173`) and `OMNIPITCH_DB_PATH` (default `data/generated/omnipitch.sqlite3`; `:memory:` in tests). The backend does not read `.env`. On the frontend, `VITE_API_BASE_URL` defaults to `http://localhost:8000`. The local controller has no authentication; anyone who can reach it shares its controls. Run one API worker.
+
+## Frontend design system
+
+The direction is "floodlit broadcast": the 2D pitch is the one bold element, and the surrounding chrome stays quiet.
+
+- **Tokens** (in `style.css :root`): night `#0f1e26`, panel `#162a35`, chalk `#eaf0ea`, grass `#1e4a38`. Harbor coral `#ff7a59` and Vale ice `#7fd4e6` always encode team; floodlight amber `#f2c94c` marks shots, goals, focus rings and active states.
+- **Type**: Barlow Condensed (scoreboard and headings), IBM Plex Sans (UI), IBM Plex Mono (IDs only).
+- **Layout**: top bar with Fan/Analyst toggle; scoreboard and momentum strip; pitch (left) beside key moments (sticky right); analysis tabs; a floating control dock. Below 1080 px the columns stack; below 760 px the dock compacts and the layer chips scroll horizontally.
+- **Motion** (`motion` 12): ball travel along each new action, goal ripples, a goal banner and scoreboard flash, digit flips, spring list insertions, a layout-animated tab underline and audience thumb, and a drawer slide. Motion follows the OS setting by default and has an explicit Reduced or Full preference.
+- **Accessibility**: SVG `title`/`desc` per pitch state, labelled controls, a keyboard slider (←/→, Shift for 5 minutes), Space to play or pause, focus return from the drawer, Escape to close, arrow-key tabs, and text labels beside every colour.
+- **Preferences** (audience, favourite team and player, layers, motion) live in `localStorage`. Favourites reorder moments within a recency band; they never change facts.
+
+## Azure mode (Phase 2 cloud path)
+
+```mermaid
+flowchart LR
+  Pub[simulator.publish] -->|Entra token, partition key run:match| EH[Event Hubs match-events]
+  EH -->|consumer group fabric-eventstream, listen-only SAS| ES[Fabric Eventstream]
+  ES -->|direct ingestion, OmniPitchEvents_json| KQL[(Eventhouse table OmniPitchEvents)]
+  KQL -->|versioned KQL, dedup by run_id+event_id| API[FastAPI, OMNIPITCH_BACKEND_MODE=azure]
+  API --> Py[Python metrics-v1 + moments]
+  API --> UI[React match room]
+```
+
+| Component | Code | State (2026-10-15) |
+| --- | --- | --- |
+| Publisher | `services/simulator/simulator/publish.py` | **Verified live.** Validates every event against the schema, sends with `DefaultAzureCredential` (or `AzureCliCredential` pinned by `EVENTHUB_TENANT_ID`), partition key `run_id:match_id`, optional duplicate re-delivery, report in `data/generated/publish-<run>.json`. The namespace `IncomingMessages` metric confirmed a 20-event probe. Runs of 5 and 400+25 events were also sent. |
+| Event Hubs | Provisioned with Azure CLI (no IaC yet) | **Exists.** Azure for Students subscription, `rg-omnipitch-dev` (East US). Namespace `omnipitch-ehns-qn36t` (Standard, 1 TU), hub `match-events` (2 partitions, 24 h retention), consumer group `fabric-eventstream`. Hub-scoped `Azure Event Hubs Data Sender` for the developer. Listen-only SAS rule `eventstream-listen` exists for Eventstream; its key is never stored in the repo. |
+| Eventstream | Portal (no code) | **Not created.** UMD has disabled Fabric trials; the UF teammate's tenant allows them. |
+| Eventhouse / KQL | `analytics/kql/*.kql`, `services/api/app/eventhouse.py` | **Code written, unverified live.** `setup.kql` creates the table, JSON mapping and ingestion-time policy. Queries are parameterized (`declare query_parameters`), never string-built from user input. |
+| API | `services/api/app/main.py`, `config.py` | **Code written, tested with a fake reader.** `/ready` probes Eventhouse in azure mode. `POST /api/v1/replay/eventhouse` loads a run and keeps its cloud `run_id`. `GET /api/v1/eventhouse/runs[/{id}]` returns raw vs unique rows and KQL-vs-Python parity. |
+| Frontend | `EventhousePanel.tsx`, `SourceBadge` in `App.tsx` | **Code written.** The top bar reads `Local · simulator`, `Azure · not loaded` or `Azure · Eventhouse`. An azure-mode banner appears when the replay is not Eventhouse data. Data quality tab: run picker plus parity table. |
+
+**Mode rules.** `OMNIPITCH_BACKEND_MODE` is `local` (default) or `azure`; any other value fails startup.
+
+- In azure mode, local generate and upload return 409 `azure_mode`.
+- Eventhouse failures return explicit codes and are never replaced with local data:
+
+  | Code | Status |
+  | --- | --- |
+  | `eventhouse_not_configured` | 503 |
+  | `eventhouse_auth_unavailable` | 503 |
+  | `eventhouse_forbidden` | 403 |
+  | `eventhouse_not_found` | 404 |
+  | `eventhouse_unreachable` | 503 |
+  | `eventhouse_query_failed` | 502 |
+
+- The replay restored at startup keeps its `source` label, and the UI warns that it is not Eventhouse data.
+
+**Correctness in azure mode.**
+
+- Eventhouse is the event source.
+- KQL removes duplicates with `summarize arg_min(ingestion_time(), *) by run_id, event_id`; the first ingested copy wins.
+- Rows are revalidated against the event contract, and metrics run in the same tested Python `metrics-v1` code.
+- `team_counts.kql` recomputes counts and forward progression in KQL as an independent parity check.
+- Threat and PPDA are compared between the Eventhouse input and the regenerated seeded fixture.
+- Metrics use only the gap-free sequence prefix.
+
+**Configuration** (`services/api/.env`, gitignored; template in `services/api/.env.example`):
+
+- `OMNIPITCH_BACKEND_MODE`
+- `EVENTHUB_FULLY_QUALIFIED_NAMESPACE` and `EVENTHUB_NAME`
+- `EVENTHOUSE_QUERY_URI` (the KQL database Query URI, no path), `EVENTHOUSE_DATABASE` and `EVENTHOUSE_TABLE`
+- Optional `EVENTHUB_TENANT_ID` and `EVENTHOUSE_TENANT_ID`, for when the CLI is signed in to several tenants
+
+There are no secrets. Connection strings are rejected by config validation.
+
+**Permissions.**
+
+| Who | Needs |
+| --- | --- |
+| Publisher identity | `Azure Event Hubs Data Sender` on the hub or namespace |
+| Eventstream | the listen-only SAS key (or a workspace identity with `Azure Event Hubs Data Receiver`) |
+| API identity | at least Viewer on the Fabric workspace or the KQL database |
+| Whoever runs `setup.kql` | database Admin (workspace Contributor or higher) |
+
+Fabric permissions are separate from Azure RBAC. Being Owner of the subscription grants nothing in Fabric.
+
+**Fabric setup (portal).** Steps are numbered because the order matters.
+
+1. Start a Fabric trial (Account manager → Start trial → **Fabric and Power BI**, region East US). Alternatively, use an F capacity.
+2. Create a workspace on it.
+3. Create Eventhouse `omnipitch-eh` with KQL database `omnipitch`.
+4. In a KQL queryset, run the three commands in `analytics/kql/setup.kql`, one at a time.
+5. Create an Eventstream:
+   - **Source:** Azure Event Hubs. Namespace and hub as above, consumer group `fabric-eventstream`, Shared Access Key name `eventstream-listen`, data format JSON.
+   - **Destination:** Eventhouse, **direct ingestion**, database `omnipitch`, existing table `OmniPitchEvents`, existing mapping `OmniPitchEvents_json`.
+6. Publish the Eventstream.
+7. Copy the database **Query URI** into `EVENTHOUSE_QUERY_URI`.
+
+Eventstream only reads events that arrive after it starts (and within the hub's 24 h retention), so publish a fresh run after the Eventstream is live.
+
+**Smoke test** (repository root, after `az login`, with `.venv/Scripts/python.exe -m pip install -r services/api/requirements-azure.txt`):
+
+```powershell
+.venv/Scripts/python.exe services/api/tests/cloud_smoke.py --run-id smoke-<date>-a --api http://localhost:8000
+```
+
+Start the API with `OMNIPITCH_BACKEND_MODE=azure` first. The script runs these stages, each reported as PASS, FAIL or UNVERIFIED:
+
+1. Publish 400 events plus 25 duplicates.
+2. Wait for Eventhouse ingestion.
+3. Check that raw rows minus unique rows equals the duplicates, and that payloads match the seeded fixture.
+4. Check KQL vs Python counts and progression, and threat totals.
+5. Check PPDA windows, and that no pressing claim comes from a sparse window.
+6. Check that the API loads the run in azure mode with the same metrics.
+
+The report is written to `data/generated/cloud-smoke-<run>.json`. Browser display is the one manual check: Data quality → load the run, then the top bar reads `Azure · Eventhouse` and the parity table matches. Use `--skip-publish` when another identity published the run.
+
+Cost note: the Standard namespace draws about $0.73/day of Azure credit until `az group delete -n rg-omnipitch-dev`. A paid Fabric F2 would cost $0.36/h while running.
+
+## Later-phase cloud flow — not implemented
 
 ```mermaid
 flowchart LR
@@ -44,110 +257,29 @@ flowchart LR
   PubSub --> UI[Frontend]
 ```
 
-- Simulator: richer football-realistic synthetic event source and reusable datasets.
-- Event Hubs: event ingestion, buffering and partitioning.
-- Fabric Eventstream: routing/transformation into Eventhouse.
-- Eventhouse: event storage and deterministic live metric queries.
-- Bridge worker: planned Azure Functions worker reads incremental data and writes derived match/moment records. Trigger, cursor and recovery strategy still require design.
-- Cosmos DB: current match state, moment records, insight records and preference data.
-- Agent processing: future Microsoft Agent Framework with a model deployed in Microsoft Foundry; evidence retrieval via Foundry IQ / Azure AI Search. No SDKs, models or accounts connected yet.
-- Validated insights: enforce schema, evidence references, deterministic metric attribution, language and limitations before publication.
-- Web PubSub: delivery of state and validated insights to clients; reconnect and ordering remain design work.
-- Frontend: fan, analyst and broadcast-producer views, with highlights and recaps.
-
-Keep fast deterministic live metrics independent from slower AI explanations. Numerical calculations belong in tested code, not prompts. AI should explain already verified evidence; failed/late explanations must not stop state delivery. Future consumers must tolerate duplicate delivery using run-scoped event identity. Replay ordering, out-of-order handling and idempotence are planned, not implemented.
-
-## Wire contracts and requirements
-
-## Coordinates and clocks
-
-Pitch is 105 × 68 metres. A single fixed corner is `(0, 0)`; x follows the length and y the width. The frame never rotates at halftime. Bounds are inclusive; attack direction is `positive_x` or `negative_x`. Points describe the pass path, not full player tracking. Missing player/off-ball tracking must not be invented.
-
-`period` currently supports 1 or 2. `match_time_ms` is elapsed milliseconds within that period, including potential stoppage time. `emitted_at` is a UTC wall-clock timestamp ending in Z; fixture baseline is `2026-01-01T12:00:00Z`. Emission time and match time are different concepts even though the fixture increments both by three seconds per event.
-
-A replay reset creates a new `run_id`. Event identity is `(run_id, event_id)`; sequence is ordered within a run/match. Evidence IDs refer to event IDs within the insight's `run_id` and `match_id`, never globally. Later consumers must handle duplicate delivery.
-
-## Current example
-
-Run `demo-run-001`, match `demo`: fictional Harbor Comets versus Vale Owls, 0–0. Seed 7 produces five completed Harbor passes in possession-001; each endpoint becomes the next start. `event.example.json` is the first pass. State is paused at sequence 5, period 1, 15,000 ms. Insight cites all five events and reports `completed_passes: 5 passes`. The API serves state and the full sequence, not the insight.
-
-All fixture records have schema version 1.0 and synthetic data is labeled. Event type is `pass`, outcome is `completed`; these are the only supported values. Future shots, goals, turnovers, carries, tracking and substitutions require contract changes and implementation. They are not supported now.
-
-Insight `generation_mode: fixture` means a hand-authored example, distinct from future AI-generated or fallback output. Only English is supported in this schema version; multilingual extensions are planned. Metrics always have a name, value and unit. No illustrative threat metric is included; any future illustrative threat score must not be described as calibrated expected threat or scoring probability. Pass continuity alone does not establish a tactical pattern.
-
-
-Schemas: [event](../contracts/schemas/event.schema.json), [match state](../contracts/schemas/match-state.schema.json), [insight](../contracts/schemas/insight.schema.json). Models: [Pydantic](../services/api/app/schemas.py) and [TypeScript](../apps/web/src/types/contracts.ts). Changing a contract requires aligned examples, models, boundary validation, tests and documentation.
-
-The additional [replay snapshot schema](../contracts/schemas/replay.schema.json) references the existing event/state schemas; its [example](../contracts/examples/replay.example.json) represents an initial paused run. Existing event/state/insight contracts and static sample endpoints remain unchanged.
-
-## API and configuration
-
-| Endpoint | Response |
-| --- | --- |
-| `GET /health` | `{"status": "ok", "application": "omnipitch-api"}` |
-| `GET /api/v1/matches/demo/state` | Committed match-state fixture |
-| `GET /api/v1/matches/demo/events` | `{"events": [...]}` from the shared five-pass generator |
-| `GET /api/v1/replay` | Atomic `{state, events, total_events}` snapshot of the current replay |
-| `POST /api/v1/replay/control` | JSON `{run_id, action}`; action is `play`, `pause` or `reset`; returns snapshot |
-| `POST /api/v1/replay/load?run_id=...` | UTF-8 JSONL file content (`text/plain`); validates/replaces run and returns snapshot |
-| `/docs` | Interactive OpenAPI documentation |
-
-`CORS_ORIGINS` defaults to `http://localhost:5173` and accepts comma-separated explicit localhost origins without paths. Arbitrary origins and credentialed CORS are disabled. The backend does not auto-load `.env`; its `.env.example` documents shell configuration.
-
-Frontend `VITE_API_BASE_URL` defaults to `http://localhost:8000`. Vite uses strict port 5173. AJV validates responses; network, HTTP and contract errors become visible UI messages. `contract-check.ts` checks TypeScript fixture alignment. Ordinary CSS is used without routing or a global state framework.
+Later phases: move detection into a separate bridge worker with a durable cursor and overlapping lookback, store moments and jobs in Cosmos with conditional creates, run the agent workflow behind `finalize`, and publish through Web PubSub with snapshot recovery. Fast deterministic metrics must stay independent of slower AI explanations.
 
 ## Local tools and verification
 
-Install development dependencies and start the applications using [README](../README.md#local-setup). Runtime-only API installation can use `services/api/requirements.txt`; tests and simulator CLI also require development dependencies.
+Setup is in the [README](../README.md#local-setup).
 
-Generate JSONL from repository root (PowerShell):
+From the repository root:
 
-```powershell
-$env:PYTHONPATH = "$PWD/services/simulator"
-.venv/Scripts/python.exe -m simulator.generate --seed 7 --run-id demo-run-001 --output data/generated/demo.jsonl
-Remove-Item Env:PYTHONPATH
-```
+- Backend tests: `.venv/Scripts/python.exe -m pytest services/api/tests -q`
+- Simulator CLI (PowerShell): `$env:PYTHONPATH = "$PWD/services/simulator"; .venv/Scripts/python.exe -m simulator.generate --seed 7 --run-id demo-run-001 --output data/generated/demo.jsonl`
+- Rebuild the eval set: `.venv/Scripts/python.exe services/agents/fixtures/build_eval_set.py`
 
-Options: `--count` (1–1000, default 5) and `--baseline` (explicit UTC, default `2026-01-01T12:00:00Z`). Identical seed/run/count/baseline produce identical bytes. A different run ID preserves seeded geometry but creates new run-scoped identities. Each invocation replaces its output file; use gitignored `data/generated/` and keep contract examples tracked. The CLI validates events with jsonschema before writing; the API validates its generated responses with Pydantic.
+From `apps/web`:
 
-Backend checks from repository root:
+- `npm run test:contracts`: fixtures plus invalid examples
+- `npm run test:pitch`: SSR pitch checks, no test framework
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:replay:browser`: headless Chrome via CDP. Set `API_PORT`/`WEB_PORT` if 8000/5173 are busy or reserved, and `CHROME_PATH` for another Chrome. It uses an isolated SQLite file under `data/generated/`.
 
-```powershell
-.venv/Scripts/python.exe -m pytest services/api/tests -q
-.venv/Scripts/python.exe -m pip check
-```
+The legacy `services/api/tests/smoke_local.py` predates v1.1 and was not rerun.
 
-With API running:
-
-```powershell
-Invoke-RestMethod http://localhost:8000/health
-Invoke-RestMethod http://localhost:8000/api/v1/matches/demo/state
-Invoke-RestMethod http://localhost:8000/api/v1/matches/demo/events
-```
-
-Frontend checks:
-
-```powershell
-cd apps/web
-npm run test:contracts
-npm run test:pitch
-npm run typecheck
-npm run build
-```
-
-Optional combined HTTP smoke check from root, with dependencies installed and ports 8000/5173 free:
-
-```powershell
-.venv/Scripts/python.exe services/api/tests/smoke_local.py
-```
-
-The smoke runner starts temporary API/Vite processes, validates responses/CORS, requests frontend modules/shared schemas, invokes the simulator CLI, writes logs/output under `data/generated/`, and stops the processes. It does not automate browser interaction.
-
-`test:pitch` renders the actual TSX components through React server rendering and checks both attack directions, inclusive coordinate boundaries, the empty state and initial event selection. It uses existing TypeScript/React dependencies without a separate test framework; it does not automate browser clicks or verify visual appearance.
-
-`npm run test:replay:browser` from `apps/web` is an optional headless Chrome integration check using Node's built-in WebSocket client. It starts temporary API/Vite servers, loads out-of-order JSONL through the real file picker, verifies play/pause/resume/finish, pitch selection, page-refresh recovery, invalid upload preservation and reset identity, then stops the processes. Install the existing Python/frontend dependencies and keep ports 8000/5173 free. Chrome defaults to `C:/Program Files/Google/Chrome/Application/chrome.exe`; set `CHROME_PATH` for another installation. Logs, test JSONL, isolated browser profiles and a screenshot are written under gitignored `data/generated/`. No browser-testing dependency is added.
-
-macOS/Linux variants (documented, not verified): from root, `python3 -m venv .venv`, `source .venv/bin/activate`, `python -m pip install -r services/api/requirements-dev.txt`, then `CORS_ORIGINS=http://localhost:5173 python -m uvicorn app.main:app --app-dir services/api --host localhost --port 8000`. In another terminal: `cd apps/web`, `cp .env.example .env`, `npm ci`, `npm run dev`. Simulator: `PYTHONPATH=services/simulator .venv/bin/python -m simulator.generate --seed 7 --run-id demo-run-001 --output data/generated/demo.jsonl`.
+macOS/Linux variants are documented but not verified. Use `python3 -m venv .venv`, `source .venv/bin/activate`, `CORS_ORIGINS=http://localhost:5173 python -m uvicorn app.main:app --app-dir services/api --host localhost --port 8000`, and `PYTHONPATH=services/simulator .venv/bin/python -m simulator.generate ...`.
 
 ## Decisions and dependency baseline
 
@@ -155,21 +287,26 @@ The [archived decision log](archive/DECISIONS.md) preserves original rationale a
 
 | ID | Decision |
 | --- | --- |
-| D001 | Use the existing monorepo for shared interfaces/tests; preserve its remote and avoid another nested checkout. Historical workstation paths do not constrain a new checkout. |
-| D002 | Local-first foundation without cloud credentials, deployment, databases, authentication or streaming. |
-| D003 | React/TypeScript/Vite and ordinary CSS; Python/FastAPI/Pydantic. Pin direct dependencies and retain npm lockfile. |
+| D001 | Use the existing monorepo for shared interfaces/tests; preserve its remote and avoid another nested checkout. |
+| D002 | Local-first foundation without cloud credentials or deployment. Local SQLite persistence was added on 2026-10-14 (D014). |
+| D003 | React/TypeScript/Vite and ordinary CSS; Python/FastAPI/Pydantic. Pin direct dependencies and retain the npm lockfile. |
 | D004 | Fixed pitch frame, explicit attack direction, period-local milliseconds, UTC emissions and run-scoped identity. |
-| D005 | Fictional teams/players and completed passes only; preserve continuity without implying real tracking or evaluation. |
-| D006 | JSON Schema draft 2020-12 wire reference, manually aligned models and boundary validation; no code generation. |
+| D005 | Fictional teams and players. Event coverage extended in v1.1 (D013); no tracking is implied. |
+| D006 | JSON Schema draft 2020-12 is the wire reference, with manually aligned models and boundary validation; no code generation. |
 | D007 | Add cloud SDKs only for an authorized integration that requires them. |
-| D008 | Share the simulator algorithm through a repository-relative import; demo metadata stays a fixture. JSONL replay ingestion was added on 2026-10-13; independent packaging remains future work. |
-| D009 | License remains pending owner decision; no LICENSE file has been selected. |
-| D010 | Keep the recorded tested dependency baseline and RFC3339 validation; this is not a claim that packages are latest. |
-| D011 | Maintain README, AGENTS, ROADMAP and ARCHITECTURE; archive duplicate guides and history after preserving current requirements. Approved documentation consolidation on 2026-10-11. |
-| D012 | Use an atomic snapshot and server-timed, single-process in-memory replay for Phase 1. Validate uploaded content before replacement, reject stale controls and create new run IDs on load/reset. This avoids separate state/events races without introducing persistence or streaming services. Recorded 2026-10-13. |
+| D008 | Share simulator, analytics and agents through repository-relative imports (`sample_data.py`, test `conftest.py`); independent packaging is future work. |
+| D009 | License remains pending the owner's decision. |
+| D010 | Keep the recorded tested dependency baseline and RFC3339 validation. |
+| D011 | Maintain README, AGENTS, ROADMAP and ARCHITECTURE; archive history. |
+| D012 | Atomic, server-timed, single-process replay snapshots; validate uploads before replacement; reject stale controls; new run IDs on load, reset and generate. |
+| D013 | Contracts v1.1 (2026-10-14): shots, defensive actions, incomplete passes and period markers with per-type rules; 1.0 pass files remain readable; new `moment` and `analysis` schemas; incremental snapshots. |
+| D014 | SQLite (stdlib) stands in for Eventhouse and Cosmos locally (2026-10-14): idempotent ledger, diagnostics, conditional moment creation and persisted replay position. The Python analytics adapter is the selected fallback while Fabric access is unproven. |
+| D015 | Metric and rule versions (`metrics-v1`, rules `v1`, `illustrative-threat-v1`) are stored with every moment. Thresholds are tuned on the seed-7 fixture and documented as defaults. |
+| D016 | Until a model is connected, every insight is a validated deterministic template labelled `fallback`; prompts, validator and eval set are ready for Phase 3. |
+| D018 | Azure mode (2026-10-15) is explicit (`OMNIPITCH_BACKEND_MODE`), identity-only (Azure Identity; no connection strings in config) and fails loudly; local generate/upload are refused in azure mode. Python `metrics-v1` stays the calculator over Eventhouse rows, with KQL parity queries as an independent check. |
+| D019 | Phase 2 cloud resources live in the Azure for Students subscription, `rg-omnipitch-dev`, East US (allowed-region policy: centralus, westus2, mexicocentral, eastus2, eastus). UMD disabled Fabric trials, so Fabric runs in a teammate's UF tenant: Eventstream reads Event Hubs cross-tenant via a listen-only SAS key, and per-service tenant settings pin tokens. |
+| D017 | Frontend motion uses `motion` 12.23.12 and icons use `lucide-react` 0.544.0; both are needed for the requested motion-rich UI. |
 
-Recorded October 7 runtimes: Node 24.11.0, npm 11.6.1, Python 3.13.7 and venv pip 25.2. Frontend pins: React/React DOM 19.1.0, TypeScript 5.8.3, Vite 8.3.3, React plugin 6.1.2, React types 19.1.2, AJV 8.20.0 and ajv-formats 3.0.1. Backend pins: FastAPI 0.115.12, Pydantic 2.11.4, Uvicorn 0.34.2. Check dependencies: pytest 8.3.5, httpx 0.28.1, jsonschema 4.23.0 and rfc3339-validator 0.1.4.
+Runtimes verified on 2026-10-14: Node 24.11.0 and Python 3.13.7. Frontend pins: React/React DOM 19.1.0, TypeScript 5.8.3, Vite 8.3.3, React plugin 6.1.2, React types 19.1.2, AJV 8.20.0, ajv-formats 3.0.1, motion 12.23.12 and lucide-react 0.544.0. Optional Azure pins (`services/api/requirements-azure.txt`): azure-identity 1.26.0, azure-eventhub 5.15.1, azure-kusto-data 6.0.4. Backend pins are unchanged: FastAPI 0.115.12, Pydantic 2.11.4, Uvicorn 0.34.2, with pytest 8.3.5, httpx 0.28.1, jsonschema 4.23.0 and rfc3339-validator 0.1.4.
 
-Exact frontend resolution is in `apps/web/package-lock.json`; Python direct pins are in requirements files, with transitive dependencies resolved by pip rather than fully locked. Older Vite pins stalled during build and Vite/AJV advisories led to the recorded baseline adjustment. See [historical progress](archive/PROGRESS.md) for actual results.
-
-Local environments, `.env`, dependencies, builds, test output and generated JSONL are ignored. `.env.example`, shared fixtures and Cursor instructions remain tracked. Agents and analytics have no executable workflows yet; no cloud SDKs or connections are present.
+Local environments, `.env`, dependencies, builds, SQLite files, test output and generated JSONL are ignored. `.env.example`, shared fixtures, the threat grid and the eval set are tracked.

@@ -1,9 +1,11 @@
-"""Generate reproducible completed-pass events, not a full football simulation."""
+"""Generate reproducible synthetic events: a full state-machine match or a short pass fixture."""
 import argparse
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import random
+
+from .match import SCENARIOS, simulate_match
 
 BASELINE = "2026-01-01T12:00:00Z"
 DEMO_RUN_ID = "demo-run-001"
@@ -27,14 +29,14 @@ def generate_events(seed: int = 7, run_id: str = DEMO_RUN_ID, count: int = 5,
         end = {"x": round(min(105.0, max(0.0, start["x"] + rng.uniform(-4, 12))), 2),
                "y": round(min(68.0, max(0.0, start["y"] + rng.uniform(-10, 10))), 2)}
         events.append({
-            "schema_version": "1.0", "run_id": run_id, "match_id": MATCH_ID,
+            "schema_version": "1.1", "run_id": run_id, "match_id": MATCH_ID,
             "event_id": f"pass-{index + 1:04d}", "sequence": index + 1,
             "period": 1, "match_time_ms": (index + 1) * 3000,
             "emitted_at": (clock + timedelta(seconds=(index + 1) * 3)).isoformat().replace("+00:00", "Z"),
             "team_id": "harbor", "player_id": PLAYERS[index % len(PLAYERS)],
             "possession_id": "possession-001", "type": "pass", "outcome": "completed",
             "start": start.copy(), "end": end.copy(), "attacking_direction": "positive_x",
-            "synthetic": True,
+            "on_target": None, "is_goal": None, "synthetic": True,
         })
         start = end
     return events
@@ -45,11 +47,17 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--count", type=int, default=5)
+    parser.add_argument("--mode", choices=("match", "passes"), default="match",
+                        help="match: full two-period simulation; passes: short completed-pass fixture")
+    parser.add_argument("--scenario", choices=SCENARIOS, default="standard")
+    parser.add_argument("--count", type=int, default=5, help="Pass count for --mode passes")
     parser.add_argument("--baseline", default=BASELINE, help="Fixed UTC timestamp baseline")
     args = parser.parse_args()
     try:
-        events = generate_events(args.seed, args.run_id, args.count, args.baseline)
+        if args.mode == "match":
+            events = simulate_match(args.seed, args.scenario, args.run_id, baseline=args.baseline)
+        else:
+            events = generate_events(args.seed, args.run_id, args.count, args.baseline)
     except ValueError as exc:
         parser.error(str(exc))
     from jsonschema import Draft202012Validator, FormatChecker
@@ -60,7 +68,7 @@ def main() -> None:
         validator.validate(event)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text("".join(json.dumps(event, sort_keys=True) + "\n" for event in events), encoding="utf-8")
-    print(f"Wrote {len(events)} validated fixture events to {args.output}")
+    print(f"Wrote {len(events)} validated synthetic events to {args.output}")
 
 
 if __name__ == "__main__":

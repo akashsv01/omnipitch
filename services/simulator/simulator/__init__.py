@@ -1,1 +1,1 @@
-"""Deterministic completed-pass fixtures; no streaming integration."""
+"""Seeded synthetic football events; no streaming integration."""

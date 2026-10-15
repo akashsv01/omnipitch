@@ -1,18 +1,248 @@
 {
   "state": {
-    "schema_version": "1.0",
-    "run_id": "replay-example",
-    "match_id": "demo",
+    "schema_version": "1.1",
+    "run_id": "replay-b813bfbf-2a9c-408f-88ef-ac4a9756aa7c",
+    "match_id": "harbor-vale",
     "state_version": 1,
     "period": 1,
     "match_time_ms": 0,
-    "home_team": { "id": "harbor", "name": "Harbor Comets" },
-    "away_team": { "id": "vale", "name": "Vale Owls" },
-    "score": { "home": 0, "away": 0 },
+    "home_team": {
+      "id": "harbor",
+      "name": "Harbor Comets"
+    },
+    "away_team": {
+      "id": "vale",
+      "name": "Vale Owls"
+    },
+    "score": {
+      "home": 0,
+      "away": 0
+    },
     "latest_event_sequence": 0,
     "replay_status": "paused",
     "synthetic": true
   },
   "events": [],
-  "total_events": 5
+  "events_offset": 0,
+  "total_events": 1206,
+  "replay": {
+    "source": "simulator",
+    "seed": 7,
+    "scenario": "standard",
+    "speed": 20,
+    "elapsed_ms": 0,
+    "duration_ms": 5714514,
+    "clock_period": 1,
+    "clock_ms": 0,
+    "restored": false,
+    "backend_mode": "local",
+    "source_run_id": null,
+    "source_detail": null,
+    "roster": [
+      {
+        "player_id": "harbor-01",
+        "team_id": "harbor",
+        "name": "Ines Marlow",
+        "shirt": 1,
+        "position": "GK"
+      },
+      {
+        "player_id": "harbor-02",
+        "team_id": "harbor",
+        "name": "Theo Brannock",
+        "shirt": 2,
+        "position": "RB"
+      },
+      {
+        "player_id": "harbor-03",
+        "team_id": "harbor",
+        "name": "Kofi Adeyemi",
+        "shirt": 4,
+        "position": "CB"
+      },
+      {
+        "player_id": "harbor-04",
+        "team_id": "harbor",
+        "name": "Rafael Quill",
+        "shirt": 5,
+        "position": "CB"
+      },
+      {
+        "player_id": "harbor-05",
+        "team_id": "harbor",
+        "name": "Sami Ostberg",
+        "shirt": 3,
+        "position": "LB"
+      },
+      {
+        "player_id": "harbor-06",
+        "team_id": "harbor",
+        "name": "Luca Fennimore",
+        "shirt": 6,
+        "position": "DM"
+      },
+      {
+        "player_id": "harbor-07",
+        "team_id": "harbor",
+        "name": "Jonah Pike",
+        "shirt": 8,
+        "position": "CM"
+      },
+      {
+        "player_id": "harbor-08",
+        "team_id": "harbor",
+        "name": "Arlo Venn",
+        "shirt": 10,
+        "position": "CM"
+      },
+      {
+        "player_id": "harbor-09",
+        "team_id": "harbor",
+        "name": "Mateo Castell",
+        "shirt": 7,
+        "position": "RW"
+      },
+      {
+        "player_id": "harbor-10",
+        "team_id": "harbor",
+        "name": "Niko Strand",
+        "shirt": 9,
+        "position": "ST"
+      },
+      {
+        "player_id": "harbor-11",
+        "team_id": "harbor",
+        "name": "Elias Rook",
+        "shirt": 11,
+        "position": "LW"
+      },
+      {
+        "player_id": "vale-01",
+        "team_id": "vale",
+        "name": "Bram Holloway",
+        "shirt": 1,
+        "position": "GK"
+      },
+      {
+        "player_id": "vale-02",
+        "team_id": "vale",
+        "name": "Felix Dunmore",
+        "shirt": 2,
+        "position": "RB"
+      },
+      {
+        "player_id": "vale-03",
+        "team_id": "vale",
+        "name": "Oren Vasko",
+        "shirt": 4,
+        "position": "CB"
+      },
+      {
+        "player_id": "vale-04",
+        "team_id": "vale",
+        "name": "Caius Thorne",
+        "shirt": 5,
+        "position": "CB"
+      },
+      {
+        "player_id": "vale-05",
+        "team_id": "vale",
+        "name": "Malik Reyes",
+        "shirt": 3,
+        "position": "LB"
+      },
+      {
+        "player_id": "vale-06",
+        "team_id": "vale",
+        "name": "Ivo Sandoval",
+        "shirt": 6,
+        "position": "DM"
+      },
+      {
+        "player_id": "vale-07",
+        "team_id": "vale",
+        "name": "Pell Okafor",
+        "shirt": 8,
+        "position": "CM"
+      },
+      {
+        "player_id": "vale-08",
+        "team_id": "vale",
+        "name": "Remy Lachance",
+        "shirt": 10,
+        "position": "CM"
+      },
+      {
+        "player_id": "vale-09",
+        "team_id": "vale",
+        "name": "Dario Wren",
+        "shirt": 7,
+        "position": "RW"
+      },
+      {
+        "player_id": "vale-10",
+        "team_id": "vale",
+        "name": "Tobias Kell",
+        "shirt": 9,
+        "position": "ST"
+      },
+      {
+        "player_id": "vale-11",
+        "team_id": "vale",
+        "name": "Yannick Moor",
+        "shirt": 11,
+        "position": "LW"
+      }
+    ]
+  },
+  "analysis": {
+    "metric_version": "metrics-v1",
+    "grid_version": "illustrative-threat-v1",
+    "through_sequence": 0,
+    "teams": {
+      "harbor": {
+        "team_id": "harbor",
+        "passes_attempted": 0,
+        "passes_completed": 0,
+        "completion_pct": null,
+        "progression_m": 0.0,
+        "final_third_entries": 0,
+        "box_entries": 0,
+        "shots": 0,
+        "shots_on_target": 0,
+        "goals": 0,
+        "threat_gained": 0.0,
+        "defensive_actions": 0,
+        "turnovers_won": 0,
+        "fouls": 0,
+        "pass_share_pct": null
+      },
+      "vale": {
+        "team_id": "vale",
+        "passes_attempted": 0,
+        "passes_completed": 0,
+        "completion_pct": null,
+        "progression_m": 0.0,
+        "final_third_entries": 0,
+        "box_entries": 0,
+        "shots": 0,
+        "shots_on_target": 0,
+        "goals": 0,
+        "threat_gained": 0.0,
+        "defensive_actions": 0,
+        "turnovers_won": 0,
+        "fouls": 0,
+        "pass_share_pct": null
+      }
+    },
+    "ppda_current": {},
+    "ppda_series": [],
+    "momentum": [],
+    "players": [],
+    "pass_network": {
+      "harbor": [],
+      "vale": []
+    }
+  },
+  "moments": []
 }

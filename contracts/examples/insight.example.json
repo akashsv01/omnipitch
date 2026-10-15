@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "run_id": "demo-run-001",
   "match_id": "demo",
   "moment_id": "moment-001",
@@ -26,5 +26,6 @@
     "No player tracking or off-ball positions are available.",
     "Pass continuity alone does not establish a tactical pattern."
   ],
-  "generation_mode": "fixture"
+  "generation_mode": "fixture",
+  "knowledge_source_ids": []
 }

@@ -1,4 +1,5 @@
 // Optional real-browser integration check. Requires installed dependencies and Chrome.
+// API_PORT / WEB_PORT override the default 8000 / 5173 (some Windows machines reserve 5173).
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -12,6 +13,10 @@ mkdirSync(generated, { recursive: true });
 const profile = mkdtempSync(join(generated, 'browser-profile-'));
 const chromePath = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 assert.ok(existsSync(chromePath), 'Install Chrome or set CHROME_PATH to its executable.');
+const apiPort = Number(process.env.API_PORT ?? 8000);
+const webPort = Number(process.env.WEB_PORT ?? 5173);
+const api = `http://localhost:${apiPort}`;
+const web = `http://localhost:${webPort}`;
 const children = [];
 const logs = [];
 let socket;
@@ -31,23 +36,27 @@ async function requireFreePort(port) {
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, 'localhost', resolve); });
   await new Promise(resolve => server.close(resolve));
 }
-function start(command, args, cwd, name) {
+function start(command, args, cwd, name, env = {}) {
   const log = openSync(join(generated, `replay-${name}.log`), 'w');
   logs.push(log);
-  const child = spawn(command, args, { cwd, windowsHide: true, stdio: ['ignore', log, log] });
+  const child = spawn(command, args, { cwd, windowsHide: true, stdio: ['ignore', log, log], env: { ...process.env, ...env } });
   child.on('error', error => console.error(`${name}: ${error.message}`));
   children.push(child);
   return child;
 }
+const post = (path, body) => fetch(`${api}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const state = async () => (await fetch(`${api}/api/v1/replay`)).json();
 
 try {
-  await requireFreePort(8000);
-  await requireFreePort(5173);
+  await requireFreePort(apiPort);
+  await requireFreePort(webPort);
   const python = join(root, process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python');
-  start(python, ['-m', 'uvicorn', 'app.main:app', '--app-dir', 'services/api', '--host', 'localhost', '--port', '8000'], root, 'api');
-  start(process.execPath, ['node_modules/vite/bin/vite.js', '--host', 'localhost'], join(root, 'apps/web'), 'web');
-  await until(async () => (await fetch('http://localhost:8000/health')).ok, 'API health');
-  await until(async () => (await fetch('http://localhost:5173')).ok, 'Vite');
+  start(python, ['-m', 'uvicorn', 'app.main:app', '--app-dir', 'services/api', '--host', 'localhost', '--port', String(apiPort)], root, 'api',
+    { CORS_ORIGINS: web, OMNIPITCH_DB_PATH: join(generated, `smoke-${Date.now()}.sqlite3`) });
+  start(process.execPath, ['node_modules/vite/bin/vite.js', '--host', 'localhost', '--port', String(webPort), '--strictPort'], join(root, 'apps/web'), 'web',
+    { VITE_API_BASE_URL: api });
+  await until(async () => (await fetch(`${api}/health`)).ok, 'API health');
+  await until(async () => (await fetch(web)).ok, 'Vite');
   start(chromePath, ['--headless=new', '--disable-gpu', '--disable-background-networking', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], root, 'chrome');
   const portFile = join(profile, 'DevToolsActivePort');
   await until(() => existsSync(portFile), 'Chrome debugging port');
@@ -80,57 +89,65 @@ try {
     return result.result.value;
   };
   const text = () => evaluate('document.body.innerText');
-  const click = label => evaluate(`(() => { const button = [...document.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(label)}); if (!button || button.disabled) throw new Error('Button unavailable'); button.click(); })()`);
+  const click = selector => evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el || el.disabled) throw new Error('Unavailable: ' + ${JSON.stringify(selector)}); el.click(); })()`);
+  const clickText = label => evaluate(`(() => { const el = [...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith(${JSON.stringify(label)})); if (!el || el.disabled) throw new Error('Unavailable'); el.click(); })()`);
   await send('Runtime.enable');
   await send('Page.enable');
-  await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 1200, deviceScaleFactor: 1, mobile: false });
-  await send('Page.navigate', { url: 'http://localhost:5173' });
-  await until(async () => (await text()).includes('0 of 5 passes revealed'), 'initial paused run');
-  const initial = await (await fetch('http://localhost:8000/api/v1/replay')).json();
+  await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await send('Page.navigate', { url: web });
+  await until(async () => (await text()).includes('Live pitch') && (await text()).includes('0 / '), 'initial paused run');
+  const initial = await state();
 
-  const source = await (await fetch('http://localhost:8000/api/v1/matches/demo/events')).json();
+  // Upload an out-of-order JSONL file through the real file picker.
+  const source = await (await fetch(`${api}/api/v1/matches/demo/events`)).json();
   const events = source.events.slice(0, 3).map((event, index) => ({ ...event, match_time_ms: (index + 1) * 2000 }));
   const fixturePath = join(generated, 'browser-replay.jsonl');
   writeFileSync(fixturePath, events.reverse().map(event => JSON.stringify(event)).join('\n'));
+  await click('[aria-label="New match"]');
+  await until(async () => (await text()).includes('Start a new match'), 'new match popover');
   const document = await send('DOM.getDocument');
   const { nodeId } = await send('DOM.querySelector', { nodeId: document.root.nodeId, selector: 'input[type=file]' });
   await send('DOM.setFileInputFiles', { nodeId, files: [resolve(fixturePath)] });
-  await until(async () => (await text()).includes('0 of 3 passes revealed'), 'JSONL file loaded');
-  const loaded = await (await fetch('http://localhost:8000/api/v1/replay')).json();
+  await until(async () => (await text()).includes('0 / 3 events'), 'JSONL file loaded');
+  const loaded = await state();
   assert.notEqual(loaded.state.run_id, initial.state.run_id);
-  await click('Play');
-  await until(async () => (await text()).includes('1 of 3 passes revealed'), 'first pass arrival');
-  await click('Pause');
-  await until(async () => (await text()).includes('Replay paused'), 'pause confirmation');
+  assert.equal(loaded.replay.source, 'upload');
+  await post('/api/v1/replay/control', { run_id: loaded.state.run_id, action: 'speed', speed: 1 });
+  await until(async () => (await text()).includes('Uploaded JSONL') && (await state()).replay.speed === 1, 'speed applied');
+  await click('[aria-label="Play replay"]');
+  await until(async () => (await text()).includes('1 / 3 events'), 'first event arrival');
+  await click('[aria-label="Pause replay"]');
+  await until(async () => (await state()).state.replay_status === 'paused', 'pause confirmation');
   await sleep(2200);
-  assert.match(await text(), /1 of 3 passes revealed/);
-  await click('Resume');
-  await until(async () => (await text()).includes('3 of 3 passes revealed'), 'playback completion');
-  assert.match(await text(), /Replay finished/);
-  await evaluate("document.querySelector('.event-list button').click()");
-  await until(async () => (await text()).includes('Completed pass · #1'), 'event selection');
-  assert.equal(await evaluate("document.querySelector('.pass-path line').getAttribute('x1')"), String(source.events[0].start.x));
-  const beforeRefresh = await (await fetch('http://localhost:8000/api/v1/replay')).json();
+  assert.equal((await state()).state.latest_event_sequence, 1);
+  await click('[aria-label="Resume replay"]');
+  await until(async () => (await text()).includes('3 / 3 events'), 'playback completion');
+  assert.equal((await state()).state.replay_status, 'finished');
+  const beforeRefresh = await state();
   await send('Page.reload');
-  await until(async () => (await text()).includes('3 of 3 passes revealed'), 'refresh restores replay');
-  assert.equal((await (await fetch('http://localhost:8000/api/v1/replay')).json()).state.run_id, beforeRefresh.state.run_id);
+  await until(async () => (await text()).includes('3 / 3 events'), 'refresh restores replay');
+  assert.equal((await state()).state.run_id, beforeRefresh.state.run_id);
 
-  const badPath = join(generated, 'browser-invalid.jsonl');
-  writeFileSync(badPath, 'not json');
-  const nextDocument = await send('DOM.getDocument');
-  const nextInput = await send('DOM.querySelector', { nodeId: nextDocument.root.nodeId, selector: 'input[type=file]' });
-  await send('DOM.setFileInputFiles', { nodeId: nextInput.nodeId, files: [resolve(badPath)] });
-  await until(async () => (await text()).includes('Invalid JSON or event contract'), 'invalid upload message');
-  assert.equal((await (await fetch('http://localhost:8000/api/v1/replay')).json()).state.run_id, loaded.state.run_id);
-  await click('Reset run');
-  await until(async () => (await text()).includes('0 of 3 passes revealed'), 'reset clears progress');
-  const reset = await (await fetch('http://localhost:8000/api/v1/replay')).json();
-  assert.notEqual(reset.state.run_id, loaded.state.run_id);
-  assert.equal(await evaluate("document.querySelector('.pass-path') === null"), true);
+  // Generating a seeded match yields moments, analysis and a working evidence drawer.
+  await click('[aria-label="New match"]');
+  await until(async () => (await text()).includes('Generate match'), 'popover');
+  await clickText('Generate match');
+  await until(async () => (await state()).replay.source === 'simulator', 'seeded match generated');
+  const seeded = await state();
+  await post('/api/v1/replay/control', { run_id: seeded.state.run_id, action: 'seek', elapsed_ms: 1_800_000 });
+  await until(async () => (await text()).includes('Show evidence'), 'moments rendered');
+  await clickText('Analyst view');
+  await until(async () => (await text()).includes('illustrative threat added by completed passes'), 'analyst wording');
+  await clickText('Show evidence');
+  await until(async () => (await text()).includes('Metrics behind it'), 'evidence drawer');
+  await evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
+  await until(async () => !(await text()).includes('Metrics behind it'), 'drawer closed');
+  await click('[aria-label="Reset run (new run ID)"]');
+  await until(async () => (await state()).state.run_id !== seeded.state.run_id, 'reset identity');
   assert.deepEqual(runtimeErrors, []);
   const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
   writeFileSync(join(generated, 'replay-browser.png'), Buffer.from(screenshot.data, 'base64'));
-  console.log('PASS: browser JSONL upload/order, play/pause/resume/finish, selection, refresh, invalid-file recovery, and reset identity.');
+  console.log('PASS: JSONL upload/order, play/pause/resume/finish, refresh recovery, seeded generation, analyst wording, evidence drawer and reset identity.');
 } finally {
   if (send && socket?.readyState === WebSocket.OPEN) {
     try { await send('Browser.close'); } catch { /* Browser may close before replying. */ }

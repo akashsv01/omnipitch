@@ -1,0 +1,6 @@
+// Raw versus unique rows for one run; duplicates show up as raw_rows > unique_events.
+declare query_parameters(run: string);
+{{TABLE}}
+| where run_id == run
+| extend ingested = ingestion_time()
+| summarize raw_rows = count(), unique_events = count_distinct(event_id), first_sequence = min(sequence), last_sequence = max(sequence), last_ingested = max(ingested)

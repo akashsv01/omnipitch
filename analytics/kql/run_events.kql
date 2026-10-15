@@ -1,0 +1,9 @@
+// Deduplicated events for one run: identity is (run_id, event_id); the first ingested copy wins.
+declare query_parameters(run: string);
+{{TABLE}}
+| where run_id == run
+| extend ingested = ingestion_time()
+| summarize arg_min(ingested, *) by run_id, event_id
+| project-away ingested
+| order by sequence asc
+| take 5000

@@ -1,4 +1,4 @@
-"""Use the monorepo fixture generator and committed state; no JSONL ingestion yet."""
+"""Monorepo seams to the simulator, analytics and agents packages, plus committed fixtures."""
 import json
 from pathlib import Path
 import sys
@@ -6,9 +6,12 @@ import sys
 from .schemas import Event, MatchState
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
-# Local monorepo seam until the simulator becomes an independently packaged service.
-sys.path.insert(0, str(REPOSITORY_ROOT / "services/simulator"))
+# Local monorepo seam until these services become independently packaged.
+for package in ("services/simulator", "services/analytics", "services/agents"):
+    if str(REPOSITORY_ROOT / package) not in sys.path:
+        sys.path.insert(0, str(REPOSITORY_ROOT / package))
 from simulator.generate import generate_events  # noqa: E402
+from simulator.match import AWAY, HOME, roster, simulate_match  # noqa: E402,F401
 
 
 def sample_events() -> list[Event]:

@@ -1,0 +1,9 @@
+// One-time setup in the Fabric KQL database (run each command separately in a KQL queryset).
+// Requires Admin on the database (Contributor or higher on the workspace). Table name must match EVENTHOUSE_TABLE.
+
+.create-merge table OmniPitchEvents (schema_version: string, run_id: string, match_id: string, event_id: string, sequence: long, period: int, match_time_ms: long, emitted_at: string, team_id: string, player_id: string, possession_id: string, ['type']: string, outcome: string, ['start']: dynamic, ['end']: dynamic, attacking_direction: string, on_target: bool, is_goal: bool, synthetic: bool)
+
+.create-or-alter table OmniPitchEvents ingestion json mapping 'OmniPitchEvents_json' '[{"column":"schema_version","Properties":{"Path":"$.schema_version"}},{"column":"run_id","Properties":{"Path":"$.run_id"}},{"column":"match_id","Properties":{"Path":"$.match_id"}},{"column":"event_id","Properties":{"Path":"$.event_id"}},{"column":"sequence","Properties":{"Path":"$.sequence"}},{"column":"period","Properties":{"Path":"$.period"}},{"column":"match_time_ms","Properties":{"Path":"$.match_time_ms"}},{"column":"emitted_at","Properties":{"Path":"$.emitted_at"}},{"column":"team_id","Properties":{"Path":"$.team_id"}},{"column":"player_id","Properties":{"Path":"$.player_id"}},{"column":"possession_id","Properties":{"Path":"$.possession_id"}},{"column":"type","Properties":{"Path":"$.type"}},{"column":"outcome","Properties":{"Path":"$.outcome"}},{"column":"start","Properties":{"Path":"$.start"}},{"column":"end","Properties":{"Path":"$.end"}},{"column":"attacking_direction","Properties":{"Path":"$.attacking_direction"}},{"column":"on_target","Properties":{"Path":"$.on_target"}},{"column":"is_goal","Properties":{"Path":"$.is_goal"}},{"column":"synthetic","Properties":{"Path":"$.synthetic"}}]'
+
+// ingestion_time() is used for first-copy deduplication; make sure the policy is on.
+.alter table OmniPitchEvents policy ingestiontime true

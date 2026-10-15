@@ -1,3 +1,4 @@
+from functools import lru_cache
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,7 @@ def read(path):
     return json.loads((ROOT / path).read_text(encoding="utf-8"))
 
 
+@lru_cache(maxsize=None)
 def validator(name):
     schema = read(f"contracts/schemas/{name}.schema.json")
     Draft202012Validator.check_schema(schema)

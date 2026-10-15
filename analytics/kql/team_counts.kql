@@ -1,0 +1,17 @@
+// KQL parity for metrics-v1 counts and progression, over deduplicated rows.
+// Forward progress uses the team's attacking frame: x' = x for positive_x, 105 - x for negative_x.
+declare query_parameters(run: string);
+{{TABLE}}
+| where run_id == run
+| extend ingested = ingestion_time()
+| summarize arg_min(ingested, *) by run_id, event_id
+| where isnotempty(team_id)
+| extend forward = iff(attacking_direction == "positive_x", todouble(['end'].x) - todouble(['start'].x), todouble(['start'].x) - todouble(['end'].x))
+| summarize pass_attempts = countif(['type'] == "pass"),
+            passes_completed = countif(['type'] == "pass" and outcome == "completed"),
+            progression_m = round(sum(iff(['type'] == "pass" and outcome == "completed" and forward > 0, forward, 0.0)), 1),
+            shots = countif(['type'] == "shot"),
+            goals = countif(['type'] == "shot" and is_goal == true),
+            defensive_actions = countif(['type'] in ("tackle", "interception", "challenge", "foul"))
+            by team_id
+| order by team_id asc

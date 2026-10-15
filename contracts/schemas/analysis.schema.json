@@ -1,0 +1,411 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnipitch.local/contracts/analysis.schema.json",
+  "title": "analysis",
+  "description": "Deterministic metrics over the revealed, deduplicated event prefix. Threat values are illustrative and uncalibrated.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "metric_version",
+    "grid_version",
+    "through_sequence",
+    "teams",
+    "ppda_current",
+    "ppda_series",
+    "momentum",
+    "players",
+    "pass_network"
+  ],
+  "properties": {
+    "metric_version": {
+      "type": "string"
+    },
+    "grid_version": {
+      "type": "string"
+    },
+    "through_sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "teams": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "team_id",
+          "passes_attempted",
+          "passes_completed",
+          "completion_pct",
+          "progression_m",
+          "final_third_entries",
+          "box_entries",
+          "shots",
+          "shots_on_target",
+          "goals",
+          "threat_gained",
+          "defensive_actions",
+          "turnovers_won",
+          "fouls",
+          "pass_share_pct"
+        ],
+        "properties": {
+          "team_id": {
+            "type": "string"
+          },
+          "passes_attempted": {
+            "type": "integer"
+          },
+          "passes_completed": {
+            "type": "integer"
+          },
+          "completion_pct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "progression_m": {
+            "type": "number"
+          },
+          "final_third_entries": {
+            "type": "integer"
+          },
+          "box_entries": {
+            "type": "integer"
+          },
+          "shots": {
+            "type": "integer"
+          },
+          "shots_on_target": {
+            "type": "integer"
+          },
+          "goals": {
+            "type": "integer"
+          },
+          "threat_gained": {
+            "type": "number"
+          },
+          "defensive_actions": {
+            "type": "integer"
+          },
+          "turnovers_won": {
+            "type": "integer"
+          },
+          "fouls": {
+            "type": "integer"
+          },
+          "pass_share_pct": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "ppda_current": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "team_id",
+          "period",
+          "start_ms",
+          "end_ms",
+          "opponent_passes",
+          "defensive_actions",
+          "value",
+          "status",
+          "reason",
+          "zone",
+          "metric_version",
+          "evidence_ids",
+          "closed"
+        ],
+        "properties": {
+          "team_id": {
+            "type": "string"
+          },
+          "period": {
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "start_ms": {
+            "type": "integer"
+          },
+          "end_ms": {
+            "type": "integer"
+          },
+          "opponent_passes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "defensive_actions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "insufficient_sample",
+              "no_defensive_actions"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "zone": {
+            "type": "string"
+          },
+          "metric_version": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "closed": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "ppda_series": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "team_id",
+          "period",
+          "start_ms",
+          "end_ms",
+          "opponent_passes",
+          "defensive_actions",
+          "value",
+          "status",
+          "reason",
+          "zone",
+          "metric_version",
+          "evidence_ids",
+          "closed"
+        ],
+        "properties": {
+          "team_id": {
+            "type": "string"
+          },
+          "period": {
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "start_ms": {
+            "type": "integer"
+          },
+          "end_ms": {
+            "type": "integer"
+          },
+          "opponent_passes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "defensive_actions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "insufficient_sample",
+              "no_defensive_actions"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "zone": {
+            "type": "string"
+          },
+          "metric_version": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "closed": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "momentum": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "period",
+          "start_ms",
+          "end_ms",
+          "threat",
+          "shots"
+        ],
+        "properties": {
+          "period": {
+            "enum": [
+              1,
+              2
+            ]
+          },
+          "start_ms": {
+            "type": "integer"
+          },
+          "end_ms": {
+            "type": "integer"
+          },
+          "threat": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "shots": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    },
+    "players": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "player_id",
+          "team_id",
+          "passes",
+          "passes_completed",
+          "progression_m",
+          "threat_gained",
+          "shots",
+          "goals",
+          "defensive_actions",
+          "action_count",
+          "mean_action_location"
+        ],
+        "properties": {
+          "player_id": {
+            "type": "string"
+          },
+          "team_id": {
+            "type": "string"
+          },
+          "passes": {
+            "type": "integer"
+          },
+          "passes_completed": {
+            "type": "integer"
+          },
+          "progression_m": {
+            "type": "number"
+          },
+          "threat_gained": {
+            "type": "number"
+          },
+          "shots": {
+            "type": "integer"
+          },
+          "goals": {
+            "type": "integer"
+          },
+          "defensive_actions": {
+            "type": "integer"
+          },
+          "action_count": {
+            "type": "integer"
+          },
+          "mean_action_location": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 105
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 68
+              }
+            }
+          }
+        }
+      }
+    },
+    "pass_network": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to",
+            "count"
+          ],
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}

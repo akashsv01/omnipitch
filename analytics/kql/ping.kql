@@ -1,0 +1,4 @@
+// Connectivity and permission probe.
+{{TABLE}}
+| count
+| project rows = Count

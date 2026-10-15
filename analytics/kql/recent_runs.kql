@@ -1,0 +1,6 @@
+// Most recently ingested runs, for choosing a run in the UI.
+declare query_parameters(max_runs: int);
+{{TABLE}}
+| extend ingested = ingestion_time()
+| summarize unique_events = count_distinct(event_id), raw_rows = count(), last_ingested = max(ingested) by run_id
+| top max_runs by last_ingested desc

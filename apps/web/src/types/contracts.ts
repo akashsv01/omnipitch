@@ -1,24 +1,32 @@
 // Aligned manually with contracts/schemas; fixture checks guard against drift.
 export interface RunScoped {
-  schema_version: '1.0';
+  schema_version: '1.1';
   run_id: string;
   match_id: string;
 }
 export interface Point { x: number; y: number }
-export interface Event extends RunScoped {
+export type EventType = 'pass' | 'shot' | 'tackle' | 'interception' | 'challenge' | 'foul' | 'period_start' | 'period_end';
+export type Outcome = 'completed' | 'incomplete' | 'goal' | 'saved' | 'off_target' | 'blocked' | 'won' | 'lost' | 'committed' | 'none';
+export type Direction = 'positive_x' | 'negative_x';
+export interface Event {
+  schema_version: '1.0' | '1.1';
+  run_id: string;
+  match_id: string;
   event_id: string;
   sequence: number;
   period: 1 | 2;
   match_time_ms: number;
   emitted_at: string;
-  team_id: string;
-  player_id: string;
-  possession_id: string;
-  type: 'pass';
-  outcome: 'completed';
-  start: Point;
-  end: Point;
-  attacking_direction: 'positive_x' | 'negative_x';
+  team_id: string | null;
+  player_id: string | null;
+  possession_id: string | null;
+  type: EventType;
+  outcome: Outcome;
+  start: Point | null;
+  end: Point | null;
+  attacking_direction: Direction | null;
+  on_target: boolean | null;
+  is_goal: boolean | null;
   synthetic: true;
 }
 export interface MatchState extends RunScoped {
@@ -32,6 +40,7 @@ export interface MatchState extends RunScoped {
   replay_status: 'paused' | 'playing' | 'finished';
   synthetic: true;
 }
+export interface Metric { name: string; value: number; unit: string }
 export interface Insight extends RunScoped {
   moment_id: string;
   headline: string;
@@ -39,14 +48,133 @@ export interface Insight extends RunScoped {
   analyst_text: string;
   language: 'en';
   evidence_ids: string[];
-  metrics: { name: string; value: number; unit: string }[];
+  metrics: Metric[];
   limitations: string[];
-  generation_mode: 'fixture';
+  generation_mode: 'fixture' | 'ai' | 'fallback';
+  knowledge_source_ids: string[];
 }
-export interface EventsResponse { events: Event[] }
-
+export type Rule = 'goal' | 'chance' | 'threat_gain' | 'transition' | 'pressing_change';
+export interface Moment {
+  moment_id: string;
+  run_id: string;
+  match_id: string;
+  rule: Rule;
+  rule_version: string;
+  metric_version: string;
+  priority: number;
+  team_id: string | null;
+  player_id: string | null;
+  period: 1 | 2;
+  match_time_ms: number;
+  anchor_sequence: number;
+  source_sequence: number;
+  replay_ms: number;
+  evidence_ids: string[];
+  metrics: Metric[];
+  facts: Record<string, unknown>;
+  limitations: string[];
+  insight: Insight;
+}
+export interface Player { player_id: string; team_id: string; name: string; shirt: number; position: string }
+export interface TeamStats {
+  team_id: string;
+  passes_attempted: number;
+  passes_completed: number;
+  completion_pct: number | null;
+  progression_m: number;
+  final_third_entries: number;
+  box_entries: number;
+  shots: number;
+  shots_on_target: number;
+  goals: number;
+  threat_gained: number;
+  defensive_actions: number;
+  turnovers_won: number;
+  fouls: number;
+  pass_share_pct: number | null;
+}
+export interface PpdaWindow {
+  team_id: string;
+  period: 1 | 2;
+  start_ms: number;
+  end_ms: number;
+  opponent_passes: number;
+  defensive_actions: number;
+  value: number | null;
+  status: 'ok' | 'insufficient_sample' | 'no_defensive_actions';
+  reason: string | null;
+  zone: string;
+  metric_version: string;
+  evidence_ids: string[];
+  closed: boolean;
+}
+export interface MomentumBucket { period: 1 | 2; start_ms: number; end_ms: number; threat: Record<string, number>; shots: Record<string, number> }
+export interface PlayerStats {
+  player_id: string;
+  team_id: string;
+  passes: number;
+  passes_completed: number;
+  progression_m: number;
+  threat_gained: number;
+  shots: number;
+  goals: number;
+  defensive_actions: number;
+  action_count: number;
+  mean_action_location: Point;
+}
+export interface PassLink { from: string; to: string; count: number }
+export interface Analysis {
+  metric_version: string;
+  grid_version: string;
+  through_sequence: number;
+  teams: Record<string, TeamStats>;
+  ppda_current: Record<string, PpdaWindow>;
+  ppda_series: PpdaWindow[];
+  momentum: MomentumBucket[];
+  players: PlayerStats[];
+  pass_network: Record<string, PassLink[]>;
+}
+export interface ReplayInfo {
+  source: 'simulator' | 'upload' | 'eventhouse';
+  seed: number | null;
+  scenario: string | null;
+  speed: Speed;
+  elapsed_ms: number;
+  duration_ms: number;
+  clock_period: 1 | 2;
+  clock_ms: number;
+  restored: boolean;
+  backend_mode: 'local' | 'azure';
+  source_run_id: string | null;
+  source_detail: string | null;
+  roster: Player[];
+}
+export type Speed = 1 | 5 | 10 | 20 | 40 | 80;
+export type Scenario = 'standard' | 'quiet' | 'high_press';
 export interface ReplaySnapshot {
   state: MatchState;
   events: Event[];
+  events_offset: number;
   total_events: number;
+  replay: ReplayInfo;
+  analysis: Analysis;
+  moments: Moment[];
+}
+export interface EventsResponse { events: Event[] }
+export interface LedgerSummary {
+  run_id: string;
+  received: number;
+  unique_events: number;
+  duplicates_ignored: number;
+  conflicts_rejected: number;
+  invalid_rejected: number;
+  latest_sequence: number;
+  missing_sequences: number;
+}
+export interface IngestResult {
+  accepted: number;
+  duplicates: number;
+  conflicts: number;
+  rejected: { line: number; event_id: string | null; code: string; message: string }[];
+  ledger: LedgerSummary;
 }

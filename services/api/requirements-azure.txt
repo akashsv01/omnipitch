@@ -1,0 +1,5 @@
+# Optional: needed only for OMNIPITCH_BACKEND_MODE=azure and the Event Hubs publisher.
+-r requirements.txt
+azure-identity==1.26.0
+azure-eventhub==5.15.1
+azure-kusto-data==6.0.4
