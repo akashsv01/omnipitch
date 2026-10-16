@@ -87,7 +87,9 @@ function Scrubber({ replay, elapsed, disabled, onSeek }: { replay: ReplaySnapsho
     </div>
     <div className="scrub-labels">
       <span>{replay.state.latest_event_sequence} / {replay.total_events} events</span>
-      <span>{replay.replay.source === 'upload' ? 'Uploaded JSONL' : `Seed ${replay.replay.seed} · ${replay.replay.scenario?.replace('_', ' ')}`}</span>
+      <span>{replay.replay.source === 'upload' ? 'Uploaded JSONL'
+        : replay.replay.source === 'eventhouse' ? `Eventhouse run ${replay.replay.source_run_id}`
+        : `Seed ${replay.replay.seed} · ${replay.replay.scenario?.replace('_', ' ')}`}</span>
     </div>
   </div>;
 }

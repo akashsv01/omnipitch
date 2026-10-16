@@ -8,7 +8,7 @@ explicit code; callers must not fall back to local data.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -65,7 +65,8 @@ class EventhouseReader:
         properties = ClientRequestProperties()
         for key, value in parameters.items():
             properties.set_parameter(key, value)
-        properties.set_option("servertimeout", "00:00:30")
+        # azure-kusto-data adds a client-side delta to this value, so it must be a timedelta, not a string.
+        properties.set_option("servertimeout", timedelta(seconds=30))
         try:
             response = self._client_or_create().execute(self.settings.eventhouse_database,
                                                          _query_text(name, self.settings.eventhouse_table), properties)

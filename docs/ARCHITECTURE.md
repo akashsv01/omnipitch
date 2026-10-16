@@ -155,14 +155,14 @@ flowchart LR
   API --> UI[React match room]
 ```
 
-| Component | Code | State (2026-10-15) |
+| Component | Code | State (2026-10-16) |
 | --- | --- | --- |
 | Publisher | `services/simulator/simulator/publish.py` | **Verified live.** Validates every event against the schema, sends with `DefaultAzureCredential` (or `AzureCliCredential` pinned by `EVENTHUB_TENANT_ID`), partition key `run_id:match_id`, optional duplicate re-delivery, report in `data/generated/publish-<run>.json`. The namespace `IncomingMessages` metric confirmed a 20-event probe. Runs of 5 and 400+25 events were also sent. |
-| Event Hubs | `infra/eventhubs.ps1` (idempotent Azure CLI script) | **Deleted on 2026-10-15 to save credit** until the Fabric side is ready; recreate with `infra/eventhubs.ps1` (same names). When it existed it was: Azure for Students subscription, `rg-omnipitch-dev` (East US). Namespace `omnipitch-ehns-qn36t` (Standard, 1 TU), hub `match-events` (2 partitions, 24 h retention), consumer group `fabric-eventstream`. Hub-scoped `Azure Event Hubs Data Sender` for the developer. Listen-only SAS rule `eventstream-listen` exists for Eventstream; its key is never stored in the repo. |
-| Eventstream | Portal (no code) | **Not created.** UMD has disabled Fabric trials; the UF teammate's tenant allows them. |
-| Eventhouse / KQL | `analytics/kql/*.kql`, `services/api/app/eventhouse.py` | **Code written, unverified live.** `setup.kql` creates the table, JSON mapping and ingestion-time policy. Queries are parameterized (`declare query_parameters`), never string-built from user input. |
-| API | `services/api/app/main.py`, `config.py` | **Code written, tested with a fake reader.** `/ready` probes Eventhouse in azure mode. `POST /api/v1/replay/eventhouse` loads a run and keeps its cloud `run_id`. `GET /api/v1/eventhouse/runs[/{id}]` returns raw vs unique rows and KQL-vs-Python parity. |
-| Frontend | `EventhousePanel.tsx`, `SourceBadge` in `App.tsx` | **Code written.** The top bar reads `Local · simulator`, `Azure · not loaded` or `Azure · Eventhouse`. An azure-mode banner appears when the replay is not Eventhouse data. Data quality tab: run picker plus parity table. |
+| Event Hubs | `infra/eventhubs.ps1` (idempotent Azure CLI script) | **Exists again (recreated 2026-10-16), verified feeding Fabric.** Azure for Students subscription (UMD tenant), `rg-omnipitch-dev` (East US). Namespace `omnipitch-ehns-qn36t` (Standard, 1 TU, about $0.73/day), hub `match-events` (2 partitions, 24 h retention), consumer group `fabric-eventstream`, hub-scoped `Azure Event Hubs Data Sender` for the developer, listen-only SAS rule `eventstream-listen` (key never stored in the repo). It was deleted on 2026-10-15 to save credit, and recreating the rule issues a new key. |
+| Eventstream | Portal (no code) | **Verified live (2026-10-16).** UF tenant, Fabric trial capacity, workspace `OmniPitch`. Eventstream `omnipitch-stream` (schema-aware preview off): source `azure-event-hub` via connection `omnipitch-eh-listen` (Shared Access Key, Basic feature level, consumer group `fabric-eventstream`, JSON) → destination `omnipitch-eventhouse`, direct ingestion, existing table, existing mapping `OmniPitchEvents_json`. |
+| Eventhouse / KQL | `analytics/kql/*.kql`, `services/api/app/eventhouse.py` | **Verified live (2026-10-16).** Eventhouse `omnipitch`, KQL database `omnipitch`. `setup.kql` was applied (table, JSON mapping, ingestion-time policy on). Queries are parameterized (`declare query_parameters`), never string-built from user input. The server timeout must be a `timedelta` for azure-kusto-data 6.x. |
+| API | `services/api/app/main.py`, `config.py` | **Verified live (2026-10-16).** `/ready` probes Eventhouse in azure mode. `POST /api/v1/replay/eventhouse` loads a run and keeps its cloud `run_id`. `GET /api/v1/eventhouse/runs[/{id}]` returns raw vs unique rows and KQL-vs-Python parity (the run detail takes about 6 s against the trial capacity). Runs locally; not deployed. |
+| Frontend | `EventhousePanel.tsx`, `SourceBadge` in `App.tsx`, `ControlDock.tsx` | **Verified live (2026-10-16).** The top bar reads `Local · simulator`, `Azure · not loaded` or `Azure · Eventhouse`. The dock shows `Eventhouse run <id>` for cloud runs. An azure-mode banner appears when the replay is not Eventhouse data. Data quality tab: run picker plus parity table. Eventhouse requests use a 45 s timeout; other requests use 8 s. |
 
 **Mode rules.** `OMNIPITCH_BACKEND_MODE` is `local` (default) or `azure`; any other value fails startup.
 
@@ -203,7 +203,7 @@ There are no secrets. Connection strings are rejected by config validation.
 | Who | Needs |
 | --- | --- |
 | Publisher identity | `Azure Event Hubs Data Sender` on the hub or namespace |
-| Eventstream | the listen-only SAS key (or a workspace identity with `Azure Event Hubs Data Receiver`) |
+| Eventstream | Portal (no code) | **Verified live (2026-10-16).** UF tenant, Fabric trial capacity, workspace `OmniPitch`. Eventstream `omnipitch-stream` (schema-aware preview off): source `azure-event-hub` via connection `omnipitch-eh-listen` (Shared Access Key, Basic feature level, consumer group `fabric-eventstream`, JSON) → destination `omnipitch-eventhouse`, direct ingestion, existing table, existing mapping `OmniPitchEvents_json`. |
 | API identity | at least Viewer on the Fabric workspace or the KQL database |
 | Whoever runs `setup.kql` | database Admin (workspace Contributor or higher) |
 
@@ -213,11 +213,11 @@ Fabric permissions are separate from Azure RBAC. Being Owner of the subscription
 
 1. Start a Fabric trial (Account manager → Start trial → **Fabric and Power BI**, region East US). Alternatively, use an F capacity.
 2. Create a workspace on it.
-3. Create Eventhouse `omnipitch-eh` with KQL database `omnipitch`.
+3. Create Eventhouse `omnipitch`; Fabric creates KQL database `omnipitch` with it.
 4. In a KQL queryset, run the three commands in `analytics/kql/setup.kql`, one at a time.
 5. Create an Eventstream:
    - **Source:** Azure Event Hubs. Namespace and hub as above, consumer group `fabric-eventstream`, Shared Access Key name `eventstream-listen`, data format JSON.
-   - **Destination:** Eventhouse, **direct ingestion**, database `omnipitch`, existing table `OmniPitchEvents`, existing mapping `OmniPitchEvents_json`.
+   - **Destination:** Eventhouse, **direct ingestion**, database `omnipitch`, existing table `OmniPitchEvents`, existing mapping `OmniPitchEvents_json`. The wizard lists the existing mapping only after a data sample loads, so send a few events first. Never accept the auto-generated `OmniPitchEvents_mapping`.
 6. Publish the Eventstream.
 7. Copy the database **Query URI** into `EVENTHOUSE_QUERY_URI`.
 

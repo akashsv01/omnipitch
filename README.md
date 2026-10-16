@@ -16,8 +16,8 @@ Implemented locally (no cloud credentials needed):
 
 **Cloud status (2026-10-15).**
 
-- **Event Hubs:** verified live on 2026-10-15. The simulator publishes with Entra ID (no keys). The namespace was then deleted to save credit; `infra/eventhubs.ps1` recreates it in about 2 minutes.
-- **Fabric Eventstream → Eventhouse:** code and KQL are ready, but **not yet connected**. The Fabric workspace is still being set up.
+- **Event Hubs:** verified live. The simulator publishes with Entra ID (no keys). The namespace costs Azure credit while it exists; `infra/eventhubs.ps1` recreates it in about 2 minutes.
+- **Fabric Eventstream → Eventhouse:** verified end to end on 2026-10-16. The run `smoke-20261016-a` was ingested, deduplicated, checked against Python metrics and shown in the browser (see [ROADMAP](docs/ROADMAP.md)).
 - **API:** has an explicit `azure` mode that reads Eventhouse and never falls back silently.
 - **Later phases:** Cosmos DB, Foundry/Agent Framework and Web PubSub are planned, not connected.
 
