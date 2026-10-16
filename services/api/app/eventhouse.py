@@ -104,6 +104,14 @@ class EventhouseReader:
     def recent_runs(self, limit: int = 10) -> list[dict]:
         return self._run("recent_runs", {"max_runs": limit})
 
+    def runs_ingested_since(self, since: datetime) -> list[dict]:
+        """Runs with rows ingested after `since` (UTC), oldest first: [{run_id, last_ingested, new_rows}]."""
+        stamp = since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        rows = self._run("runs_since", {"since": stamp})
+        return [{"run_id": row["run_id"], "new_rows": int(row["new_rows"]),
+                 "last_ingested": row["last_ingested"] if isinstance(row["last_ingested"], datetime)
+                 else datetime.fromisoformat(str(row["last_ingested"]).replace("Z", "+00:00"))} for row in rows]
+
 
 def _point(value: Any) -> dict | None:
     if value is None or value == "":

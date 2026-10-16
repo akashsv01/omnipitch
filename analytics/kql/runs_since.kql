@@ -1,0 +1,8 @@
+// Runs with rows ingested after a point in time: the bridge passes its cursor minus a lookback.
+declare query_parameters(since: datetime);
+{{TABLE}}
+| extend ingested = ingestion_time()
+| where ingested > since
+| summarize last_ingested = max(ingested), new_rows = count() by run_id
+| order by last_ingested asc
+| take 100

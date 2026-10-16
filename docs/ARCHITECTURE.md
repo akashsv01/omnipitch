@@ -242,6 +242,43 @@ The report is written to `data/generated/cloud-smoke-<run>.json`. Browser displa
 
 Cost note: the Standard namespace draws about $0.73/day of Azure credit while it exists. Create it with `infra/eventhubs.ps1` only when the Eventstream is about to be connected, and remove it with `az group delete -n rg-omnipitch-dev --yes`. A paid Fabric F2 would cost $0.36/h while running.
 
+## Bridge worker (Phase 3 data half)
+
+`services/bridge/` turns Eventhouse rows into durable moment and narration-job records. It is a separate process from the API, so restarting or scaling the API never starts duplicate scanners.
+
+```powershell
+.venv/Scripts/python.exe -m pip install -r services/bridge/requirements.txt
+.venv/Scripts/python.exe services/bridge/run_bridge.py --once          # one cycle
+.venv/Scripts/python.exe services/bridge/run_bridge.py --interval 2    # poll; full reconcile every 30 cycles
+```
+
+It reads Eventhouse settings from `services/api/.env` and uses the API's `EventhouseReader`, so it needs the same `az login` identity (Viewer on the workspace).
+
+One cycle:
+
+1. Read the cursor (last ingestion time seen, per Eventhouse table).
+2. Query runs with rows ingested after cursor minus lookback (`runs_since.kql`, default 120 s).
+3. For each run: read deduplicated rows (`run_events.kql`), validate them with the event model, and keep the gap-free sequence prefix. Then run `detect_moments` and create each moment and its `pending` job only if absent.
+4. Advance the cursor only after every run was written.
+
+Prefix-stable detection plus create-if-absent makes duplicates, overlapping lookbacks, restarts and reconciles no-ops. A late event delays later moments until the gap fills; it never rewrites frozen evidence.
+
+| Record | Key | Contract |
+| --- | --- | --- |
+| Detected moment | `(run_id, moment_id)` | `moment.schema.json` without `insight` and `replay_ms`, which the narration worker and the replay attach |
+| Narration job | `job_id = moment_id` | `job.schema.json`: `pending → processing → ready \| fallback \| failed`, `processing → retry_wait → processing` while `attempt < max_attempts` (2) |
+| Cursor | `eventhouse:<database>.<table>` | last `ingestion_time()` processed |
+
+**Job leases.** `claim_next(owner, now, lease)` takes the highest-priority claimable job: `pending`, a due `retry_wait`, or `processing` with an expired lease. It increments `attempt` and sets the lease with an update conditional on `version`, so two workers cannot claim the same job. `complete(...)` is accepted only from the current lease holder at the version it read. `ready` and `fallback` require an `insight_id`. `expire_exhausted(now)` marks an abandoned last attempt `failed` with a visible reason.
+
+**Storage.** `SqliteStore` (local, `OMNIPITCH_BRIDGE_DB`, default `data/generated/bridge.sqlite3`) is the reference implementation. The planned Cosmos DB store keeps the same methods:
+
+- containers `moments` and `jobs`, partitioned by `/run_id`;
+- create-if-absent for moments and jobs;
+- ETag-conditional replace for claim and complete.
+
+Not implemented yet. UF Azure for Students allows only westus, germanywestcentral, francecentral, norwayeast and denmarkeast, so the account would go in West US with the free tier.
+
 ## Later-phase cloud flow — not implemented
 
 ```mermaid
