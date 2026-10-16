@@ -215,7 +215,8 @@ h1, h2, h3, p { margin: 0; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .card { background: var(--night-2); border: 1px solid var(--rule); border-radius: var(--radius-m); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-content: start; }
 .card h3 { font: 600 19px/1.1 var(--display); }
-.card svg { width: 100%; height: auto; display: block; }
+/* Full-width charts only; lucide icons inside cards keep their size prop. */
+.card svg:not(.lucide) { width: 100%; height: auto; display: block; }
 .stat-pair { display: flex; gap: 18px; flex-wrap: wrap; }
 .stat { display: grid; gap: 2px; }
 .stat b { font: 600 30px/1 var(--display); }

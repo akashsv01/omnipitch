@@ -23,10 +23,14 @@ export class ApiError extends Error {
   }
 }
 
-async function getJson(path: string, options: RequestInit = {}): Promise<unknown> {
+// Local endpoints answer from SQLite quickly; live Eventhouse calls make several KQL round trips.
+const DEFAULT_TIMEOUT_MS = 8000;
+const EVENTHOUSE_TIMEOUT_MS = 45000;
+
+async function getJson(path: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<unknown> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...options, signal: AbortSignal.timeout(8000) });
+    response = await fetch(`${API_BASE_URL}${path}`, { ...options, signal: AbortSignal.timeout(timeoutMs) });
   } catch {
     throw new ApiError(`Can't reach the API at ${API_BASE_URL}. Start FastAPI and check CORS_ORIGINS.`, 'network');
   }
@@ -43,9 +47,9 @@ async function getJson(path: string, options: RequestInit = {}): Promise<unknown
   catch { throw new ApiError('API returned invalid JSON.', 'contract'); }
 }
 
-const post = (path: string, body: unknown) => getJson(path, {
+const post = (path: string, body: unknown, timeoutMs = DEFAULT_TIMEOUT_MS) => getJson(path, {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-});
+}, timeoutMs);
 
 export async function fetchDemo(): Promise<{ state: MatchState; events: Event[] }> {
   const [state, response] = await Promise.all([getJson('/api/v1/matches/demo/state'), getJson('/api/v1/matches/demo/events')]);
@@ -129,13 +133,13 @@ export interface EventhouseRunDetail {
 }
 
 export async function fetchEventhouseRuns(): Promise<{ runs: { run_id: string; unique_events: number; raw_rows: number; last_ingested: string }[] }> {
-  return await getJson('/api/v1/eventhouse/runs') as never;
+  return await getJson('/api/v1/eventhouse/runs', {}, EVENTHOUSE_TIMEOUT_MS) as never;
 }
 
 export async function fetchEventhouseRun(runId: string): Promise<EventhouseRunDetail> {
-  return await getJson(`/api/v1/eventhouse/runs/${encodeURIComponent(runId)}`) as EventhouseRunDetail;
+  return await getJson(`/api/v1/eventhouse/runs/${encodeURIComponent(runId)}`, {}, EVENTHOUSE_TIMEOUT_MS) as EventhouseRunDetail;
 }
 
 export async function loadFromEventhouse(runId: string, sourceRunId: string): Promise<ReplaySnapshot> {
-  return checkSnapshot(await post('/api/v1/replay/eventhouse', { run_id: runId, source_run_id: sourceRunId }));
+  return checkSnapshot(await post('/api/v1/replay/eventhouse', { run_id: runId, source_run_id: sourceRunId }, EVENTHOUSE_TIMEOUT_MS));
 }
