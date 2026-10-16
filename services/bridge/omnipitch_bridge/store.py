@@ -118,7 +118,6 @@ class SqliteStore:
         return sorted((json.loads(row[0]) for row in rows), key=lambda job: (job["run_id"], job["source_sequence"], job["job_id"]))
 
     def _replace(self, job: dict, expected_version: int) -> None:
-        job["version"] = expected_version + 1
         cursor = self.connection.execute(
             "UPDATE jobs SET status = ?, version = ?, payload = ? WHERE job_id = ? AND version = ?",
             (job["status"], job["version"], json.dumps(job), job["job_id"], expected_version))
@@ -130,47 +129,23 @@ class SqliteStore:
         with self.lock:
             candidates = [json.loads(row[0]) for row in self.connection.execute(
                 "SELECT payload FROM jobs WHERE status IN ('pending', 'retry_wait', 'processing')")]
-            due = [job for job in candidates if self._claimable(job, now)]
-            for job in sorted(due, key=lambda j: (-j["priority"], j["created_at"], j["job_id"])):
-                if job["attempt"] >= job["max_attempts"]:
-                    continue  # An abandoned last attempt is resolved by expire_exhausted, not claimed again.
-                expected = job["version"]
-                job.update(status="processing", attempt=job["attempt"] + 1, lease_owner=owner,
-                           lease_expires_at=iso(now + lease), next_attempt_at=None, updated_at=iso(now))
+            for job in sorted((j for j in candidates if claimable(j, now)), key=claim_order):
+                updated = claimed(job, owner, now, lease)
                 try:
-                    self._replace(job, expected)
+                    self._replace(updated, job["version"])
                 except StaleJob:
                     continue  # Another worker won this job; try the next one.
-                return job
+                return updated
         return None
-
-    @staticmethod
-    def _claimable(job: dict, now: datetime) -> bool:
-        if job["status"] == "pending":
-            return True
-        if job["status"] == "retry_wait":
-            return job["next_attempt_at"] is None or parse_iso(job["next_attempt_at"]) <= now
-        return job["lease_expires_at"] is not None and parse_iso(job["lease_expires_at"]) <= now
 
     def complete(self, job: dict, owner: str, now: datetime, status: str, insight_id: str | None = None,
                  error: str | None = None, retry_after: timedelta | None = None) -> dict:
         """Record the outcome of a claimed job. Raises StaleJob if the lease was lost."""
-        if status not in TERMINAL + ("retry_wait",):
-            raise ValueError(f"unsupported completion status {status!r}")
-        if status in ("ready", "fallback") and not insight_id:
-            raise ValueError("ready and fallback jobs need an insight_id")
         with self.lock:
             current = self.get_job(job["job_id"])
-            if current is None or current["version"] != job["version"] or current["lease_owner"] != owner:
-                raise StaleJob(f"job {job['job_id']} is no longer held by {owner}")
-            if status == "retry_wait" and current["attempt"] >= current["max_attempts"]:
-                raise ValueError("no attempts remain; complete as fallback or failed instead")
-            expected = current["version"]
-            current.update(status=status, insight_id=insight_id, last_error=(error or None) and error[:500],
-                           lease_owner=None, lease_expires_at=None, updated_at=iso(now),
-                           next_attempt_at=iso(now + retry_after) if status == "retry_wait" and retry_after else None)
-            self._replace(current, expected)
-            return current
+            updated = completed(current, job, owner, now, status, insight_id, error, retry_after)
+            self._replace(updated, current["version"])
+            return updated
 
     def expire_exhausted(self, now: datetime) -> list[dict]:
         """Recovery pass: a processing job whose lease expired on its last attempt becomes failed, visibly."""
@@ -178,13 +153,62 @@ class SqliteStore:
         with self.lock:
             for row in self.connection.execute("SELECT payload FROM jobs WHERE status = 'processing'").fetchall():
                 job = json.loads(row[0])
-                if job["attempt"] >= job["max_attempts"] and self._claimable(job, now):
-                    expected = job["version"]
-                    job.update(status="failed", lease_owner=None, lease_expires_at=None, updated_at=iso(now),
-                               last_error="lease expired on the last attempt")
+                if is_exhausted(job, now):
+                    updated = exhausted(job, now)
                     try:
-                        self._replace(job, expected)
-                        failed.append(job)
+                        self._replace(updated, job["version"])
+                        failed.append(updated)
                     except StaleJob:
                         pass
         return failed
+
+
+# Job transitions shared by every store: stores only differ in how a conditional write is done.
+
+def claimable(job: dict, now: datetime) -> bool:
+    if job["attempt"] >= job["max_attempts"]:
+        return False  # An abandoned last attempt is resolved by expire_exhausted, not claimed again.
+    if job["status"] == "pending":
+        return True
+    if job["status"] == "retry_wait":
+        return job["next_attempt_at"] is None or parse_iso(job["next_attempt_at"]) <= now
+    return job["status"] == "processing" and _lease_expired(job, now)
+
+
+def _lease_expired(job: dict, now: datetime) -> bool:
+    return job["lease_expires_at"] is not None and parse_iso(job["lease_expires_at"]) <= now
+
+
+def claim_order(job: dict) -> tuple:
+    return (-job["priority"], job["created_at"], job["job_id"])
+
+
+def claimed(job: dict, owner: str, now: datetime, lease: timedelta) -> dict:
+    return {**job, "status": "processing", "attempt": job["attempt"] + 1, "lease_owner": owner,
+            "lease_expires_at": iso(now + lease), "next_attempt_at": None, "updated_at": iso(now),
+            "version": job["version"] + 1}
+
+
+def completed(current: dict | None, held: dict, owner: str, now: datetime, status: str, insight_id: str | None,
+              error: str | None, retry_after: timedelta | None) -> dict:
+    if status not in TERMINAL + ("retry_wait",):
+        raise ValueError(f"unsupported completion status {status!r}")
+    if status in ("ready", "fallback") and not insight_id:
+        raise ValueError("ready and fallback jobs need an insight_id")
+    if current is None or current["version"] != held["version"] or current["lease_owner"] != owner:
+        raise StaleJob(f"job {held['job_id']} is no longer held by {owner}")
+    if status == "retry_wait" and current["attempt"] >= current["max_attempts"]:
+        raise ValueError("no attempts remain; complete as fallback or failed instead")
+    return {**current, "status": status, "insight_id": insight_id, "last_error": (error or None) and error[:500],
+            "lease_owner": None, "lease_expires_at": None, "updated_at": iso(now),
+            "next_attempt_at": iso(now + retry_after) if status == "retry_wait" and retry_after else None,
+            "version": current["version"] + 1}
+
+
+def is_exhausted(job: dict, now: datetime) -> bool:
+    return job["status"] == "processing" and job["attempt"] >= job["max_attempts"] and _lease_expired(job, now)
+
+
+def exhausted(job: dict, now: datetime) -> dict:
+    return {**job, "status": "failed", "lease_owner": None, "lease_expires_at": None, "updated_at": iso(now),
+            "last_error": "lease expired on the last attempt", "version": job["version"] + 1}
