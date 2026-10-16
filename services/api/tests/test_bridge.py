@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
+import uuid
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
@@ -16,7 +18,7 @@ from simulator.match import simulate_match
 
 ROOT = Path(__file__).resolve().parents[3]
 T0 = datetime(2026, 10, 16, 3, 0, tzinfo=timezone.utc)
-RUN = "bridge-test-a"
+COSMOS_ENDPOINT = os.getenv("OMNIPITCH_TEST_COSMOS_ENDPOINT")  # Opt-in live run against a real Cosmos account.
 
 
 class FakeEventhouse:
@@ -59,18 +61,44 @@ class Clock:
 
 
 @pytest.fixture(scope="module")
-def match() -> list[dict]:
-    return simulate_match(7, "standard", run_id=RUN)[:400]
+def seeded() -> list[dict]:
+    return simulate_match(7, "standard", run_id="bridge-test")[:400]
+
+
+@pytest.fixture
+def match(seeded) -> list[dict]:
+    """The seeded match under a run ID unique to this test, so tests never share durable records."""
+    run_id = f"bridge-test-{uuid.uuid4().hex[:8]}"
+    return [dict(event, run_id=run_id) for event in seeded]
 
 
 def expected_moment_ids(events: list[dict]) -> set[str]:
-    return {m["moment_id"] for m in detect_moments(events, RUN, events[0]["match_id"], TEAMS)}
+    return {m["moment_id"] for m in detect_moments(events, events[0]["run_id"], events[0]["match_id"], TEAMS)}
 
 
-def make(tmp_path: Path, source: FakeEventhouse, now: datetime = T0) -> tuple[Bridge, SqliteStore, Clock]:
-    store = SqliteStore(tmp_path / "bridge.sqlite3")
-    clock = Clock(now)
-    return Bridge(source, store, "eventhouse:test", timedelta(minutes=2), clock), store, clock
+@pytest.fixture(params=["sqlite", "cosmos"])
+def make(request, tmp_path, match):
+    """Build a bridge over a durable store; calling it again simulates a worker restart on the same store."""
+    if request.param == "cosmos" and not COSMOS_ENDPOINT:
+        pytest.skip("set OMNIPITCH_TEST_COSMOS_ENDPOINT to run against Cosmos DB")
+    cursor_id = f"test:{uuid.uuid4().hex[:8]}"
+    stores = []
+
+    def build(source: FakeEventhouse, now: datetime = T0):
+        if request.param == "sqlite":
+            store = SqliteStore(tmp_path / "bridge.sqlite3")
+        else:
+            from omnipitch_bridge.cosmos_store import CosmosStore
+            store = CosmosStore(COSMOS_ENDPOINT, os.getenv("COSMOS_DATABASE", "omnipitch"))
+        stores.append(store)
+        clock = Clock(now)
+        return Bridge(source, store, cursor_id, timedelta(minutes=2), clock), store, clock
+    yield build
+    if request.param == "cosmos":
+        stores[-1].purge_run(match[0]["run_id"])
+        stores[-1].purge_cursor(cursor_id)
+    for store in stores:
+        store.close()
 
 
 def test_job_contract_and_example():
@@ -83,108 +111,108 @@ def test_job_contract_and_example():
     assert list(validator.iter_errors({**example, "extra": 1}))
 
 
-def test_cycle_creates_one_pending_job_per_moment(tmp_path, match):
+def test_cycle_creates_one_pending_job_per_moment(make, match):
     source = FakeEventhouse()
     source.ingest(match, T0)
-    bridge, store, _ = make(tmp_path, source, T0 + timedelta(seconds=5))
+    bridge, store, _ = make(source, T0 + timedelta(seconds=5))
     report = bridge.run_once()
     expected = expected_moment_ids(match)
     assert expected and report["moments_created"] == report["jobs_created"] == len(expected)
-    assert {m["moment_id"] for m in store.moments(RUN)} == expected
-    jobs = store.jobs(RUN)
+    assert {m["moment_id"] for m in store.moments(match[0]["run_id"])} == expected
+    jobs = store.jobs(match[0]["run_id"])
     assert {j["job_id"] for j in jobs} == expected and all(j["status"] == "pending" for j in jobs)
-    for moment, job in zip(store.moments(RUN), jobs):
+    for moment, job in zip(store.moments(match[0]["run_id"]), jobs):
         DETECTED_MOMENT_VALIDATOR.validate(moment)
         JOB_VALIDATOR.validate(job)
-    assert store.get_cursor("eventhouse:test") == T0
+    assert store.get_cursor(bridge.cursor_id) == T0
 
 
-def test_duplicate_delivery_and_reprocessing_create_nothing(tmp_path, match):
+def test_duplicate_delivery_and_reprocessing_create_nothing(make, match):
     source = FakeEventhouse()
     source.ingest(match, T0)
     source.ingest(match[-25:], T0 + timedelta(seconds=1))  # 25 re-delivered events, as in the cloud smoke run
-    bridge, store, _ = make(tmp_path, source)
+    bridge, store, _ = make(source)
     first = bridge.run_once()
     assert first["results"][0]["rows"] == 400
     again = bridge.run_once()  # Overlapping lookback re-reads the same run.
     reconciled = bridge.reconcile()
     assert again["moments_created"] == again["jobs_created"] == 0
     assert reconciled[0]["moments_created"] == reconciled[0]["jobs_created"] == 0
-    assert len(store.moments(RUN)) == len(store.jobs(RUN)) == len(expected_moment_ids(match))
+    assert len(store.moments(match[0]["run_id"])) == len(store.jobs(match[0]["run_id"])) == len(expected_moment_ids(match))
 
 
-def test_worker_restart_resumes_from_persisted_cursor(tmp_path, match):
+def test_worker_restart_resumes_from_persisted_cursor(make, match):
     source = FakeEventhouse()
     source.ingest(match[:200], T0)
-    bridge, store, _ = make(tmp_path, source)
+    bridge, store, _ = make(source)
     bridge.run_once()
-    count = len(store.jobs(RUN))
+    count = len(store.jobs(match[0]["run_id"]))
     store.close()
     source.ingest(match[200:], T0 + timedelta(minutes=10))
-    restarted, store2, _ = make(tmp_path, source)  # New process, same durable store.
-    assert store2.get_cursor("eventhouse:test") == T0
+    restarted, store2, _ = make(source)  # New process, same durable store.
+    assert store2.get_cursor(restarted.cursor_id) == T0
     report = restarted.run_once()
     assert report["since"] == (T0 - timedelta(minutes=2)).isoformat()
-    assert len(store2.jobs(RUN)) == len(expected_moment_ids(match)) >= count
-    assert store2.get_cursor("eventhouse:test") == T0 + timedelta(minutes=10)
+    assert len(store2.jobs(match[0]["run_id"])) == len(expected_moment_ids(match)) >= count
+    assert store2.get_cursor(restarted.cursor_id) == T0 + timedelta(minutes=10)
 
 
-def test_late_event_delays_moments_then_fills_in_without_changing_frozen_evidence(tmp_path, match):
+def test_late_event_delays_moments_then_fills_in_without_changing_frozen_evidence(make, match):
     gap = 150
     source = FakeEventhouse()
     source.ingest([e for e in match if e["sequence"] != gap], T0)
-    bridge, store, _ = make(tmp_path, source)
+    bridge, store, _ = make(source)
     report = bridge.run_once()
     assert report["results"][0]["contiguous_through"] == gap - 1
-    early = {m["moment_id"]: m for m in store.moments(RUN)}
+    early = {m["moment_id"]: m for m in store.moments(match[0]["run_id"])}
     assert set(early) == expected_moment_ids(match[:gap - 1])
     source.ingest([match[gap - 1]], T0 + timedelta(seconds=30))  # The late row arrives out of order.
     report = bridge.run_once()
     assert report["results"][0]["contiguous_through"] == 400
-    final = {m["moment_id"]: m for m in store.moments(RUN)}
+    final = {m["moment_id"]: m for m in store.moments(match[0]["run_id"])}
     assert set(final) == expected_moment_ids(match)
     assert all(final[key] == value for key, value in early.items())
 
 
-def test_lookback_catches_rows_that_become_visible_with_an_earlier_ingestion_time(tmp_path, match):
+def test_lookback_catches_rows_that_become_visible_with_an_earlier_ingestion_time(make, match):
     source = FakeEventhouse()
     source.ingest(match[:300], T0)
-    bridge, store, _ = make(tmp_path, source)
+    bridge, store, _ = make(source)
     bridge.run_once()
     source.ingest(match[300:], T0 - timedelta(seconds=30))  # Within the 2-minute lookback.
     bridge.run_once()
-    assert {j["job_id"] for j in store.jobs(RUN)} == expected_moment_ids(match)
+    assert {j["job_id"] for j in store.jobs(match[0]["run_id"])} == expected_moment_ids(match)
 
 
-def test_failed_cycle_keeps_cursor_and_retries(tmp_path, match):
+def test_failed_cycle_keeps_cursor_and_retries(make, match):
     source = FakeEventhouse()
     source.ingest(match, T0)
-    source.fail_runs.add(RUN)
-    bridge, store, _ = make(tmp_path, source)
+    source.fail_runs.add(match[0]["run_id"])
+    bridge, store, _ = make(source)
     with pytest.raises(RuntimeError):
         bridge.run_once()
-    assert store.get_cursor("eventhouse:test") is None and store.jobs(RUN) == []
+    assert store.get_cursor(bridge.cursor_id) is None and store.jobs(match[0]["run_id"]) == []
     source.fail_runs.clear()
     bridge.run_once()
-    assert len(store.jobs(RUN)) == len(expected_moment_ids(match))
+    assert len(store.jobs(match[0]["run_id"])) == len(expected_moment_ids(match))
 
 
-def test_invalid_rows_are_counted_not_analysed(tmp_path, match):
+def test_invalid_rows_are_counted_not_analysed(make, match):
     source = FakeEventhouse()
     broken = dict(match[10], start={"x": 500, "y": 30})  # Off the 105 x 68 pitch.
     source.ingest(match[:10] + [broken] + match[11:], T0)
-    bridge, store, _ = make(tmp_path, source)
+    bridge, store, _ = make(source)
     result = bridge.run_once()["results"][0]
     assert result["rejected_rows"] == 1 and result["contiguous_through"] == 10
-    assert {j["job_id"] for j in store.jobs(RUN)} == expected_moment_ids(match[:10])
+    assert {j["job_id"] for j in store.jobs(match[0]["run_id"])} == expected_moment_ids(match[:10])
 
 
-def test_job_lease_claim_complete_and_recovery(tmp_path, match):
+def test_job_lease_claim_complete_and_recovery(make, match):
     source = FakeEventhouse()
     source.ingest(match, T0)
-    bridge, store, clock = make(tmp_path, source)
+    bridge, store, clock = make(source)
     bridge.run_once()
-    total = len(store.jobs(RUN))
+    total = len(store.jobs(match[0]["run_id"]))
     first = store.claim_next("worker-a", clock.now)
     assert first["status"] == "processing" and first["attempt"] == 1 and first["priority"] == 3  # Goals first.
     assert store.claim_next("worker-b", clock.now)["job_id"] != first["job_id"]  # No double claim.
@@ -208,13 +236,13 @@ def test_job_lease_claim_complete_and_recovery(tmp_path, match):
     clock.now += timedelta(seconds=11)
     assert [j["job_id"] for j in store.expire_exhausted(clock.now)] == [abandoned["job_id"]]
     assert store.get_job(abandoned["job_id"])["status"] == "failed"
-    assert len(store.jobs(RUN)) == total
+    assert len(store.jobs(match[0]["run_id"])) == total
 
 
-def test_retry_wait_is_claimable_after_its_delay(tmp_path, match):
+def test_retry_wait_is_claimable_after_its_delay(make, match):
     source = FakeEventhouse()
     source.ingest(match, T0)
-    bridge, store, clock = make(tmp_path, source)
+    bridge, store, clock = make(source)
     bridge.run_once()
     job = store.claim_next("worker-a", clock.now)
     store.complete(job, "worker-a", clock.now, "retry_wait", error="model timeout", retry_after=timedelta(seconds=30))

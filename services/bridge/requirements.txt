@@ -2,3 +2,4 @@
 -r ../api/requirements-azure.txt
 jsonschema==4.23.0
 rfc3339-validator==0.1.4
+azure-cosmos==4.9.0
