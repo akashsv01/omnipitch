@@ -279,6 +279,44 @@ Prefix-stable detection plus create-if-absent makes duplicates, overlapping look
 
 Not implemented yet. UF Azure for Students allows only westus, germanywestcentral, francecentral, norwayeast and denmarkeast, so the account would go in West US with the free tier.
 
+## Narration worker (Phase 3 AI half)
+
+`services/agents/run_narrator.py` claims narration jobs from the bridge store and publishes exactly one validated insight per moment.
+
+```powershell
+.venv/Scripts/python.exe services/agents/run_narrator.py --once        # drain claimable jobs
+.venv/Scripts/python.exe services/agents/run_narrator.py --interval 2  # keep polling
+```
+
+**Per job.**
+
+1. `claim_next` (lease 120 s).
+2. Load the frozen moment and build the evidence packet.
+3. **Analyst** and **Tactical Coach** run concurrently, then the **Broadcaster** (`agents/workflow.py`).
+4. Validate in code (`agents.validation`). On failure, make **one repair** call that lists the rejections, then validate again.
+5. Publish create-if-absent (`insight_id = moment_id`) and complete the job.
+
+**Outcomes.**
+
+| Situation | Insight | Job |
+| --- | --- | --- |
+| Valid AI output | `generation_mode: ai` | `ready` |
+| Still invalid after repair, non-transient model error, or no model configured | deterministic fallback; its limitation states why | `fallback` |
+| Timeout, 429 or 5xx with attempts left | none | `retry_wait`, backoff 10 s × 2^(attempt−1) or the service's `Retry-After` (+ ≤ 25% jitter, cap 120 s) |
+| Same, on the last attempt | fallback | `fallback` |
+| Moment missing | none | `failed` |
+
+**Guarantees.**
+
+- Metrics in an AI insight are copied from the moment's typed fields. Prose may only use numbers, names and IDs already in the evidence.
+- A final schema and validator check runs before anything is written.
+- The 45 s narration budget must be shorter than the lease.
+- A worker whose lease expired loses at `complete` (`StaleJob`). Its insight write is ignored because the insight already exists.
+
+**Model.** `agents/model.py` `AzureOpenAIClient` calls `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` with an Entra ID token from `az login` (scope `cognitiveservices`, role **Cognitive Services OpenAI User**). There are no API keys. Without those settings the worker runs explicitly **fallback-only**, and every insight says so.
+
+**Insights** are stored in `agents/insights.py` `SqliteInsightStore` (`OMNIPITCH_NARRATION_DB`, default `data/generated/narration.sqlite3`). This is a local stand-in until the shared store gains `create_insight`/`get_insight` (Cosmos `insights` container).
+
 ## Later-phase cloud flow — not implemented
 
 ```mermaid

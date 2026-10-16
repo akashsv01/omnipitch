@@ -21,7 +21,14 @@ def _fmt(value: float) -> str:
     return f"{value:g}" if abs(value) >= 10 or value == int(value) else f"{value:.1f}".rstrip("0").rstrip(".")
 
 
-def build_fallback_insight(moment: dict, context: dict) -> dict:
+def fallback_limitation(reason: str | None) -> str:
+    """Say why the template was used; never imply AI wrote it."""
+    if not reason:
+        return FALLBACK_LIMITATION
+    return f"AI narration unavailable ({reason}); this text is a deterministic template from verified metrics."
+
+
+def build_fallback_insight(moment: dict, context: dict, reason: str | None = None) -> dict:
     """context: {"teams": {id: name}, "players": {id: name}, "home": id, "away": id}."""
     teams, players = context["teams"], context["players"]
     team = teams.get(moment["team_id"], "The team")
@@ -75,6 +82,6 @@ def build_fallback_insight(moment: dict, context: dict) -> dict:
         "schema_version": INSIGHT_SCHEMA_VERSION, "run_id": moment["run_id"], "match_id": moment["match_id"],
         "moment_id": moment["moment_id"], "headline": headline, "casual_text": casual, "analyst_text": analyst,
         "language": "en", "evidence_ids": list(moment["evidence_ids"]), "metrics": [dict(m) for m in moment["metrics"]],
-        "limitations": list(moment["limitations"]) + [FALLBACK_LIMITATION],
+        "limitations": list(moment["limitations"]) + [fallback_limitation(reason)],
         "generation_mode": "fallback", "knowledge_source_ids": [f"{rule}-v1"],
     }
