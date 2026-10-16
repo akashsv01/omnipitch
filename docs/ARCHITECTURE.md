@@ -278,9 +278,10 @@ Prefix-stable detection plus create-if-absent makes duplicates, overlapping look
 | Subscription / RG | UF Azure for Students / `rg-omnipitch-uf` (West US; the policy blocks East US) |
 | Account | `omnipitch-cosmos-d5e1ec`, free tier, single region, Session consistency, local periodic backup |
 | Database | `omnipitch`, shared 1000 RU/s (the free-tier allowance) |
-| Containers | `moments` and `jobs` (`/run_id`), `cursors` (`/cursor_id`) |
+| Containers | `moments`, `jobs` and `insights` (`/run_id`), `cursors` (`/cursor_id`). `insights` was added 2026-10-16 for the narration worker (`id = insight_id = moment_id`, create-only). |
 | Access | Entra ID: built-in Data Contributor at `/dbs/omnipitch`, plus the custom `OmniPitch Metadata Reader` (`readMetadata`) at `/`. Both are needed: cross-partition queries read account metadata. |
 | Config | `COSMOS_ENDPOINT`, `COSMOS_DATABASE` in `services/api/.env`. `COSMOS_KEY` comes only from a teammate's environment, never the repo. |
+| Cross-tenant access | UF blocks guest accounts, so the UMD narration worker uses the account's **secondary** key, shared privately and kept only in that teammate's local `.env` as `COSMOS_KEY`. Regenerating the secondary key revokes it without affecting Entra access. A key grants read and write on the whole account (today only `omnipitch`). |
 
 Live Cosmos tests are opt-in: set `OMNIPITCH_TEST_COSMOS_ENDPOINT` to the account endpoint and run `pytest services/api/tests/test_bridge.py`.
 
