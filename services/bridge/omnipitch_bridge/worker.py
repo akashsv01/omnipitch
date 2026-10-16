@@ -7,11 +7,14 @@ Run from the repository root after `az login` (identity needs Viewer on the Fabr
 
 Eventhouse settings come from services/api/.env (EVENTHOUSE_QUERY_URI, EVENTHOUSE_DATABASE,
 EVENTHOUSE_TABLE). Records go to the local SQLite store (OMNIPITCH_BRIDGE_DB, default
-data/generated/bridge.sqlite3) until the Cosmos DB store exists. Logs are JSON lines without secrets.
+data/generated/bridge.sqlite3), or with --store cosmos to Cosmos DB (COSMOS_ENDPOINT, COSMOS_DATABASE;
+Entra ID, or COSMOS_KEY from the environment only). Each cycle also runs the job recovery pass.
+Logs are JSON lines without secrets.
 """
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import timedelta
 import json
 from pathlib import Path
@@ -40,6 +43,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--interval", type=float, default=2.0, help="Seconds between cycles (default 2)")
     parser.add_argument("--lookback", type=float, default=120.0, help="Seconds of ingestion-time overlap (default 120)")
     parser.add_argument("--reconcile-every", type=int, default=30, help="Full pass over recent runs every N cycles; 0 disables")
+    parser.add_argument("--store", choices=("sqlite", "cosmos"), default=None,
+                        help="Record store (default OMNIPITCH_BRIDGE_STORE or sqlite)")
     parser.add_argument("--db", help="SQLite store path (default data/generated/bridge.sqlite3)")
     args = parser.parse_args(argv)
 
@@ -49,16 +54,28 @@ def main(argv: list[str] | None = None) -> int:
     except (ConfigError, EventhouseError) as exc:
         log({"stage": "startup", "outcome": "error", "error": str(exc)})
         return 2
-    store = SqliteStore(args.db)
+    kind = args.store or os.getenv("OMNIPITCH_BRIDGE_STORE", "sqlite")
+    if kind == "cosmos":
+        endpoint = os.getenv("COSMOS_ENDPOINT")
+        if not endpoint or not endpoint.startswith("https://") or "AccountKey" in endpoint:
+            log({"stage": "startup", "outcome": "error", "error": "COSMOS_ENDPOINT must be the https account endpoint (no keys)."})
+            return 2
+        from .cosmos_store import CosmosStore
+        store = CosmosStore(endpoint, os.getenv("COSMOS_DATABASE", "omnipitch"), config.tenant_id)
+    else:
+        store = SqliteStore(args.db)
     cursor_id = f"eventhouse:{config.eventhouse_database}.{config.eventhouse_table}"
     bridge = Bridge(reader, store, cursor_id, timedelta(seconds=args.lookback), log=log)
-    log({"stage": "startup", "outcome": "ok", "source": cursor_id, "cursor": store.get_cursor(cursor_id)})
+    log({"stage": "startup", "outcome": "ok", "source": cursor_id, "store": kind, "cursor": store.get_cursor(cursor_id)})
 
     cycle = 0
     while True:
         cycle += 1
         try:
             bridge.run_once()
+            failed = store.expire_exhausted(utcnow())  # Recovery: abandoned last attempts become visibly failed.
+            if failed:
+                log({"stage": "recovery", "failed_jobs": [job["job_id"] for job in failed]})
             if args.reconcile_every and cycle % args.reconcile_every == 0:
                 bridge.reconcile()
         except EventhouseError as exc:

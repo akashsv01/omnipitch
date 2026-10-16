@@ -75,7 +75,7 @@ Phase 3 follows the guide's gate: a live detected moment becomes one validated i
 
 **Bridge, 2026-10-16 (merged to `main` as 479e3fa via PR #4).** `services/bridge/` polls Eventhouse for runs ingested after a durable cursor minus a 2-minute lookback (`analytics/kql/runs_since.kql`), re-reads each touched run deduplicated, validates rows, analyses only the gap-free prefix with the shared detector, and creates moment and job records only if absent. The cursor advances only after all touched runs are written, and a periodic reconcile re-reads recent runs regardless of the cursor. Records go to a local SQLite store (`data/generated/bridge.sqlite3`) whose interface is meant to be implemented by a Cosmos DB store. Jobs have conditional, version-checked claim and complete, lease expiry, `retry_wait`, and at most 2 attempts; an abandoned last attempt becomes `failed`. Verification: 10 new tests (87 in total) cover the job contract, one pending job per moment, 25 duplicates plus reprocessing creating nothing, restart from the persisted cursor, a late out-of-order event delaying moments without changing frozen evidence, the lookback, a failed cycle keeping the cursor, invalid rows, and lease, claim, complete and retry behaviour. Replacing create-only-if-absent with overwrite made the duplicate test fail, as intended. Live, against the UF Eventhouse: the first cycle read `smoke-20261016-a` (400 rows after dedup, 0 rejected) and created 24 moments and 24 pending jobs, matching local detection on the seeded fixture; a second process restart created 0. Not done: the Cosmos DB store (UF Azure for Students allows only westus, germanywestcentral, francecentral, norwayeast and denmarkeast; `Microsoft.DocumentDB` is not registered; no Cosmos account exists, so the free tier is unused), deployment, and the narration worker that claims jobs.
 
-**Narration worker, 2026-10-16 (branch `phase3-narration`, not merged).** `services/agents/` claims jobs with `claim_next`, builds the evidence packet, runs Analyst and Tactical Coach concurrently and then the Broadcaster, validates in code, allows one repair, and otherwise falls back deterministically.
+**Narration worker, 2026-10-16 (merged to `main` via PR #5).** `services/agents/` claims jobs with `claim_next`, builds the evidence packet, runs Analyst and Tactical Coach concurrently and then the Broadcaster, validates in code, allows one repair, and otherwise falls back deterministically.
 
 - Outcomes: timeouts, 429s and 5xx responses use `retry_wait` with bounded backoff while attempts remain, and the fallback on the last attempt.
 - Insights are created only if absent (`insight_id = moment_id`) in a local `SqliteInsightStore`. Jobs complete as `ready` (AI) or `fallback`.
@@ -101,7 +101,21 @@ Not done:
 - No Cosmos client: where the store lives and how cross-tenant access works is still to be agreed with the bridge owner.
 - Evidence actors beyond the moment's player are not on bridge moments, so the validator rejects other player names (stricter).
 
-- [~] Bridge worker with durable cursor, lookback, stable moment IDs and conditional moment/job records: done against a local SQLite store; Cosmos DB store pending.
+**Cosmos DB store, 2026-10-16.** Resources, each approved by the owner, in UF Azure for Students (the policy allows only westus, germanywestcentral, francecentral, norwayeast and denmarkeast):
+
+- registered `Microsoft.DocumentDB`;
+- resource group `rg-omnipitch-uf` (West US);
+- account `omnipitch-cosmos-d5e1ec`: **free tier**, single region West US, Session consistency, local periodic backup;
+- database `omnipitch` with **shared 1000 RU/s** (the free-tier allowance), containers `moments` and `jobs` (`/run_id`) and `cursors` (`/cursor_id`).
+
+Access is Entra ID only, for the owner: built-in Data Contributor scoped to `/dbs/omnipitch`, plus a custom `OmniPitch Metadata Reader` role (only `readMetadata`) at the account root. Cross-partition queries need that root role; a database-scoped role alone returned 403. `CosmosStore` implements the same methods as `SqliteStore`, with create-if-absent (409) and ETag-conditional replace (412 → stale); both stores share one set of job-transition functions. The worker takes `--store cosmos` and runs the recovery pass every cycle.
+
+Verification: the bridge tests run against both stores, 19 passed (9 against live Cosmos, opt-in with `OMNIPITCH_TEST_COSMOS_ENDPOINT`; each test uses its own run ID and purges its records). The first live attempt exposed a missing `close()` on the sync Cosmos client; it was fixed. Live: `run_bridge.py --store cosmos --once` on `smoke-20261016-a` created 24 moments and 24 `pending` jobs, all schema-valid and covering all five rules. A second process created 0, and the cursor persisted in Cosmos. The containers then held exactly 24 moments, 24 jobs and 1 cursor.
+
+Not done: Akash's cross-tenant access to Cosmos (key or guest role, to be agreed); a Cosmos client for the narration worker (it uses the bridge's `SqliteStore` today, and `CosmosStore` has the same methods); deployment of the bridge.
+
+- [x] Bridge worker with durable cursor, lookback, stable moment IDs and conditional moment/job records in Cosmos DB (verified live 2026-10-16; not deployed).
+- [ ] Phase 3 gate (joint): a live moment becomes one validated insight, with no duplicates on restart and a fallback on model failure. Needs the narration worker running against the Cosmos store and a live model.
 - [x] Define evidence bundles and validated narrative output boundaries (`agents.prompts.evidence_packet`, `agents.validation`, 34-case eval set).
 - [ ] Integrate Microsoft Agent Framework/Foundry only when access and scope permit.
 - [~] Grounded explanations, honest limitations and fixture/AI/fallback modes: the narration workflow, validation, repair and fallback are implemented and tested with a fake model; a live model is pending.

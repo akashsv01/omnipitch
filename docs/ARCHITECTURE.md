@@ -271,13 +271,18 @@ Prefix-stable detection plus create-if-absent makes duplicates, overlapping look
 
 **Job leases.** `claim_next(owner, now, lease)` takes the highest-priority claimable job: `pending`, a due `retry_wait`, or `processing` with an expired lease. It increments `attempt` and sets the lease with an update conditional on `version`, so two workers cannot claim the same job. `complete(...)` is accepted only from the current lease holder at the version it read. `ready` and `fallback` require an `insight_id`. `expire_exhausted(now)` marks an abandoned last attempt `failed` with a visible reason.
 
-**Storage.** `SqliteStore` (local, `OMNIPITCH_BRIDGE_DB`, default `data/generated/bridge.sqlite3`) is the reference implementation. The planned Cosmos DB store keeps the same methods:
+**Storage.** `SqliteStore` (local, `OMNIPITCH_BRIDGE_DB`, default `data/generated/bridge.sqlite3`) and `CosmosStore` (`--store cosmos`) share the job-transition functions in `store.py`. They differ only in how a conditional write is done: a SQL version check, or create-if-absent (409) plus ETag `IfNotModified` replace (412).
 
-- containers `moments` and `jobs`, partitioned by `/run_id`;
-- create-if-absent for moments and jobs;
-- ETag-conditional replace for claim and complete.
+| Cosmos DB (verified 2026-10-16) | Value |
+| --- | --- |
+| Subscription / RG | UF Azure for Students / `rg-omnipitch-uf` (West US; the policy blocks East US) |
+| Account | `omnipitch-cosmos-d5e1ec`, free tier, single region, Session consistency, local periodic backup |
+| Database | `omnipitch`, shared 1000 RU/s (the free-tier allowance) |
+| Containers | `moments` and `jobs` (`/run_id`), `cursors` (`/cursor_id`) |
+| Access | Entra ID: built-in Data Contributor at `/dbs/omnipitch`, plus the custom `OmniPitch Metadata Reader` (`readMetadata`) at `/`. Both are needed: cross-partition queries read account metadata. |
+| Config | `COSMOS_ENDPOINT`, `COSMOS_DATABASE` in `services/api/.env`. `COSMOS_KEY` comes only from a teammate's environment, never the repo. |
 
-Not implemented yet. UF Azure for Students allows only westus, germanywestcentral, francecentral, norwayeast and denmarkeast, so the account would go in West US with the free tier.
+Live Cosmos tests are opt-in: set `OMNIPITCH_TEST_COSMOS_ENDPOINT` to the account endpoint and run `pytest services/api/tests/test_bridge.py`.
 
 ## Narration worker (Phase 3 AI half)
 
