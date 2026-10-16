@@ -5,6 +5,9 @@ Run from the repository root:
     .venv/Scripts/python.exe services/agents/run_narrator.py --once            # drain claimable jobs, then exit
     .venv/Scripts/python.exe services/agents/run_narrator.py --interval 2      # keep polling
 
+Store: --store sqlite (default) or --store cosmos (COSMOS_ENDPOINT, COSMOS_DATABASE; Entra ID, or COSMOS_KEY
+from the environment only, for a teammate in another tenant). Containers: jobs and moments (bridge), insights.
+
 Mode is explicit. With AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT set (services/api/.env or the
 environment) it calls that deployment with Entra ID (`az login`; identity needs "Cognitive Services
 OpenAI User"). Without them it runs fallback-only and every job is labelled as such; it never pretends
@@ -52,26 +55,50 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--once", action="store_true", help="Drain claimable jobs once and exit")
     parser.add_argument("--interval", type=float, default=2.0)
+    parser.add_argument("--store", choices=("sqlite", "cosmos"), default=None,
+                        help="Job and insight store (default OMNIPITCH_BRIDGE_STORE or sqlite)")
     parser.add_argument("--bridge-db", help="Bridge SQLite store (default data/generated/bridge.sqlite3)")
     parser.add_argument("--narration-db", help="Insight store (default data/generated/narration.sqlite3)")
+    parser.add_argument("--fallback-only", action="store_true",
+                        help="Never call a model, even if AZURE_OPENAI_* is set; every insight is a labelled fallback")
+    parser.add_argument("--max-jobs", type=int, default=1000, help="Stop after this many jobs per drain (default 1000)")
+    parser.add_argument("--run-id", help="Only claim jobs of this run (recommended for dry runs and tests)")
     args = parser.parse_args(argv)
     load_env_file()
     try:
-        config = AzureOpenAIConfig.from_env()
+        config = None if args.fallback_only else AzureOpenAIConfig.from_env()
     except ValueError as exc:
         log({"stage": "startup", "outcome": "error", "error": str(exc)})
         return 2
+    kind = args.store or os.getenv("OMNIPITCH_BRIDGE_STORE", "sqlite")
+    if kind == "cosmos":
+        endpoint = os.getenv("COSMOS_ENDPOINT", "")
+        if not endpoint.startswith("https://") or "AccountKey" in endpoint:
+            log({"stage": "startup", "outcome": "error", "error": "COSMOS_ENDPOINT must be the https account endpoint (no keys)."})
+            return 2
+        from omnipitch_bridge.cosmos_store import CosmosStore
+        from agents.insights import CosmosInsightStore
+        database, tenant = os.getenv("COSMOS_DATABASE", "omnipitch"), os.getenv("COSMOS_TENANT_ID") or None
+        store = CosmosStore(endpoint, database, tenant)
+        insights = CosmosInsightStore(endpoint, database, tenant, client=store.client)
+        auth = "account key (COSMOS_KEY)" if os.getenv("COSMOS_KEY") else "Entra ID"
+    else:
+        store, insights, auth = SqliteStore(args.bridge_db), SqliteInsightStore(args.narration_db), "local file"
+    if args.run_id:
+        from agents.scoped import RunScopedStore
+        store = RunScopedStore(store, args.run_id)
     client = AzureOpenAIClient(config) if config else None
     owner = f"narrator-{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
-    worker = NarrationWorker(SqliteStore(args.bridge_db), SqliteInsightStore(args.narration_db), client, owner,
-                             context_for, log=log)
-    log({"stage": "startup", "outcome": "ok", "owner": owner,
-         "mode": client.name if client else "fallback-only (AZURE_OPENAI_ENDPOINT/DEPLOYMENT not set)"})
+    worker = NarrationWorker(store, insights, client, owner, context_for, log=log)
+    mode = client.name if client else ("fallback-only (--fallback-only)" if args.fallback_only
+                                       else "fallback-only (AZURE_OPENAI_ENDPOINT/DEPLOYMENT not set)")
+    log({"stage": "startup", "outcome": "ok", "owner": owner, "store": kind, "auth": auth, "mode": mode,
+         "scope": f"run {args.run_id}" if args.run_id else "all runs"})
     while True:
         expired = worker.store.expire_exhausted(utcnow())
         if expired:
             log({"stage": "recovery", "failed_jobs": [job["job_id"] for job in expired]})
-        results = worker.drain()
+        results = worker.drain(args.max_jobs)
         if args.once:
             log({"stage": "summary", "processed": len(results),
                  "by_status": {s: sum(r["status"] == s for r in results) for s in {r["status"] for r in results}}})
