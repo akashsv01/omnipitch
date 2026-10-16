@@ -114,6 +114,47 @@ Verification: the bridge tests run against both stores, 19 passed (9 against liv
 
 Not done: Akash's cross-tenant access to Cosmos (key or guest role, to be agreed); a Cosmos client for the narration worker (it uses the bridge's `SqliteStore` today, and `CosmosStore` has the same methods); deployment of the bridge.
 
+**Narration on Cosmos DB and a live model, 2026-10-16 (branch `phase3-narration-cosmos`, not merged).** The narration worker can use Tanmayee's Cosmos DB (UF tenant, West US, free tier) through `--store cosmos`.
+
+- **Insights:** a new `CosmosInsightStore` (container `insights`, `/run_id`, `create_item` only, 409 → no overwrite).
+- **Auth:** an account key held only in the developer's local `.env`, because UF blocks guest accounts.
+- **Run scope:** `--run-id` scopes claims to one run (`RunScopedStore`), because the store's `claim_next` is global.
+- **No model:** `--fallback-only` forces deterministic narration.
+
+Verification:
+
+- **Offline:** 101 passed, 13 skipped (opt-in live tests).
+- **Live Cosmos tests:** with `OMNIPITCH_TEST_COSMOS_ENDPOINT` and `COSMOS_KEY` set, `test_narration_cosmos.py` plus `test_bridge.py` gave **23 passed**:
+  - fallback drain plus restart;
+  - the AI-ready path with a fake model;
+  - two concurrent workers;
+  - a lease-expiry duplicate;
+  - the Cosmos-backed bridge tests.
+- **Incident during that run:** `test_bridge.py::test_retry_wait_is_claimable_after_its_delay` calls the global `claim_next` in a loop. On the shared account it claimed all 24 real `smoke-20261016-a` jobs (`worker-b`, attempt 1, test clock 03:00). Its cleanup purges only its own run. The 24 jobs were restored to `pending`/attempt 0 with ETag-conditional writes, touching only jobs with that exact fingerprint. No insights were written and nothing was deleted. **Do not run the Cosmos-backed bridge tests against a shared database until they scope claims to their own run.**
+- **Dry run (fallback-only, two workers started together, then a restart) on `smoke-20261016-a`:**
+  - workers A and B each processed 12;
+  - the restart processed 0;
+  - Cosmos afterwards: 24 jobs `fallback` (attempt 1, each pointing to its own insight) and 24 insights `fallback`;
+  - 24 distinct IDs; 24 of 24 pass the insight schema and the code validator.
+
+**Model, 2026-10-16** (Azure for Students, East US, `rg-omnipitch-dev`):
+
+- `Microsoft.CognitiveServices` registered.
+- Quota: `gpt-4o-mini` is 0 in eastus; `gpt4.1-mini` GlobalStandard is 200K TPM.
+- Created `omnipitch-aoai-gvoh7` (Azure OpenAI S0, `disableLocalAuth=true`) with deployment `gpt-41-mini` (`gpt-4.1-mini` 2025-04-14, GlobalStandard, capacity 10 = 10K TPM cap).
+- The developer has "Cognitive Services OpenAI User". A live Entra ID call succeeded.
+
+Read-only probe (no writes) on three real moments:
+
+- **prompts-v1:** 3 of 3 rejected even after repair. The model put evidence-ID digits (`0340`) and self-computed times (`48.583`) in prose; the prompt told it to "cite evidence IDs" while the validator rejected their digits.
+- **Fix:**
+  - The validator now ignores only this moment's own evidence IDs in prose; an unknown ID is an error.
+  - The prompt (`prompts-v2`) supplies a clock label instead of milliseconds and forbids computed numbers.
+  - Two tests were added.
+- **prompts-v2:** 2 of 3 valid AI (goal, transition). The threat-gain moment was still rejected for an ID-like `0012`, which would fall back with the reason recorded.
+
+Not done: the joint Phase 3 gate on a fresh run. `gate-20261016-a` (400 + 25 events) was published from Event Hubs, but no bridge jobs appeared within 7.5 minutes, so the bridge must be run on the Eventhouse side. `services/api/tests/phase3_gate.py` covers live AI, forced failure, restart and one-insight-per-moment, and currently reports `bridge_jobs` UNVERIFIED.
+
 - [x] Bridge worker with durable cursor, lookback, stable moment IDs and conditional moment/job records in Cosmos DB (verified live 2026-10-16; not deployed).
 - [ ] Phase 3 gate (joint): a live moment becomes one validated insight, with no duplicates on restart and a fallback on model failure. Needs the narration worker running against the Cosmos store and a live model.
 - [x] Define evidence bundles and validated narrative output boundaries (`agents.prompts.evidence_packet`, `agents.validation`, 34-case eval set).
