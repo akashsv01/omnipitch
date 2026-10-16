@@ -1,0 +1,4 @@
+# Bridge worker: reads Eventhouse with the API's reader and validates records against shared contracts.
+-r ../api/requirements-azure.txt
+jsonschema==4.23.0
+rfc3339-validator==0.1.4

@@ -4,7 +4,7 @@ import sys
 
 os.environ.setdefault("OMNIPITCH_DB_PATH", ":memory:")
 ROOT = Path(__file__).resolve().parents[3]
-for package in ("services/api", "services/simulator", "services/analytics", "services/agents"):
+for package in ("services/api", "services/simulator", "services/analytics", "services/agents", "services/bridge"):
     sys.path.insert(0, str(ROOT / package))
 
 # Tests control configuration through monkeypatched environment variables only; a developer's

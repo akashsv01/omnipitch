@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "job_id": "smoke-20261016-a:goal:v1:evt-0340",
+  "moment_id": "smoke-20261016-a:goal:v1:evt-0340",
+  "run_id": "smoke-20261016-a",
+  "match_id": "harbor-vale",
+  "rule": "goal",
+  "priority": 3,
+  "source_sequence": 340,
+  "status": "pending",
+  "attempt": 0,
+  "max_attempts": 2,
+  "lease_owner": null,
+  "lease_expires_at": null,
+  "next_attempt_at": null,
+  "last_error": null,
+  "insight_id": null,
+  "version": 1,
+  "created_at": "2026-10-16T03:02:10.000Z",
+  "updated_at": "2026-10-16T03:02:10.000Z"
+}
