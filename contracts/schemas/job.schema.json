@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnipitch.local/contracts/job.schema.json",
+  "title": "job",
+  "description": "Narration job for one detected moment. The bridge creates it as pending; a narration worker claims it with a lease, then records ready, fallback or failed. job_id equals moment_id, so creating it twice has no effect.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "job_id",
+    "moment_id",
+    "run_id",
+    "match_id",
+    "rule",
+    "priority",
+    "source_sequence",
+    "status",
+    "attempt",
+    "max_attempts",
+    "lease_owner",
+    "lease_expires_at",
+    "next_attempt_at",
+    "last_error",
+    "insight_id",
+    "version",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "moment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "match_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rule": {
+      "enum": [
+        "goal",
+        "chance",
+        "threat_gain",
+        "transition",
+        "pressing_change"
+      ]
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "source_sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "description": "pending -> processing -> ready | fallback | failed; processing -> retry_wait -> processing while attempts remain.",
+      "enum": [
+        "pending",
+        "processing",
+        "retry_wait",
+        "ready",
+        "fallback",
+        "failed"
+      ]
+    },
+    "attempt": {
+      "description": "Number of claims so far; incremented on each claim.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "lease_owner": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "lease_expires_at": {
+      "description": "UTC; a processing job whose lease has expired may be claimed again.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "next_attempt_at": {
+      "description": "UTC; set for retry_wait.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "last_error": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    },
+    "insight_id": {
+      "description": "Set when status is ready or fallback; the insight's generation_mode says which.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "version": {
+      "description": "Incremented on every write. Updates are conditional on the version read (ETag stand-in).",
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

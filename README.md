@@ -69,6 +69,7 @@ services/api/        FastAPI, SQLite ledger/state, replay and tests
 services/simulator/  Seeded state-machine match simulator and CLI
 services/analytics/  Deterministic metrics and moment detection (Python adapter)
 services/agents/     Role prompts, validator, fallback narrator, eval fixtures
+services/bridge/     Bridge worker: Eventhouse -> moments and narration jobs (SQLite store; Cosmos pending)
 analytics/           Versioned illustrative threat grid and KQL (setup + queries)
 infra/               Azure CLI script that recreates the Event Hubs resources
 contracts/           Shared JSON Schemas (v1.1) and committed examples
