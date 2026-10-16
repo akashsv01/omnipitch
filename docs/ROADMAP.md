@@ -73,12 +73,38 @@ Phase 1 was first closed on 2026-10-13 with completed-pass replay only; the 2026
 
 Phase 3 follows the guide's gate: a live detected moment becomes one validated insight; repeated events or worker restarts create no duplicates; a model failure yields a factual fallback. Work is split: the data half (bridge worker, `services/bridge/`) and the AI half (narration worker, `services/agents/`) meet at the job record (`contracts/schemas/job.schema.json`).
 
-**Bridge, 2026-10-16 (branch `phase3-bridge`, not merged).** `services/bridge/` polls Eventhouse for runs ingested after a durable cursor minus a 2-minute lookback (`analytics/kql/runs_since.kql`), re-reads each touched run deduplicated, validates rows, analyses only the gap-free prefix with the shared detector, and creates moment and job records only if absent. The cursor advances only after all touched runs are written, and a periodic reconcile re-reads recent runs regardless of the cursor. Records go to a local SQLite store (`data/generated/bridge.sqlite3`) whose interface is meant to be implemented by a Cosmos DB store. Jobs have conditional, version-checked claim and complete, lease expiry, `retry_wait`, and at most 2 attempts; an abandoned last attempt becomes `failed`. Verification: 10 new tests (87 in total) cover the job contract, one pending job per moment, 25 duplicates plus reprocessing creating nothing, restart from the persisted cursor, a late out-of-order event delaying moments without changing frozen evidence, the lookback, a failed cycle keeping the cursor, invalid rows, and lease, claim, complete and retry behaviour. Replacing create-only-if-absent with overwrite made the duplicate test fail, as intended. Live, against the UF Eventhouse: the first cycle read `smoke-20261016-a` (400 rows after dedup, 0 rejected) and created 24 moments and 24 pending jobs, matching local detection on the seeded fixture; a second process restart created 0. Not done: the Cosmos DB store (UF Azure for Students allows only westus, germanywestcentral, francecentral, norwayeast and denmarkeast; `Microsoft.DocumentDB` is not registered; no Cosmos account exists, so the free tier is unused), deployment, and the narration worker that claims jobs.
+**Bridge, 2026-10-16 (merged to `main` as 479e3fa via PR #4).** `services/bridge/` polls Eventhouse for runs ingested after a durable cursor minus a 2-minute lookback (`analytics/kql/runs_since.kql`), re-reads each touched run deduplicated, validates rows, analyses only the gap-free prefix with the shared detector, and creates moment and job records only if absent. The cursor advances only after all touched runs are written, and a periodic reconcile re-reads recent runs regardless of the cursor. Records go to a local SQLite store (`data/generated/bridge.sqlite3`) whose interface is meant to be implemented by a Cosmos DB store. Jobs have conditional, version-checked claim and complete, lease expiry, `retry_wait`, and at most 2 attempts; an abandoned last attempt becomes `failed`. Verification: 10 new tests (87 in total) cover the job contract, one pending job per moment, 25 duplicates plus reprocessing creating nothing, restart from the persisted cursor, a late out-of-order event delaying moments without changing frozen evidence, the lookback, a failed cycle keeping the cursor, invalid rows, and lease, claim, complete and retry behaviour. Replacing create-only-if-absent with overwrite made the duplicate test fail, as intended. Live, against the UF Eventhouse: the first cycle read `smoke-20261016-a` (400 rows after dedup, 0 rejected) and created 24 moments and 24 pending jobs, matching local detection on the seeded fixture; a second process restart created 0. Not done: the Cosmos DB store (UF Azure for Students allows only westus, germanywestcentral, francecentral, norwayeast and denmarkeast; `Microsoft.DocumentDB` is not registered; no Cosmos account exists, so the free tier is unused), deployment, and the narration worker that claims jobs.
+
+**Narration worker, 2026-10-16 (branch `phase3-narration`, not merged).** `services/agents/` claims jobs with `claim_next`, builds the evidence packet, runs Analyst and Tactical Coach concurrently and then the Broadcaster, validates in code, allows one repair, and otherwise falls back deterministically.
+
+- Outcomes: timeouts, 429s and 5xx responses use `retry_wait` with bounded backoff while attempts remain, and the fallback on the last attempt.
+- Insights are created only if absent (`insight_id = moment_id`) in a local `SqliteInsightStore`. Jobs complete as `ready` (AI) or `fallback`.
+- The model client (`AzureOpenAIClient`) uses Entra ID only. With no endpoint configured, the worker runs explicitly fallback-only.
+
+Verification: 10 new tests (97 in total) against the bridge's `SqliteStore` and a scripted fake model, with no tokens. They cover:
+- valid AI output becoming `ready`, with metrics copied from evidence;
+- one successful repair;
+- invalid output after repair becoming a fallback with a stated reason;
+- timeout → `retry_wait` → fallback on attempt 2;
+- `Retry-After` honoured;
+- a non-transient error and fallback-only mode;
+- two concurrent workers handling 12 jobs exactly once;
+- a duplicate claim after lease expiry publishing one insight;
+- budget-versus-lease validation;
+- every detected rule's fallback being schema-valid.
+
+Changing create-if-absent to overwrite made the duplicate-claim test fail, as intended. The CLI started in fallback-only mode against an empty store.
+
+Not done:
+- No live model call: `Microsoft.CognitiveServices` is not registered on Azure for Students, so quota is unknown. `gpt-4o-mini` and `gpt-4.1-mini` are offered in eastus. Nothing has been created.
+- No run against the 24 live jobs (they are in the UF bridge store).
+- No Cosmos client: where the store lives and how cross-tenant access works is still to be agreed with the bridge owner.
+- Evidence actors beyond the moment's player are not on bridge moments, so the validator rejects other player names (stricter).
 
 - [~] Bridge worker with durable cursor, lookback, stable moment IDs and conditional moment/job records: done against a local SQLite store; Cosmos DB store pending.
 - [x] Define evidence bundles and validated narrative output boundaries (`agents.prompts.evidence_packet`, `agents.validation`, 34-case eval set).
 - [ ] Integrate Microsoft Agent Framework/Foundry only when access and scope permit.
-- [~] Grounded explanations, honest limitations and fixture/AI/fallback modes: deterministic fallback narration and labels are done; AI generation is pending.
+- [~] Grounded explanations, honest limitations and fixture/AI/fallback modes: the narration workflow, validation, repair and fallback are implemented and tested with a fake model; a live model is pending.
 
 ## Phase 4 — highlights, recap, bilingual text and preferences
 
