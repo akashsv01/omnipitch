@@ -23,6 +23,7 @@ FORBIDDEN = [
     (re.compile(r"\d\s*%"), "percentage not present in evidence"),
 ]
 NUMBER = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?")
+EVENT_ID = re.compile(r"\b[a-z]+-\d{3,}\b")  # e.g. evt-0340, pass-0001
 
 
 def _allowed_numbers(moment: dict) -> set[str]:
@@ -96,7 +97,13 @@ def validate_insight(insight: dict, moment: dict, context: dict) -> list[str]:
         if pattern.search(text):
             errors.append(f"forbidden claim: {reason}")
     allowed = _allowed_numbers(moment)
-    for number in NUMBER.findall(text.replace(context.get("grid_label", "illustrative-threat-v1"), "")):
+    # Evidence IDs of this moment may be cited in prose; their digits are identifiers, not claims.
+    # Any other event-ID-shaped token is an unknown citation and is rejected.
+    for cited in EVENT_ID.findall(text):
+        if cited not in moment["evidence_ids"]:
+            errors.append(f"unknown evidence ID in text: {cited!r}")
+    scrubbed = EVENT_ID.sub(" ", text.replace(context.get("grid_label", "illustrative-threat-v1"), ""))
+    for number in NUMBER.findall(scrubbed):
         if number not in allowed:
             errors.append(f"unsupported number {number!r}")
     actors = {moment.get("player_id")} | set(context.get("evidence_players", []))

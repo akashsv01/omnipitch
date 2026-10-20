@@ -222,3 +222,92 @@ def test_every_detected_rule_falls_back_to_a_valid_insight():
     assert len(results) == len(moments) and {r["status"] for r in results} == {"fallback"}
     for record in insights.insights(RUN):
         assert not list(INSIGHT_VALIDATOR.iter_errors(record["insight"]))
+
+
+def test_run_scoped_worker_never_claims_other_runs():
+    from agents.scoped import RunScopedStore
+    mine = moments_for_test(4)
+    others = [dict(m, run_id="someone-else", moment_id=m["moment_id"].replace(RUN, "someone-else")) for m in mine]
+    store, insights, clock = seeded_store(mine + others), SqliteInsightStore(":memory:"), Clock()
+    results = worker(RunScopedStore(store, RUN), insights, None, clock).drain()
+    assert sorted(r["job_id"] for r in results) == sorted(m["moment_id"] for m in mine)
+    assert {j["status"] for j in store.jobs("someone-else")} == {"pending"}  # Untouched.
+    assert RunScopedStore(store, RUN).expire_exhausted(clock()) == []
+
+
+class FakeContainer:
+    """Minimal Cosmos container semantics: create_item raises 409 on an existing id."""
+
+    def __init__(self):
+        self.items = {}
+
+    def create_item(self, body):
+        from azure.cosmos.exceptions import CosmosResourceExistsError
+        key = (body["run_id"], body["id"])
+        if key in self.items:
+            raise CosmosResourceExistsError(status_code=409, message="Conflict")
+        self.items[key] = dict(body, _etag="e", _ts=1)
+
+    def read_item(self, item, partition_key):
+        from azure.cosmos.exceptions import CosmosResourceNotFoundError
+        try:
+            return self.items[(partition_key, item)]
+        except KeyError:
+            raise CosmosResourceNotFoundError(status_code=404, message="Not found")
+
+    def query_items(self, query, parameters=None, partition_key=None, enable_cross_partition_query=False):
+        rows = [v for (run, _), v in self.items.items() if partition_key is None or run == partition_key]
+        if parameters:
+            rows = [v for v in rows if v["id"] == parameters[0]["value"]]
+        return rows
+
+    def delete_item(self, item, partition_key):
+        self.items.pop((partition_key, item))
+
+
+class FakeCosmosClient:
+    def __init__(self):
+        self.container = FakeContainer()
+
+    def get_database_client(self, name):
+        return self
+
+    def get_container_client(self, name):
+        return self.container
+
+
+def test_cosmos_insight_store_never_overwrites(one_moment):
+    from agents.insights import CosmosInsightStore
+    moment, store, _, clock = one_moment
+    cosmos = CosmosInsightStore("https://example.documents.azure.com:443/", client=FakeCosmosClient())
+    model = ScriptedModel({**ROLE_OK, "broadcaster": [good_broadcaster(moment)]})
+    first = worker(store, cosmos, model, clock).process_one()
+    assert first["status"] == "ready" and first["insight_created"]
+    record = cosmos.get_insight(moment["moment_id"], RUN)
+    assert record["insight"]["generation_mode"] == "ai" and "_etag" not in record and "id" not in record
+    rival = dict(record, insight={**record["insight"], "headline": "overwritten?"}, worker="rival")
+    assert cosmos.create_insight(rival) is False  # 409: existing id is a no-op.
+    assert cosmos.get_insight(moment["moment_id"])["insight"]["headline"] == record["insight"]["headline"]
+    assert len(cosmos.insights(RUN)) == 1
+    cosmos.purge_run(RUN)
+    assert cosmos.insights(RUN) == []
+
+
+def test_prose_may_cite_own_evidence_ids_but_not_others(one_moment):
+    moment, *_ = one_moment
+    context = context_for(moment)
+    cited = dict(build_fallback_insight(moment, context))
+    own = moment["evidence_ids"][0]
+    cited["analyst_text"] = cited["analyst_text"] + f" See {own}."
+    assert validate_insight(cited, moment, context) == []  # Own evidence ID digits are not numeric claims.
+    cited["analyst_text"] = cited["analyst_text"] + " Also evt-9999."
+    assert any("unknown evidence ID in text" in error for error in validate_insight(cited, moment, context))
+    cited["analyst_text"] = "The move took 48.583 minutes."  # A computed number is still rejected.
+    assert any("unsupported number '48.583'" in error for error in validate_insight(cited, moment, context))
+
+
+def test_evidence_packet_gives_clock_label_not_milliseconds(one_moment):
+    from agents.prompts import evidence_packet
+    moment, *_ = one_moment
+    packet = evidence_packet(moment, context_for(moment))
+    assert "match_time_ms" not in packet and packet["clock"].endswith("'")

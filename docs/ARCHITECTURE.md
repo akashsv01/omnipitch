@@ -321,7 +321,28 @@ Live Cosmos tests are opt-in: set `OMNIPITCH_TEST_COSMOS_ENDPOINT` to the accoun
 
 **Model.** `agents/model.py` `AzureOpenAIClient` calls `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_DEPLOYMENT` with an Entra ID token from `az login` (scope `cognitiveservices`, role **Cognitive Services OpenAI User**). There are no API keys. Without those settings the worker runs explicitly **fallback-only**, and every insight says so.
 
-**Insights** are stored in `agents/insights.py` `SqliteInsightStore` (`OMNIPITCH_NARRATION_DB`, default `data/generated/narration.sqlite3`). This is a local stand-in until the shared store gains `create_insight`/`get_insight` (Cosmos `insights` container).
+**Stores.** `--store sqlite` (default, offline) or `--store cosmos`. The default comes from `OMNIPITCH_BRIDGE_STORE`, as in the bridge.
+- **Jobs and moments:** the bridge's `SqliteStore` / `CosmosStore`.
+- **Insights:** `SqliteInsightStore` (`OMNIPITCH_NARRATION_DB`) or `CosmosInsightStore`.
+  - The Cosmos container is `insights`, with `id = insight_id = moment_id` and partition key `/run_id`.
+  - `create_item` only: a 409 means another worker already published, so the call returns `False`.
+  - There is no update or upsert path, so an insight is never overwritten.
+- **Cosmos auth** goes through the bridge's `cosmos_client`: `COSMOS_KEY` from the environment if set (cross-tenant teammate, never committed), otherwise Entra ID.
+- **`--run-id <run>`** wraps the store in `agents/scoped.py` `RunScopedStore`, so the worker claims jobs of that run only. The store's own `claim_next` is global. Use this for dry runs and live tests.
+- **`--fallback-only`** forces deterministic narration even when a model is configured.
+
+**Live model (2026-10-16).**
+
+- **Deployment:** `gpt-41-mini` (`gpt-4.1-mini`, GlobalStandard, 10K TPM cap) on `omnipitch-aoai-gvoh7` (Azure for Students, East US, `rg-omnipitch-dev`).
+- **Auth:** local auth disabled; access needs Entra ID with "Cognitive Services OpenAI User".
+- **Cost:** per token only (no fixed fee). `az group delete -n rg-omnipitch-dev` removes it together with Event Hubs.
+- **Prompts:** `prompts-v2` gives the model a clock label (not milliseconds), keeps IDs out of prose and forbids computed numbers. The validator accepts only this moment's evidence IDs in prose.
+- **Gate:** `services/api/tests/phase3_gate.py --run-id <run>` runs the joint Phase 3 gate:
+  - live AI on a few jobs;
+  - a forced failure through a non-existent deployment;
+  - a fallback-only drain of the rest;
+  - a restart;
+  - one-insight-per-moment accounting.
 
 ## Later-phase cloud flow — not implemented
 

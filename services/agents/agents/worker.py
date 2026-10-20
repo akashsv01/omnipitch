@@ -108,7 +108,7 @@ class NarrationWorker:
                   "insight": insight, "trace": trace, "worker": self.owner, "attempt": job["attempt"],
                   "created_at": iso(self.clock())}
         created = self.insights.create_insight(record)
-        stored = record if created else self.insights.get_insight(insight_id)
+        stored = record if created else self.insights.get_insight(insight_id, moment["run_id"])
         status = "ready" if stored["insight"]["generation_mode"] == "ai" else "fallback"
         error = None if status == "ready" else (reason or "deterministic fallback")
         if not created:
