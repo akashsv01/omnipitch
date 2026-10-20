@@ -213,9 +213,9 @@ def test_job_lease_claim_complete_and_recovery(make, match):
     bridge, store, clock = make(source)
     bridge.run_once()
     total = len(store.jobs(match[0]["run_id"]))
-    first = store.claim_next("worker-a", clock.now)
+    first = store.claim_next("worker-a", clock.now, run_id=match[0]["run_id"])
     assert first["status"] == "processing" and first["attempt"] == 1 and first["priority"] == 3  # Goals first.
-    assert store.claim_next("worker-b", clock.now)["job_id"] != first["job_id"]  # No double claim.
+    assert store.claim_next("worker-b", clock.now, run_id=match[0]["run_id"])["job_id"] != first["job_id"]  # No double claim.
     with pytest.raises(StaleJob):
         store.complete(first, "worker-b", clock.now, "ready", insight_id="x")  # Not the lease holder.
     done = store.complete(first, "worker-a", clock.now, "fallback", insight_id=f"{first['job_id']}:insight")
@@ -224,19 +224,36 @@ def test_job_lease_claim_complete_and_recovery(make, match):
         store.complete(first, "worker-a", clock.now, "ready", insight_id="again")  # Stale version.
 
     # An abandoned lease is reclaimed once; an abandoned last attempt becomes failed, not retried forever.
-    abandoned = store.claim_next("worker-c", clock.now, lease=timedelta(seconds=10))
+    abandoned = store.claim_next("worker-c", clock.now, lease=timedelta(seconds=10), run_id=match[0]["run_id"])
     clock.now += timedelta(seconds=11)
     retaken = None
-    while (job := store.claim_next("worker-d", clock.now, lease=timedelta(seconds=10))) is not None:
+    while (job := store.claim_next("worker-d", clock.now, lease=timedelta(seconds=10), run_id=match[0]["run_id"])) is not None:
         if job["job_id"] == abandoned["job_id"]:
             retaken = job
             break
         store.complete(job, "worker-d", clock.now, "ready", insight_id=f"{job['job_id']}:insight")
     assert retaken is not None and retaken["attempt"] == 2
     clock.now += timedelta(seconds=11)
-    assert [j["job_id"] for j in store.expire_exhausted(clock.now)] == [abandoned["job_id"]]
+    assert [j["job_id"] for j in store.expire_exhausted(clock.now, run_id=match[0]["run_id"])] == [abandoned["job_id"]]
     assert store.get_job(abandoned["job_id"])["status"] == "failed"
     assert len(store.jobs(match[0]["run_id"])) == total
+
+
+def test_claim_and_recovery_can_be_scoped_to_one_run(make, match):
+    other = [dict(event, run_id=match[0]["run_id"] + "-other") for event in match]
+    source = FakeEventhouse()
+    source.ingest(match + other, T0)
+    bridge, store, clock = make(source)
+    try:
+        bridge.run_once()
+        claimed = []
+        while (job := store.claim_next("worker-a", clock.now, run_id=match[0]["run_id"])) is not None:
+            claimed.append(job)
+        assert claimed and {job["run_id"] for job in claimed} == {match[0]["run_id"]}
+        assert all(job["status"] == "pending" for job in store.jobs(other[0]["run_id"]))  # Untouched.
+    finally:
+        if hasattr(store, "purge_run"):
+            store.purge_run(other[0]["run_id"])
 
 
 def test_retry_wait_is_claimable_after_its_delay(make, match):
@@ -244,14 +261,14 @@ def test_retry_wait_is_claimable_after_its_delay(make, match):
     source.ingest(match, T0)
     bridge, store, clock = make(source)
     bridge.run_once()
-    job = store.claim_next("worker-a", clock.now)
+    job = store.claim_next("worker-a", clock.now, run_id=match[0]["run_id"])
     store.complete(job, "worker-a", clock.now, "retry_wait", error="model timeout", retry_after=timedelta(seconds=30))
     ids_now = set()
-    while (other := store.claim_next("worker-b", clock.now)) is not None:
+    while (other := store.claim_next("worker-b", clock.now, run_id=match[0]["run_id"])) is not None:
         ids_now.add(other["job_id"])
     assert job["job_id"] not in ids_now
     clock.now += timedelta(seconds=31)
-    again = store.claim_next("worker-b", clock.now)
+    again = store.claim_next("worker-b", clock.now, run_id=match[0]["run_id"])
     assert again["job_id"] == job["job_id"] and again["attempt"] == 2
     with pytest.raises(ValueError):
         store.complete(again, "worker-b", clock.now, "retry_wait")  # Attempts exhausted: fallback or failed only.

@@ -155,6 +155,14 @@ Read-only probe (no writes) on three real moments:
 
 Not done: the joint Phase 3 gate on a fresh run. `gate-20261016-a` (400 + 25 events) was published from Event Hubs, but no bridge jobs appeared within 7.5 minutes, so the bridge must be run on the Eventhouse side. `services/api/tests/phase3_gate.py` covers live AI, forced failure, restart and one-insight-per-moment, and currently reports `bridge_jobs` UNVERIFIED.
 
+**Bridge follow-up, 2026-10-20 (branch `fix/bridge-test-isolation`).**
+
+- The bridge (`--store cosmos --once`) processed `gate-20261016-a`: 400 rows, 0 rejected, 24 moments and 24 `pending` jobs (12 threat gain, 8 transition, 2 chance, 1 goal, 1 pressing change). `smoke-20261016-a` created 0.
+- Fixed the shared-account incident: `claim_next` and `expire_exhausted` take an optional `run_id` (`SqliteStore`, and `CosmosStore` with one partition). The bridge tests pass it, and a new test checks that another run's jobs stay `pending`.
+- Verification: 102 passed offline. 21 passed against live Cosmos, and the real `smoke` jobs were byte-identical before and after.
+- During that window, the narration owner's gate script processed the 24 gate jobs (workers `gate-ai`, `gate-fallback`, `gate-forced-failure`): 3 `ready` (AI) and 21 `fallback`, each attempt 1, 24 insights. Some errors read `model error: analyst: HTTP 404`. The gate result is recorded by the narration owner.
+- `agents/scoped.py` can be removed in favour of `run_id`; that is the narration owner's change.
+
 - [x] Bridge worker with durable cursor, lookback, stable moment IDs and conditional moment/job records in Cosmos DB (verified live 2026-10-16; not deployed).
 - [ ] Phase 3 gate (joint): a live moment becomes one validated insight, with no duplicates on restart and a fallback on model failure. Needs the narration worker running against the Cosmos store and a live model.
 - [x] Define evidence bundles and validated narrative output boundaries (`agents.prompts.evidence_packet`, `agents.validation`, 34-case eval set).

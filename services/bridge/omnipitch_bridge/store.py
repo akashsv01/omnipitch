@@ -124,11 +124,15 @@ class SqliteStore:
         if cursor.rowcount != 1:
             raise StaleJob(f"job {job['job_id']} changed since version {expected_version}")
 
-    def claim_next(self, owner: str, now: datetime, lease: timedelta = timedelta(seconds=60)) -> dict | None:
-        """Claim the highest-priority claimable job: pending, retry_wait that is due, or processing with an expired lease."""
+    def claim_next(self, owner: str, now: datetime, lease: timedelta = timedelta(seconds=60),
+                   run_id: str | None = None) -> dict | None:
+        """Claim the highest-priority claimable job: pending, retry_wait that is due, or processing with an expired lease.
+        With run_id, only that run's jobs are considered (tests and dry runs must not claim other runs)."""
+        query, params = "SELECT payload FROM jobs WHERE status IN ('pending', 'retry_wait', 'processing')", ()
+        if run_id is not None:
+            query, params = query + " AND run_id = ?", (run_id,)
         with self.lock:
-            candidates = [json.loads(row[0]) for row in self.connection.execute(
-                "SELECT payload FROM jobs WHERE status IN ('pending', 'retry_wait', 'processing')")]
+            candidates = [json.loads(row[0]) for row in self.connection.execute(query, params)]
             for job in sorted((j for j in candidates if claimable(j, now)), key=claim_order):
                 updated = claimed(job, owner, now, lease)
                 try:
@@ -147,11 +151,14 @@ class SqliteStore:
             self._replace(updated, current["version"])
             return updated
 
-    def expire_exhausted(self, now: datetime) -> list[dict]:
+    def expire_exhausted(self, now: datetime, run_id: str | None = None) -> list[dict]:
         """Recovery pass: a processing job whose lease expired on its last attempt becomes failed, visibly."""
         failed = []
+        query, params = "SELECT payload FROM jobs WHERE status = 'processing'", ()
+        if run_id is not None:
+            query, params = query + " AND run_id = ?", (run_id,)
         with self.lock:
-            for row in self.connection.execute("SELECT payload FROM jobs WHERE status = 'processing'").fetchall():
+            for row in self.connection.execute(query, params).fetchall():
                 job = json.loads(row[0])
                 if is_exhausted(job, now):
                     updated = exhausted(job, now)
