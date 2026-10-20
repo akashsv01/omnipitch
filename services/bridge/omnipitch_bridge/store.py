@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS moments (
 CREATE TABLE IF NOT EXISTS jobs (
   job_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS jobs_by_status ON jobs (status);
+CREATE TABLE IF NOT EXISTS reconciliations (
+  run_id TEXT NOT NULL, period INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (run_id, period));
 """
 TERMINAL = ("ready", "fallback", "failed")
 
@@ -93,6 +95,32 @@ class SqliteStore:
         with self.lock:
             rows = self.connection.execute(
                 "SELECT payload FROM moments WHERE run_id = ? ORDER BY source_sequence, moment_id", (run_id,)).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def moment_detected_at(self, run_id: str) -> dict[str, str]:
+        """moment_id -> detected_at (UTC), for latency tracing."""
+        with self.lock:
+            rows = self.connection.execute("SELECT moment_id, detected_at FROM moments WHERE run_id = ?", (run_id,)).fetchall()
+        return dict(rows)
+
+    # Period reconciliation -------------------------------------------------
+    def create_reconciliation(self, record: dict) -> bool:
+        """Create once per (run_id, period); a reconciled period is never rewritten."""
+        with self.lock:
+            cursor = self.connection.execute("INSERT OR IGNORE INTO reconciliations VALUES (?, ?, ?)",
+                                             (record["run_id"], record["period"], json.dumps(record, sort_keys=True)))
+        return cursor.rowcount == 1
+
+    def get_reconciliation(self, run_id: str, period: int) -> dict | None:
+        with self.lock:
+            row = self.connection.execute("SELECT payload FROM reconciliations WHERE run_id = ? AND period = ?",
+                                          (run_id, period)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def reconciliations(self, run_id: str) -> list[dict]:
+        with self.lock:
+            rows = self.connection.execute("SELECT payload FROM reconciliations WHERE run_id = ? ORDER BY period",
+                                           (run_id,)).fetchall()
         return [json.loads(row[0]) for row in rows]
 
     # Jobs -----------------------------------------------------------------

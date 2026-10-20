@@ -1,0 +1,7 @@
+// First ingestion time per event of one run (latency tracing): identity is (run_id, event_id).
+declare query_parameters(run: string);
+{{TABLE}}
+| where run_id == run
+| summarize ingested = min(ingestion_time()) by event_id, sequence, emitted_at
+| order by sequence asc
+| take 5000

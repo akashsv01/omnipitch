@@ -104,6 +104,13 @@ class EventhouseReader:
     def recent_runs(self, limit: int = 10) -> list[dict]:
         return self._run("recent_runs", {"max_runs": limit})
 
+    def ingestion_times(self, run_id: str) -> dict[str, dict]:
+        """event_id -> {sequence, emitted_at, ingested} using the first ingested copy (latency tracing)."""
+        rows = self._run("run_ingestion", {"run": run_id})
+        return {row["event_id"]: {"sequence": int(row["sequence"]), "emitted_at": row["emitted_at"],
+                                  "ingested": row["ingested"] if isinstance(row["ingested"], datetime)
+                                  else datetime.fromisoformat(str(row["ingested"]).replace("Z", "+00:00"))} for row in rows}
+
     def runs_ingested_since(self, since: datetime) -> list[dict]:
         """Runs with rows ingested after `since` (UTC), oldest first: [{run_id, last_ingested, new_rows}]."""
         stamp = since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")

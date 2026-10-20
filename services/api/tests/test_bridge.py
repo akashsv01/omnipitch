@@ -272,3 +272,129 @@ def test_retry_wait_is_claimable_after_its_delay(make, match):
     assert again["job_id"] == job["job_id"] and again["attempt"] == 2
     with pytest.raises(ValueError):
         store.complete(again, "worker-b", clock.now, "retry_wait")  # Attempts exhausted: fallback or failed only.
+
+
+# Period-end reconciliation (Phase 4) ---------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def seeded_full() -> list[dict]:
+    return simulate_match(7, "standard", run_id="bridge-test")  # 1206 events; period_end at 618 and 1206.
+
+
+@pytest.fixture
+def full(seeded_full, match) -> list[dict]:
+    """The full seeded match under this test's unique run ID (shared with `match` for cleanup)."""
+    return [dict(event, run_id=match[0]["run_id"]) for event in seeded_full]
+
+
+def needs_reconciliations(store) -> None:
+    from azure.cosmos.exceptions import CosmosResourceNotFoundError
+    try:
+        store.reconciliations("probe-run")
+    except CosmosResourceNotFoundError:
+        pytest.skip("Cosmos container 'reconciliations' is not provisioned")
+
+
+def period_ids(events: list[dict], period: int) -> set[str]:
+    return {m["moment_id"] for m in detect_moments(events, events[0]["run_id"], events[0]["match_id"], TEAMS)
+            if m["period"] == period}
+
+
+def test_period_end_is_reconciled_once_with_a_valid_record(make, full):
+    from omnipitch_bridge.bridge import RECONCILIATION_VALIDATOR
+    source = FakeEventhouse()
+    source.ingest(full, T0)
+    bridge, store, _ = make(source)
+    needs_reconciliations(store)
+    result = bridge.run_once()["results"][0]
+    assert result["periods_reconciled"] == [1, 2] and result["reconciliation_mismatches"] == 0
+    records = store.reconciliations(full[0]["run_id"])
+    assert [(r["period"], r["through_sequence"], r["status"]) for r in records] == [(1, 618, "reconciled"), (2, 1206, "reconciled")]
+    for record in records:
+        RECONCILIATION_VALIDATOR.validate(record)
+        assert record["created"] == record["expected_moments"] == len(period_ids(full, record["period"]))
+        assert record["stored_before"] == 0
+    again = bridge.run_once()["results"][0]
+    assert again["periods_reconciled"] == [] and again["moments_created"] == 0
+    assert bridge.reconcile()[0]["periods_reconciled"] == []
+    assert store.reconciliations(full[0]["run_id"]) == records  # Never rewritten.
+
+
+def test_late_event_before_period_end_delays_reconciliation(make, full):
+    source = FakeEventhouse()
+    source.ingest([e for e in full if e["sequence"] != 600], T0)
+    bridge, store, _ = make(source)
+    needs_reconciliations(store)
+    first = bridge.run_once()["results"][0]
+    assert first["contiguous_through"] == 599 and first["periods_reconciled"] == []
+    early = len(store.moments(full[0]["run_id"]))
+    source.ingest([full[599]], T0 + timedelta(seconds=30))
+    second = bridge.run_once()["results"][0]
+    assert second["periods_reconciled"] == [1, 2]
+    p1 = store.get_reconciliation(full[0]["run_id"], 1)
+    assert p1["stored_before"] == len(period_ids(full[:599], 1)) and p1["stored_before"] + p1["created"] == p1["expected_moments"]
+    assert len(store.moments(full[0]["run_id"])) == len(expected_moment_ids(full)) >= early
+
+
+def test_duplicates_do_not_change_reconciliation(make, full):
+    source = FakeEventhouse()
+    source.ingest(full, T0)
+    source.ingest(full[500:525] + full[-5:], T0 + timedelta(seconds=1))
+    bridge, store, _ = make(source)
+    needs_reconciliations(store)
+    bridge.run_once()
+    records = store.reconciliations(full[0]["run_id"])
+    assert [r["expected_moments"] for r in records] == [len(period_ids(full, 1)), len(period_ids(full, 2))]
+    assert all(r["status"] == "reconciled" for r in records)
+
+
+def test_restart_mid_reconciliation_completes_without_duplicates(make, full):
+    source = FakeEventhouse()
+    source.ingest(full, T0)
+    bridge, store, _ = make(source)
+    needs_reconciliations(store)
+    original = store.create_reconciliation
+    calls = {"n": 0}
+
+    def crash_once(record):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("worker killed mid-reconciliation")
+        return original(record)
+    store.create_reconciliation = crash_once
+    with pytest.raises(RuntimeError):
+        bridge.run_once()
+    assert store.get_cursor(bridge.cursor_id) is None  # The failed cycle is retried.
+    restarted, store2, _ = make(source)
+    report = restarted.run_once()["results"][0]
+    assert report["periods_reconciled"] == [1, 2] and report["moments_created"] == 0
+    records = store2.reconciliations(full[0]["run_id"])
+    assert [r["status"] for r in records] == ["reconciled", "reconciled"]
+    assert records[0]["stored_before"] == records[0]["expected_moments"] and records[0]["created"] == 0
+    assert len(store2.jobs(full[0]["run_id"])) == len(expected_moment_ids(full))
+
+
+def test_mismatch_is_reported_and_frozen_evidence_kept(make, full):
+    source = FakeEventhouse()
+    source.ingest(full, T0)
+    bridge, store, clock = make(source)
+    needs_reconciliations(store)
+    target = next(m for m in detect_moments(full, full[0]["run_id"], full[0]["match_id"], TEAMS) if m["period"] == 1)
+    tampered = {**target, "metrics": [dict(target["metrics"][0], value=target["metrics"][0]["value"] + 1)] + target["metrics"][1:]}
+    stray = {**target, "moment_id": target["moment_id"] + "-stray"}
+    store.create_moment(tampered, clock.now)
+    store.create_moment(stray, clock.now)
+    bridge.run_once()
+    p1 = store.get_reconciliation(full[0]["run_id"], 1)
+    assert p1["status"] == "mismatch"
+    assert {(m["moment_id"], m["kind"]) for m in p1["mismatches"]} == {
+        (target["moment_id"], "evidence_differs"), (stray["moment_id"], "unexpected_stored")}
+    stored = {m["moment_id"]: m for m in store.moments(full[0]["run_id"])}
+    assert stored[target["moment_id"]]["metrics"] == tampered["metrics"]  # Kept as stored, never overwritten.
+
+
+def test_number_type_round_trips_are_not_mismatches():
+    from omnipitch_bridge.bridge import _canonical
+    assert _canonical({"metrics": [{"value": 16.0}], "flag": True}) == _canonical({"metrics": [{"value": 16}], "flag": True})
+    assert _canonical({"value": 16.5}) != _canonical({"value": 16})
+    assert _canonical({"flag": True}) != _canonical({"flag": 1.0})  # Booleans stay booleans.

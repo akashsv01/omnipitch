@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnipitch.local/contracts/push.schema.json",
+  "title": "push",
+  "description": "PROPOSED (2026-10-20, pending agreement with the frontend owner). Web PubSub message envelope for one run's group. Push is only a fast path: the snapshot API is the recovery path. state_version is monotonic per run and equals the gap-free event sequence the bridge has processed. Clients drop messages whose state_version is lower than their current one or whose message_id they have seen, and refetch the snapshot on a gap (a message with state_version > current + its own step) or on reconnect. message_id is deterministic, so a retried publication carries the same ID.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "message_id",
+    "run_id",
+    "type",
+    "state_version",
+    "sent_at",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "message_id": {
+      "description": "<run_id>:<type>:<key>, where key is the state_version (state), moment_id (moment, insight) or period (period_reconciled).",
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "enum": [
+        "state",
+        "moment",
+        "insight",
+        "period_reconciled"
+      ]
+    },
+    "state_version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sent_at": {
+      "description": "UTC time of this publication attempt (a retry has a later sent_at and the same message_id).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "state"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "match-state.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "moment"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/moment_ref"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "insight"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "insight.schema.json"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "period_reconciled"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "reconciliation.schema.json"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "moment_ref": {
+      "description": "A new detected moment by reference; clients read the full moment and evidence from the snapshot API.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "moment_id",
+        "rule",
+        "priority",
+        "period",
+        "match_time_ms",
+        "source_sequence"
+      ],
+      "properties": {
+        "moment_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule": {
+          "enum": [
+            "goal",
+            "chance",
+            "threat_gain",
+            "transition",
+            "pressing_change"
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "period": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "match_time_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_sequence": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}
