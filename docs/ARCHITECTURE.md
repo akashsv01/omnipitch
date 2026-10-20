@@ -424,6 +424,11 @@ The negotiation endpoint and the outbox publisher wait on agreement of the push 
 - `state_version` is the gap-free sequence the bridge has processed, so it is monotonic per run.
 - `message_id` is deterministic (`<run_id>:<type>:<key>`), so retries are idempotent.
 - Clients drop older or duplicate messages and refetch the snapshot API on a gap or reconnect: the snapshot is the recovery path, push only a fast path.
+- Example per type in `contracts/examples/`:
+  - `push` (moment): the real goal moment of `gate-20261020-b`.
+  - `push-insight`: the validated deterministic fallback insight for that goal. All three stored AI insights of that run contain known unsupported-meaning claims ("three-pass move", "kept the score level", "outside the box"), so none is used as a reference.
+  - `push-state`: the state of `gate-20261020-b` at sequence 400.
+  - `push-period-reconciled`: from an **offline** SQLite reconciliation of the full seed-7 match (run `example-full-seed7`); no full match has gone through Eventhouse yet.
 - Needs agreement from the frontend owner before any publisher or negotiation endpoint is built.
 
 ## Later-phase cloud flow — not implemented

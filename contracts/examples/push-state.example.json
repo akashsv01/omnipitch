@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "message_id": "gate-20261020-b:state:400",
+  "run_id": "gate-20261020-b",
+  "type": "state",
+  "state_version": 400,
+  "sent_at": "2026-10-20T02:44:11.600Z",
+  "payload": {
+    "schema_version": "1.1",
+    "run_id": "gate-20261020-b",
+    "match_id": "harbor-vale",
+    "state_version": 400,
+    "period": 1,
+    "match_time_ms": 1788873,
+    "home_team": {
+      "id": "harbor",
+      "name": "Harbor Comets"
+    },
+    "away_team": {
+      "id": "vale",
+      "name": "Vale Owls"
+    },
+    "score": {
+      "home": 0,
+      "away": 1
+    },
+    "latest_event_sequence": 400,
+    "replay_status": "finished",
+    "synthetic": true
+  }
+}

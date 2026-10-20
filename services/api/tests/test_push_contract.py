@@ -49,3 +49,16 @@ def test_payload_must_match_its_type(push):
     assert list(push.iter_errors({**example("push"), "state_version": -1}))
     assert list(push.iter_errors({**example("push"), "type": "score"}))
     assert list(push.iter_errors({**example("push"), "extra": True}))
+
+
+@pytest.mark.parametrize("name", ["push", "push-state", "push-insight", "push-period-reconciled"])
+def test_one_example_per_type_validates(push, name):
+    message = example(name)
+    push.validate(message)
+    assert message["message_id"].startswith(f"{message['run_id']}:{message['type']}:")
+    assert message["payload"]["run_id" if message["type"] != "moment" else "moment_id"].startswith(message["run_id"])
+
+
+def test_examples_cover_every_type():
+    types = {example(name)["type"] for name in ("push", "push-state", "push-insight", "push-period-reconciled")}
+    assert types == {"state", "moment", "insight", "period_reconciled"}

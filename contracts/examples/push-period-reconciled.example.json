@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "message_id": "example-full-seed7:period_reconciled:1",
+  "run_id": "example-full-seed7",
+  "type": "period_reconciled",
+  "state_version": 618,
+  "sent_at": "2026-10-20T03:00:05.100Z",
+  "payload": {
+    "created": 29,
+    "events_in_period": 618,
+    "expected_moments": 29,
+    "match_id": "harbor-vale",
+    "mismatches": [],
+    "period": 1,
+    "reconciled_at": "2026-10-20T03:00:05.000Z",
+    "reconciliation_id": "example-full-seed7:p1",
+    "run_id": "example-full-seed7",
+    "schema_version": "1.0",
+    "status": "reconciled",
+    "stored_before": 0,
+    "through_sequence": 618
+  }
+}
