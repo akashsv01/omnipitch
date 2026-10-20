@@ -224,15 +224,34 @@ def test_every_detected_rule_falls_back_to_a_valid_insight():
         assert not list(INSIGHT_VALIDATOR.iter_errors(record["insight"]))
 
 
-def test_run_scoped_worker_never_claims_other_runs():
-    from agents.scoped import RunScopedStore
+def test_run_scoped_worker_never_claims_or_expires_other_runs():
     mine = moments_for_test(4)
     others = [dict(m, run_id="someone-else", moment_id=m["moment_id"].replace(RUN, "someone-else")) for m in mine]
     store, insights, clock = seeded_store(mine + others), SqliteInsightStore(":memory:"), Clock()
-    results = worker(RunScopedStore(store, RUN), insights, None, clock).drain()
+    # Another run has an abandoned last attempt; only the bridge's global recovery may expire it.
+    abandoned = store.claim_next("crashed", clock(), timedelta(seconds=10), run_id="someone-else")
+    store.complete(abandoned, "crashed", clock(), "retry_wait", error="x", retry_after=timedelta(0))
+    store.claim_next("crashed", clock(), timedelta(seconds=10), run_id="someone-else")
+    clock.advance(11)
+    w = worker(store, insights, None, clock, run_id=RUN)
+    assert w.recover() == []  # Own run has nothing abandoned; the other run is not touched.
+    results = w.drain()
     assert sorted(r["job_id"] for r in results) == sorted(m["moment_id"] for m in mine)
-    assert {j["status"] for j in store.jobs("someone-else")} == {"pending"}  # Untouched.
-    assert RunScopedStore(store, RUN).expire_exhausted(clock()) == []
+    other = store.jobs("someone-else")
+    assert sorted(j["status"] for j in other) == ["pending"] * 3 + ["processing"]
+    assert worker(store, insights, None, clock).recover() == []  # Unscoped workers leave recovery to the bridge.
+
+
+def test_error_records_which_deployment_failed_and_no_model_reason_is_honest(one_moment):
+    moment, store, insights, clock = one_moment
+    model = ScriptedModel({"analyst": [ModelError("HTTP 404 DeploymentNotFound")], "coach": ROLE_OK["coach"], "broadcaster": [{}]})
+    result = worker(store, insights, model, clock).process_one()
+    assert result["status"] == "fallback" and "model error (fake-model)" in result["error"]
+    assert insights.get_insight(moment["moment_id"])["trace"] == {"model": "fake-model", "error": "ModelError: HTTP 404 DeploymentNotFound"}
+    other = next(m for m in moments_for_test() if m["rule"] == "transition")
+    capped = worker(seeded_store([other]), SqliteInsightStore(":memory:"), None, clock,
+                    no_model_reason="gate cost cap: remaining jobs narrated without the model").process_one()
+    assert capped["error"].startswith("gate cost cap")
 
 
 class FakeContainer:
