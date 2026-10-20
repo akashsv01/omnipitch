@@ -7,7 +7,7 @@ the bridge has created jobs for the run (run_bridge.py --store cosmos --once on 
 
     .venv/Scripts/python.exe services/api/tests/phase3_gate.py --run-id gate-20261016-a
 
-Only jobs of --run-id are claimed (RunScopedStore). Model calls are capped by --ai-jobs (default 3); the
+Only jobs of --run-id are claimed (store.claim_next(..., run_id=...)). Model calls are capped by --ai-jobs (default 3); the
 rest of the run is drained fallback-only at no model cost. Report: data/generated/phase3-gate-<run>.json.
 """
 from __future__ import annotations
@@ -46,20 +46,20 @@ def main() -> int:
     from jsonschema import Draft202012Validator
     from agents.insights import CosmosInsightStore
     from agents.model import AzureOpenAIClient, AzureOpenAIConfig
-    from agents.scoped import RunScopedStore
     from agents.validation import validate_insight
     from agents.worker import NarrationWorker
     from omnipitch_bridge.cosmos_store import CosmosStore
 
     endpoint, database = os.environ["COSMOS_ENDPOINT"], os.getenv("COSMOS_DATABASE", "omnipitch")
     base = CosmosStore(endpoint, database)
-    store, insights = RunScopedStore(base, args.run_id), CosmosInsightStore(endpoint, database, client=base.client)
+    store, insights = base, CosmosInsightStore(endpoint, database, client=base.client)
     config = AzureOpenAIConfig.from_env()
     if config is None:
         stage("model_configured", "FAIL", "AZURE_OPENAI_ENDPOINT/DEPLOYMENT not set")
         return finish(args.run_id)
     context_for = lambda moment: narration_context([])  # noqa: E731
-    new = lambda client, owner: NarrationWorker(store, insights, client, owner, context_for)  # noqa: E731
+    def new(client, owner, no_model_reason="no model configured"):
+        return NarrationWorker(store, insights, client, owner, context_for, run_id=args.run_id, no_model_reason=no_model_reason)
 
     deadline = time.time() + args.wait
     while not base.jobs(args.run_id) and time.time() < deadline:
@@ -89,7 +89,7 @@ def main() -> int:
           f"{forced[0]['status'] if forced else 'no job'}: {forced[0]['error'] if forced else ''}"[:200])
 
     # 3. Drain the rest without a model (no cost), then restart: nothing may be processed twice.
-    rest = new(None, "gate-fallback").drain()
+    rest = new(None, "gate-fallback", "gate cost cap: remaining jobs narrated without the model").drain()
     restart = new(AzureOpenAIClient(config), "gate-restart").drain()
     stage("restart_no_duplicates", "PASS" if restart == [] else "FAIL",
           f"restart processed {len(restart)} jobs (expected 0); {len(rest)} remaining jobs were narrated fallback-only")

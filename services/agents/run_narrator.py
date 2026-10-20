@@ -84,18 +84,17 @@ def main(argv: list[str] | None = None) -> int:
         auth = "account key (COSMOS_KEY)" if os.getenv("COSMOS_KEY") else "Entra ID"
     else:
         store, insights, auth = SqliteStore(args.bridge_db), SqliteInsightStore(args.narration_db), "local file"
-    if args.run_id:
-        from agents.scoped import RunScopedStore
-        store = RunScopedStore(store, args.run_id)
     client = AzureOpenAIClient(config) if config else None
     owner = f"narrator-{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
-    worker = NarrationWorker(store, insights, client, owner, context_for, log=log)
+    no_model = "fallback-only run (--fallback-only)" if args.fallback_only else "no model configured"
+    worker = NarrationWorker(store, insights, client, owner, context_for, log=log, run_id=args.run_id,
+                             no_model_reason=no_model)
     mode = client.name if client else ("fallback-only (--fallback-only)" if args.fallback_only
                                        else "fallback-only (AZURE_OPENAI_ENDPOINT/DEPLOYMENT not set)")
     log({"stage": "startup", "outcome": "ok", "owner": owner, "store": kind, "auth": auth, "mode": mode,
          "scope": f"run {args.run_id}" if args.run_id else "all runs"})
     while True:
-        expired = worker.store.expire_exhausted(utcnow())
+        expired = worker.recover()  # Own run only; across runs the bridge's recovery pass owns this.
         if expired:
             log({"stage": "recovery", "failed_jobs": [job["job_id"] for job in expired]})
         results = worker.drain(args.max_jobs)

@@ -40,18 +40,25 @@ class NarrationWorker:
                  context_for: Callable[[dict], dict], clock: Callable[[], datetime] = utcnow,
                  lease: timedelta = timedelta(seconds=120), budget_s: float = 45.0, per_call_s: float = 20.0,
                  backoff_base_s: float = 10.0, log: Callable[[dict], None] = lambda record: None,
-                 rng: random.Random | None = None):
+                 rng: random.Random | None = None, run_id: str | None = None,
+                 no_model_reason: str = "no model configured"):
         if budget_s >= lease.total_seconds():
             raise ValueError("the narration budget must be shorter than the job lease")
         self.store, self.insights, self.client, self.owner = store, insights, client, owner
         self.context_for, self.clock, self.lease = context_for, clock, lease
         self.budget_s, self.per_call_s, self.backoff_base_s = budget_s, per_call_s, backoff_base_s
         self.log, self.rng = log, rng or random.Random()
+        # run_id scopes claims (and this worker's own recovery) to one run; None claims across runs.
+        self.run_id, self.no_model_reason = run_id, no_model_reason
 
     # Loop helpers ----------------------------------------------------------
     def process_one(self) -> dict | None:
-        job = self.store.claim_next(self.owner, self.clock(), self.lease)
+        job = self.store.claim_next(self.owner, self.clock(), self.lease, run_id=self.run_id)
         return None if job is None else self.handle(job)
+
+    def recover(self) -> list[dict]:
+        """Expire abandoned last attempts of this worker's run only. Without a run, recovery is the bridge's job."""
+        return [] if self.run_id is None else self.store.expire_exhausted(self.clock(), run_id=self.run_id)
 
     def drain(self, limit: int = 1000) -> list[dict]:
         results = []
@@ -73,7 +80,7 @@ class NarrationWorker:
         context = self.context_for(moment)
         insight, reason, trace = None, None, {}
         if self.client is None:
-            reason = "no model configured"
+            reason = self.no_model_reason
         else:
             try:
                 result = run_workflow(moment, context, self.client, self.budget_s, self.per_call_s)
@@ -85,11 +92,14 @@ class NarrationWorker:
                     trace["rejected"] = result.errors[:8]
             except (ModelTimeout, ModelRateLimited) as exc:
                 if job["attempt"] < job["max_attempts"]:
-                    return self._complete(job, "retry_wait", None, f"{type(exc).__name__}: {exc}",
+                    return self._complete(job, "retry_wait", None, f"{type(exc).__name__} ({self.client.name}): {exc}",
                                           retry_after=self._backoff(job, getattr(exc, "retry_after", None)))
                 reason = f"{type(exc).__name__} on the last attempt"
+                trace = {"model": self.client.name, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
             except ModelError as exc:
-                reason = f"model error: {str(exc)[:120]}"
+                # Record which deployment failed, so a deliberate failure is distinguishable from a misconfiguration.
+                reason = f"model error ({self.client.name}): {str(exc)[:120]}"
+                trace = {"model": self.client.name, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
         if insight is None:
             insight = build_fallback_insight(moment, context, reason)
         # Final guard: nothing unvalidated is ever written, whatever its source.

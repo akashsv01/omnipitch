@@ -163,11 +163,44 @@ Not done: the joint Phase 3 gate on a fresh run. `gate-20261016-a` (400 + 25 eve
 - During that window, the narration owner's gate script processed the 24 gate jobs (workers `gate-ai`, `gate-fallback`, `gate-forced-failure`): 3 `ready` (AI) and 21 `fallback`, each attempt 1, 24 insights. Some errors read `model error: analyst: HTTP 404`. The gate result is recorded by the narration owner.
 - `agents/scoped.py` can be removed in favour of `run_id`; that is the narration owner's change.
 
+**Phase 3 gate, 2026-10-20 (branch `phase3-gate-run-scoped`, not merged). All checks passed.**
+
+- **The `HTTP 404` on `gate-20261016-a`** (read-only diagnosis):
+  - The 24 jobs map to three gate workers: `gate-ai` 3 `ready`/ai; `gate-forced-failure` 1 fallback with the only 404; `gate-fallback` 20 fallback.
+  - The 404 was the gate's deliberate forced failure: a deployment named `deployment-that-does-not-exist`.
+  - Every call to the real deployment succeeded, and a fresh test call today returned correctly.
+  - The configuration is correct: `omnipitch-aoai-gvoh7` / `gpt-41-mini` / `2024-10-21`.
+  - The real problem was labelling. A model error didn't record the deployment, and the cost-capped drain said "no model configured".
+- **Fix:**
+  - Model errors now record the client/deployment in the job error and the insight trace.
+  - The gate's no-model drain is labelled "gate cost cap: remaining jobs narrated without the model".
+  - `agents/scoped.py` was removed. The worker calls `claim_next(..., run_id=...)`, and its `recover()` expires only its own run's abandoned jobs; unscoped workers leave recovery to the bridge's global pass.
+  - Every live Cosmos test passes `run_id`.
+- **Tests:**
+  - 103 passed offline.
+  - 25 passed against live Cosmos (narration and bridge).
+  - The real runs `smoke-20261016-a` and `gate-20261016-a` had byte-identical job and insight snapshots before and after.
+- **Gate on a fresh run `gate-20261020-b`** (400 + 25 duplicates via Event Hubs → Eventstream → Eventhouse; bridge by Tanmayee; `phase3_gate.py` at 22:45):
+  - **bridge:** 24 moments (12 threat gain, 8 transition, 2 chance, 1 goal, 1 pressing change), 24 jobs;
+  - **live AI:** 3 of 3 model-narrated jobs `ready`/ai (goal, chance, chance);
+  - **forced failure:** 1 `fallback`, reason `model error (azure-openai:deployment-that-does-not-exist): analyst: HTTP 404 DeploymentNotFound`;
+  - **cost-capped drain:** 20 `fallback`;
+  - **restart:** processed 0;
+  - **final:** 24 insights (3 ai, 21 fallback), 24 distinct, 0 invalid against the schema and validator; all jobs on attempt 1.
+  - Report: `data/generated/phase3-gate-gate-20261020-b.json`.
+- **Known limitation, which the gate does not check:** the validator catches unsupported numbers, names and IDs but not unsupported meaning. On both gate runs the AI text claimed:
+  - "the save kept the score level" (Vale already led 1-0 at 25');
+  - "outside the box" for a 16.2 m shot (the box is 16.5 m deep);
+  - a "three-pass move" for 3 possession actions;
+  - "broke through/penetrated Harbor's defense" on the first run.
+
+  Phase 4 work: add the score and inside-box facts to the evidence packet, ban defender-breach phrasing, and tighten the prompt rules.
+
 - [x] Bridge worker with durable cursor, lookback, stable moment IDs and conditional moment/job records in Cosmos DB (verified live 2026-10-16; not deployed).
-- [ ] Phase 3 gate (joint): a live moment becomes one validated insight, with no duplicates on restart and a fallback on model failure. Needs the narration worker running against the Cosmos store and a live model.
+- [x] Phase 3 gate (joint): a live moment becomes one validated insight, with no duplicates on restart and a fallback on model failure (passed 2026-10-20 on `gate-20261020-b`; semantic accuracy of AI prose is not covered by the validator, see above).
 - [x] Define evidence bundles and validated narrative output boundaries (`agents.prompts.evidence_packet`, `agents.validation`, 34-case eval set).
 - [ ] Integrate Microsoft Agent Framework/Foundry only when access and scope permit.
-- [~] Grounded explanations, honest limitations and fixture/AI/fallback modes: the narration workflow, validation, repair and fallback are implemented and tested with a fake model; a live model is pending.
+- [~] Grounded explanations, honest limitations and fixture/AI/fallback modes: implemented and verified with a live `gpt-4.1-mini` deployment (Entra ID). Remaining: semantic checks for unsupported claims such as the score state, the box and defenders.
 
 ## Phase 4 — highlights, recap, bilingual text and preferences
 
