@@ -11,7 +11,8 @@ from .config import settings
 from .eventhouse import EventhouseError, EventhouseReader
 from .replay import replay_error
 from .sample_data import sample_events, sample_state
-from .schemas import (MAX_EVENTS, EventhouseLoad, EventPage, EventsResponse, GenerateRequest, HealthResponse,
+from .recaps import from_env as recap_service_from_env
+from .schemas import (MAX_EVENTS, EventhouseLoad, RecapResponse, EventPage, EventsResponse, GenerateRequest, HealthResponse,
                       IngestResult, LedgerSummary, MatchState, ReadyResponse, ReplayControl, ReplaySnapshot)
 
 MAX_BODY_BYTES = 2 * 1_048_576
@@ -115,6 +116,28 @@ def events() -> EventsResponse:
 @app.get("/api/v1/replay", response_model=ReplaySnapshot)
 def replay(run_id: str | None = None, after_sequence: int = Query(0, ge=0)) -> ReplaySnapshot:
     return store().snapshot(run_id, after_sequence)
+
+
+_recaps = None
+
+
+def recaps():
+    global _recaps
+    if _recaps is None:
+        _recaps = recap_service_from_env()
+    return _recaps
+
+
+@app.get("/api/v1/replay/recap", response_model=RecapResponse)
+def replay_recap(scope: str = Query("first_half", pattern="^(first_half|full_time)$")) -> RecapResponse:
+    """Halftime or full-time recap of the revealed replay; provisional until that period has ended."""
+    events, moments = store().recap_inputs()
+    result = recaps().recap(events, moments, scope)
+    if result is None:
+        raise HTTPException(404, detail={"code": "recap_not_available",
+                                         "message": "The first half has not started yet." if scope == "first_half"
+                                         else "The full-time recap is available once the second half starts."})
+    return RecapResponse.model_validate(result, strict=False)
 
 
 @app.post("/api/v1/replay/control", response_model=ReplaySnapshot)

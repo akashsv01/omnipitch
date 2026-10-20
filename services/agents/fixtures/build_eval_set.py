@@ -78,6 +78,14 @@ def main() -> None:
         ("wrong-moment", goal, lambda c: c.update(moment_id="other-run:goal:v1:evt-0001"), "moment_id does not match"),
         ("extra-field", goal, lambda c: c.update(confidence=0.9), "unexpected fields"),
         ("heat-map", press, lambda c: c.update(casual_text="Their heat map shows a high line."), "heat map"),
+        # Meaning errors seen on the live gate runs (2026-10-20).
+        ("score-state-on-chance", next((b for b in selected if b[0]["rule"] == "chance"), gain),
+         lambda c: c.update(casual_text="The keeper's save kept the score level."), "score state"),
+        ("outside-the-box", next((b for b in selected if b[0]["rule"] == "chance"), gain),
+         lambda c: c.update(casual_text="A good chance from outside the box."), "outside the box"),
+        ("pass-count", goal, lambda c: c.update(casual_text="He finished a quick three-pass move."), "pass count"),
+        ("defence-breach", goal, lambda c: c.update(analyst_text="The attack broke through Harbor's defense."),
+         "defenders broken through"),
     ]
     for case_id, base, change, expected in adversarial:
         add(case_id, base[0], base[1], mutate(base, change), False, expected)

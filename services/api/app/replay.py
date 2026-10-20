@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from .analysis import analyse, moments_with_insights
 from .db import Database
+from .insight_overlay import InsightOverlay
 from .sample_data import AWAY, HOME, roster, sample_state, simulate_match
 from .schemas import MAX_EVENTS, SPEEDS, Event, ReplaySnapshot
 
@@ -75,9 +76,10 @@ def parse_jsonl(text: str) -> list[Event]:
 
 class ReplayStore:
     def __init__(self, clock=monotonic, db: Database | None = None, source: list[Event] | None = None,
-                 backend_mode: str = "local"):
+                 backend_mode: str = "local", overlay: InsightOverlay | None = None):
         self.clock = clock
         self.backend_mode = backend_mode
+        self.overlay = overlay or InsightOverlay(None)
         self.lock = RLock()
         self.db = db or Database()
         self._cache: tuple | None = None
@@ -210,6 +212,7 @@ class ReplayStore:
         count = self.state.latest_event_sequence
         offset = after_sequence if run_id == self.state.run_id and 0 <= after_sequence <= count else 0
         analysis, moments = self._analysis()
+        moments, insights = self.overlay.apply(moments, self.dicts[:count], self.meta.get("source_run_id"))
         elapsed = self._elapsed()
         latest = self.events[count - 1] if count else self.events[0]
         clock_period = latest.period
@@ -225,8 +228,18 @@ class ReplayStore:
                        "backend_mode": self.backend_mode, "source_run_id": self.meta.get("source_run_id"),
                        "source_detail": self.meta.get("detail"),
                        "roster": [{k: p[k] for k in ("player_id", "team_id", "name", "shirt", "position")} for p in roster()]},
+            "insights": insights,
             "analysis": analysis, "moments": [m for m in moments if m["source_sequence"] > offset],
         }, strict=False)
+
+    def recap_inputs(self) -> tuple[list[dict], list[dict]]:
+        """Revealed events and verified moments (with narrated insights where valid), for recaps."""
+        with self.lock:
+            self._advance()
+            count = self.state.latest_event_sequence
+            _, moments = self._analysis()
+            moments, _ = self.overlay.apply(moments, self.dicts[:count], self.meta.get("source_run_id"))
+            return self.dicts[:count], moments
 
     def snapshot(self, run_id: str | None = None, after_sequence: int = 0) -> ReplaySnapshot:
         with self.lock:
@@ -241,7 +254,9 @@ class ReplayStore:
         source = parse_jsonl(text)
         with self.lock:
             self._check_run(run_id)
-            self._replace(source, {"source": "upload", "seed": None, "scenario": None}, speed=self.speed)
+            # Keep the file's own run ID as the source, so narrated insights for that run can be shown.
+            self._replace(source, {"source": "upload", "seed": None, "scenario": None,
+                                   "source_run_id": source[0].run_id}, speed=self.speed)
             self.restored = False
             return self._snapshot()
 
@@ -336,5 +351,6 @@ def get_replay_store() -> ReplayStore:
     global replay_store
     if replay_store is None:
         from .config import settings
-        replay_store = ReplayStore(backend_mode=settings().mode)
+        from .insight_overlay import from_env
+        replay_store = ReplayStore(backend_mode=settings().mode, overlay=from_env())
     return replay_store

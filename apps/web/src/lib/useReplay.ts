@@ -21,7 +21,12 @@ export function useReplay() {
   const acting = useRef(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const needFull = useRef(false);
   const accept = useCallback((next: ReplaySnapshot) => {
+    // Incremental polls only carry new moments; when narrated insights change, fetch everything once.
+    const previous = latest.current;
+    if (previous && previous.state.run_id === next.state.run_id && next.events_offset > 0
+        && previous.insights.version !== next.insights.version) needFull.current = true;
     const merged = mergeSnapshot(latest.current, next);
     latest.current = merged;
     setReplay(merged);
@@ -38,7 +43,9 @@ export function useReplay() {
       if (!acting.current) {
         try {
           const known = latest.current;
-          const next = await fetchReplay(known?.state.run_id, known?.state.latest_event_sequence ?? 0);
+          const full = needFull.current;
+          needFull.current = false;
+          const next = await fetchReplay(known?.state.run_id, full ? 0 : known?.state.latest_event_sequence ?? 0);
           if (active && current === generation.current) accept(next);
         } catch (error) {
           if (active && current === generation.current) {

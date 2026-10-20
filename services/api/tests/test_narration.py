@@ -330,3 +330,57 @@ def test_evidence_packet_gives_clock_label_not_milliseconds(one_moment):
     moment, *_ = one_moment
     packet = evidence_packet(moment, context_for(moment))
     assert "match_time_ms" not in packet and packet["clock"].endswith("'")
+
+
+def _moment(rule):
+    return next(m for m in moments_for_test() if m["rule"] == rule)
+
+
+@pytest.mark.parametrize("rule,text,expected", [
+    # The four meaning errors seen on the live gate runs (2026-10-20), verbatim in spirit.
+    ("chance", "The save kept the score level.", "score state"),
+    ("chance", "A good chance from outside the box.", "outside the box"),
+    ("goal", "He finished a quick three-pass move.", "pass count"),
+    ("goal", "A sharp attack that broke through Harbor's defense.", "defenders broken through"),
+    ("goal", "The attack penetrated the back line.", "defenders broken through"),
+    ("threat_gain", "Vale lead 1-0 after this pass.", "score state"),
+    ("transition", "A long-range effort followed.", "outside the box"),
+])
+def test_semantic_errors_reject_unsupported_meaning(rule, text, expected):
+    from agents.semantics import semantic_errors
+    assert any(expected in error for error in semantic_errors(text, _moment(rule))), semantic_errors(text, _moment(rule))
+
+
+def test_semantic_rules_accept_supported_claims_and_check_goal_score():
+    from agents.semantics import derived_facts, semantic_errors
+    goal = _moment("goal")
+    mine, theirs = goal["facts"]["score"][goal["team_id"]], sum(v for k, v in goal["facts"]["score"].items() if k != goal["team_id"])
+    supported = f"The goal makes it {mine}-{theirs}."
+    assert semantic_errors(supported, goal) == []
+    wrong = "The goal levels the score." if mine != theirs else "They took the lead."
+    assert semantic_errors(wrong, goal)
+    assert semantic_errors("In minutes 25-30 the press rose.", _moment("threat_gain")) == []  # A minute range is not a score.
+    chance = _moment("chance")
+    facts = derived_facts(chance, context_for(chance))
+    assert facts["score_state"].startswith("not in this evidence")
+    inside = facts["shot_location"] == "inside the penalty box"
+    assert bool(semantic_errors("A shot inside the box.", chance)) is (not inside)
+
+
+def test_evidence_packet_carries_derived_facts():
+    from agents.prompts import SHARED_CONTRACT, evidence_packet
+    goal = _moment("goal")
+    packet = evidence_packet(goal, context_for(goal))
+    assert "score_after_goal" in packet["derived"] and "shot_location" in packet["derived"]
+    assert "three-pass" in SHARED_CONTRACT and "outside the box" in SHARED_CONTRACT
+
+
+def test_transition_reversal_and_fan_meta_text_are_rejected():
+    from agents.prompts import evidence_packet
+    from agents.semantics import fan_text_errors, semantic_errors
+    transition = _moment("transition")
+    reversed_story = "Harbor pushed forward, but the run was stopped by a tackle turnover."
+    assert any("won the ball" in e for e in semantic_errors(reversed_story, transition))
+    assert "WON the ball" in evidence_packet(transition, context_for(transition))["derived"]["what_happened"]
+    assert fan_text_errors("A quick break. No score info is given here.")
+    assert fan_text_errors("A quick break down the right.") == []

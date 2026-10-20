@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnipitch.local/contracts/recap.schema.json",
+  "title": "recap",
+  "description": "Halftime or full-time recap built from verified moments and recorded events. Every substantive claim cites moment IDs in sources.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "match_id",
+    "scope",
+    "status",
+    "through_sequence",
+    "clock",
+    "score",
+    "headline",
+    "summary",
+    "key_moments",
+    "tactical_trend",
+    "player_focus",
+    "sources",
+    "generation_mode",
+    "limitations",
+    "recap_version"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "match_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "enum": [
+        "first_half",
+        "full_time"
+      ]
+    },
+    "status": {
+      "enum": [
+        "provisional",
+        "final"
+      ]
+    },
+    "through_sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "clock": {
+      "type": "string"
+    },
+    "score": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "home",
+        "away"
+      ],
+      "properties": {
+        "home": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "away": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "headline": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 90
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 600
+    },
+    "key_moments": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "moment_id",
+          "rule",
+          "clock",
+          "team_id",
+          "headline",
+          "generation_mode",
+          "source_sequence",
+          "replay_ms"
+        ],
+        "properties": {
+          "moment_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rule": {
+            "enum": [
+              "goal",
+              "chance",
+              "threat_gain",
+              "transition",
+              "pressing_change"
+            ]
+          },
+          "clock": {
+            "type": "string"
+          },
+          "team_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "headline": {
+            "type": "string",
+            "minLength": 1
+          },
+          "generation_mode": {
+            "enum": [
+              "fixture",
+              "ai",
+              "fallback"
+            ]
+          },
+          "source_sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "replay_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "tactical_trend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "supported",
+        "metric",
+        "text",
+        "values"
+      ],
+      "properties": {
+        "supported": {
+          "type": "boolean"
+        },
+        "metric": {
+          "enum": [
+            "ppda",
+            null
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "values": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "player_focus": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "player_id",
+            "name",
+            "team_id",
+            "text",
+            "metrics"
+          ],
+          "properties": {
+            "player_id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "team_id": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "metrics": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "value",
+                  "unit"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "value": {
+                    "type": "number"
+                  },
+                  "unit": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "generation_mode": {
+      "enum": [
+        "ai",
+        "fallback"
+      ]
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "recap_version": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

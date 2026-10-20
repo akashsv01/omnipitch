@@ -151,12 +151,23 @@ export interface ReplayInfo {
 }
 export type Speed = 1 | 5 | 10 | 20 | 40 | 80;
 export type Scenario = 'standard' | 'quiet' | 'high_press';
+export interface InsightSourceStatus {
+  mode: 'off' | 'cosmos';
+  status: 'off' | 'ok' | 'error';
+  source_run_id: string | null;
+  narrated: number;
+  ai: number;
+  rejected: number;
+  error: string | null;
+  version: string;
+}
 export interface ReplaySnapshot {
   state: MatchState;
   events: Event[];
   events_offset: number;
   total_events: number;
   replay: ReplayInfo;
+  insights: InsightSourceStatus;
   analysis: Analysis;
   moments: Moment[];
 }
@@ -177,4 +188,28 @@ export interface IngestResult {
   conflicts: number;
   rejected: { line: number; event_id: string | null; code: string; message: string }[];
   ledger: LedgerSummary;
+}
+export type RecapScope = 'first_half' | 'full_time';
+export interface RecapKeyMoment {
+  moment_id: string; rule: Rule; clock: string; team_id: string | null; headline: string;
+  generation_mode: 'fixture' | 'ai' | 'fallback'; source_sequence: number; replay_ms: number;
+}
+export interface Recap {
+  schema_version: '1.1';
+  run_id: string;
+  match_id: string;
+  scope: RecapScope;
+  status: 'provisional' | 'final';
+  through_sequence: number;
+  clock: string;
+  score: { home: number; away: number };
+  headline: string;
+  summary: string;
+  key_moments: RecapKeyMoment[];
+  tactical_trend: { supported: boolean; metric: 'ppda' | null; text: string; values: Record<string, unknown> | null };
+  player_focus: { player_id: string; name: string; team_id: string; text: string; metrics: Metric[] } | null;
+  sources: string[];
+  generation_mode: 'ai' | 'fallback';
+  limitations: string[];
+  recap_version: string;
 }

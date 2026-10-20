@@ -6,7 +6,8 @@ import insightSchema from '../../../../contracts/schemas/insight.schema.json';
 import momentSchema from '../../../../contracts/schemas/moment.schema.json';
 import analysisSchema from '../../../../contracts/schemas/analysis.schema.json';
 import replaySchema from '../../../../contracts/schemas/replay.schema.json';
-import type { Event, IngestResult, LedgerSummary, MatchState, ReplaySnapshot, Scenario, Speed } from '../types/contracts';
+import recapSchema from '../../../../contracts/schemas/recap.schema.json';
+import type { Event, IngestResult, LedgerSummary, MatchState, Recap, RecapScope, ReplaySnapshot, Scenario, Speed } from '../types/contracts';
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
 const ajv = new Ajv2020({ allowUnionTypes: true });
@@ -15,6 +16,7 @@ for (const schema of [eventSchema, stateSchema, insightSchema, momentSchema, ana
 const validateState = ajv.compile<MatchState>(stateSchema);
 const validateEvent = ajv.getSchema<Event>(eventSchema.$id)!;
 const validateReplay = ajv.compile<ReplaySnapshot>(replaySchema);
+const validateRecap = ajv.compile<Recap>(recapSchema);
 
 export class ApiError extends Error {
   constructor(message: string, public readonly kind: 'network' | 'http' | 'contract', public readonly status?: number) {
@@ -142,4 +144,21 @@ export async function fetchEventhouseRun(runId: string): Promise<EventhouseRunDe
 
 export async function loadFromEventhouse(runId: string, sourceRunId: string): Promise<ReplaySnapshot> {
   return checkSnapshot(await post('/api/v1/replay/eventhouse', { run_id: runId, source_run_id: sourceRunId }, EVENTHOUSE_TIMEOUT_MS));
+}
+
+export interface RecapAIStatus { mode: 'off' | 'on'; status: 'off' | 'waiting' | 'pending' | 'ready' | 'fallback'; reason: string | null }
+export interface RecapResult { recap: Recap; ai: RecapAIStatus }
+
+/** null means the recap is not available yet (period not started); errors are thrown. */
+export async function fetchRecap(scope: RecapScope): Promise<RecapResult | null> {
+  let value: unknown;
+  try {
+    value = await getJson(`/api/v1/replay/recap?scope=${scope}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+  const result = value as RecapResult;
+  if (!result || !validateRecap(result.recap)) throw new ApiError('Recap does not match the wire contract.', 'contract');
+  return result;
 }

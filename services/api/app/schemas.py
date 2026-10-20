@@ -254,12 +254,24 @@ class ReplayInfo(WireModel):
     roster: list[Player]
 
 
+class InsightSourceStatus(WireModel):
+    mode: Literal["off", "cosmos"]
+    status: Literal["off", "ok", "error"]
+    source_run_id: Identifier | None
+    narrated: Annotated[int, Field(ge=0)]
+    ai: Annotated[int, Field(ge=0)]
+    rejected: Annotated[int, Field(ge=0)]
+    error: str | None
+    version: Identifier
+
+
 class ReplaySnapshot(WireModel):
     state: MatchState
     events: list[Event]
     events_offset: Annotated[int, Field(ge=0)]
     total_events: Annotated[int, Field(ge=1, le=MAX_EVENTS)]
     replay: ReplayInfo
+    insights: InsightSourceStatus
     analysis: Analysis
     moments: list[Moment]
 
@@ -330,3 +342,60 @@ class IngestResult(WireModel):
     conflicts: int
     rejected: list[IngestRejection]
     ledger: LedgerSummary
+
+
+class RecapKeyMoment(WireModel):
+    moment_id: Identifier
+    rule: Literal["goal", "chance", "threat_gain", "transition", "pressing_change"]
+    clock: str
+    team_id: Identifier | None
+    headline: Identifier
+    generation_mode: Literal["fixture", "ai", "fallback"]
+    source_sequence: Annotated[int, Field(ge=1)]
+    replay_ms: Annotated[int, Field(ge=0)]
+
+
+class RecapTrend(WireModel):
+    supported: bool
+    metric: Literal["ppda"] | None
+    text: Identifier
+    values: dict[str, Any] | None
+
+
+class RecapPlayerFocus(WireModel):
+    player_id: Identifier
+    name: Identifier
+    team_id: Identifier
+    text: Identifier
+    metrics: list[Metric]
+
+
+class Recap(WireModel):
+    schema_version: Literal["1.1"]
+    run_id: Identifier
+    match_id: Identifier
+    scope: Literal["first_half", "full_time"]
+    status: Literal["provisional", "final"]
+    through_sequence: Annotated[int, Field(ge=1)]
+    clock: str
+    score: Score
+    headline: Annotated[str, Field(min_length=1, max_length=90)]
+    summary: Annotated[str, Field(min_length=1, max_length=600)]
+    key_moments: Annotated[list[RecapKeyMoment], Field(max_length=3)]
+    tactical_trend: RecapTrend
+    player_focus: RecapPlayerFocus | None
+    sources: list[Identifier]
+    generation_mode: Literal["ai", "fallback"]
+    limitations: Annotated[list[Identifier], Field(min_length=1)]
+    recap_version: Identifier
+
+
+class RecapAIStatus(WireModel):
+    mode: Literal["off", "on"]
+    status: Literal["off", "waiting", "pending", "ready", "fallback"]
+    reason: str | None
+
+
+class RecapResponse(WireModel):
+    recap: Recap
+    ai: RecapAIStatus

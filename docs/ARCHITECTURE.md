@@ -344,6 +344,33 @@ Live Cosmos tests are opt-in: set `OMNIPITCH_TEST_COSMOS_ENDPOINT` to the accoun
   - a restart;
   - one-insight-per-moment accounting.
 
+## Insights in the UI, meaning checks and recaps (Phase 4)
+
+- **Meaning checks** (`services/agents/agents/semantics.py`, prompts v3): the evidence packet carries `derived` facts:
+  - the shot location: inside the box when the shot distance is ≤ 16.5 m, otherwise "not determined";
+  - the score after a goal, or an explicit "score not in this evidence";
+  - what possession actions mean;
+  - the direction of a transition.
+
+  `validate_insight` rejects defender-breach wording, "outside the box", pass counts, box claims it can't prove, reversed transitions, score wording on non-goal moments, a goal's lead/level/scoreline that contradicts `facts.score`, and fan text that mentions missing data.
+- **Insight overlay** (`services/api/app/insight_overlay.py`):
+  - `OMNIPITCH_INSIGHTS=cosmos` reads the `insights` container for the replay's source run: an uploaded file's run ID, or the Eventhouse run.
+  - Moments are matched by ID suffix (`{rule}:v1:{anchor}`), which is identical in the bridge and the API because detection is deterministic and prefix-stable.
+  - Each stored insight is re-validated against the API's own moment and shown only if it passes.
+  - Every snapshot carries `insights` with `mode`, `status`, `narrated`, `ai`, `rejected`, `error` and `version`. A changed `version` makes the browser refetch the full snapshot.
+  - On a Cosmos error the API keeps the last good copy and reports the error.
+- **Recaps** (`services/agents/agents/recap.py`, `services/api/app/recaps.py`, contract `recap.schema.json`). `GET /api/v1/replay/recap?scope=first_half|full_time` returns `{recap, ai}`. It returns 404 `recap_not_available` before the scope starts.
+  - **Provisional or final:** a recap is `provisional` until its period's `period_end` is revealed. The second half's `period_start` shares the break's replay time, so a provisional full-time recap exists from the break.
+  - **Key moments:** up to three verified moments (rule weight, priority and strength; one per possession), in match order, each with `replay_ms` for seeking.
+  - **Tactical trend:** named only with at least two valid PPDA windows per team.
+  - **Player focus:** from recorded events only.
+  - **AI rewrite** (`OMNIPITCH_RECAP_AI=on`): runs once per final recap in a background thread. Numbers, names, scorelines and banned claims are checked in code. If the rewrite fails, the template recap is served and `ai.reason` says why.
+- **UI:**
+  - The Recap tab offers a scope switch, a provisional/final chip and an author chip, and its key moments seek the replay.
+  - A half-time or full-time prompt appears when a period ends during playback.
+  - Every moment card shows an AI or Template label.
+  - Data quality shows the overlay status.
+
 ## Later-phase cloud flow — not implemented
 
 ```mermaid

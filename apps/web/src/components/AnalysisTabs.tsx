@@ -1,24 +1,29 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowDown, CheckCircle2, Info, ShieldCheck } from 'lucide-react';
-import type { Analysis, Event, IngestResult, PpdaWindow, ReplaySnapshot } from '../types/contracts';
+import type { RecapScope, Analysis, Event, IngestResult, PpdaWindow, ReplaySnapshot } from '../types/contracts';
 import type { Audience } from '../lib/prefs';
 import { fetchLedger, ingestEvents, type LedgerView } from '../lib/api';
 import { fmt, playerIndex, surname, teamTone } from '../lib/format';
 import { EventhousePanel } from './EventhousePanel';
 import { Pitch } from './Pitch';
+import { RecapPanel } from './RecapPanel';
 
-type Tab = 'teams' | 'pressing' | 'players' | 'shots' | 'quality';
+export type Tab = 'recap' | 'teams' | 'pressing' | 'players' | 'shots' | 'quality';
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'teams', label: 'Team comparison' }, { id: 'pressing', label: 'Pressing' }, { id: 'players', label: 'Players' },
+  { id: 'recap', label: 'Recap' }, { id: 'teams', label: 'Team comparison' }, { id: 'pressing', label: 'Pressing' }, { id: 'players', label: 'Players' },
   { id: 'shots', label: 'Shot map' }, { id: 'quality', label: 'Data quality' },
 ];
 
-export function AnalysisTabs({ replay, audience, favoritePlayer, onSelectEvent, busy = false, onLoadEventhouse }: {
+export type TabRequest = { tab: Tab; nonce: number; scope?: RecapScope };
+
+export function AnalysisTabs({ replay, audience, favoritePlayer, onSelectEvent, busy = false, onLoadEventhouse, onJumpMoment, tabRequest }: {
   replay: ReplaySnapshot; audience: Audience; favoritePlayer: string | null; onSelectEvent: (event: Event) => void;
   busy?: boolean; onLoadEventhouse?: (sourceRunId: string) => void;
+  onJumpMoment: (momentId: string, replayMs: number) => void; tabRequest?: TabRequest;
 }) {
   const [tab, setTab] = useState<Tab>('teams');
+  useEffect(() => { if (tabRequest) setTab(tabRequest.tab); }, [tabRequest]);
   return <section className="panel analysis" aria-labelledby="analysis-title">
     <div className="panel-head">
       <div>
@@ -42,6 +47,7 @@ export function AnalysisTabs({ replay, audience, favoritePlayer, onSelectEvent, 
     </div>
     <motion.div key={tab} className="tab-body" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}
       initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .22 }}>
+      {tab === 'recap' && <RecapPanel replay={replay} audience={audience} onJump={onJumpMoment} request={tabRequest} />}
       {tab === 'teams' && <TeamCompare analysis={replay.analysis} audience={audience} />}
       {tab === 'pressing' && <Pressing analysis={replay.analysis} audience={audience} />}
       {tab === 'players' && <Players replay={replay} favoritePlayer={favoritePlayer} audience={audience} />}
@@ -242,6 +248,20 @@ function Quality({ replay, busy, onLoadEventhouse }: { replay: ReplaySnapshot; b
   }
   const summary = ledger?.summary;
   return <div style={{ display: 'grid', gap: 18 }}>
+    <div className="card">
+      <h3>Narrated insights</h3>
+      {replay.insights.mode === 'off'
+        ? <p className="hint">Off: moments show deterministic templates. Set OMNIPITCH_INSIGHTS=cosmos to show the narration worker's insights.</p>
+        : <>
+          <div className="stat-pair">
+            <div className="stat"><b>{replay.insights.narrated}</b><span>from Cosmos</span></div>
+            <div className="stat"><b>{replay.insights.ai}</b><span>AI-written</span></div>
+            <div className="stat"><b>{replay.insights.rejected}</b><span>rejected by our checks</span></div>
+          </div>
+          <p className="hint">Run <span className="mono">{replay.insights.source_run_id ?? 'none'}</span> · status {replay.insights.status}
+            {replay.insights.error ? ` · ${replay.insights.error}` : ''}. Every narrated insight is re-validated against this API's own copy of the moment; rejected ones keep the template.</p>
+        </>}
+    </div>
     <div className="grid-2">
       <div className="card">
         <h3>Event ledger</h3>
