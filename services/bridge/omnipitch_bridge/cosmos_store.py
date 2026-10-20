@@ -99,9 +99,16 @@ class CosmosStore:
         except CosmosAccessConditionFailedError as exc:
             raise StaleJob(f"job {item['id']} changed since it was read") from exc
 
-    def claim_next(self, owner: str, now: datetime, lease: timedelta = timedelta(seconds=60)) -> dict | None:
-        items = self.jobs_c.query_items("SELECT * FROM c WHERE c.status IN ('pending', 'retry_wait', 'processing')",
-                                        enable_cross_partition_query=True)
+    def _open_jobs(self, statuses: tuple[str, ...], run_id: str | None):
+        query = "SELECT * FROM c WHERE ARRAY_CONTAINS(@open, c.status)"
+        params = [{"name": "@open", "value": list(statuses)}]
+        if run_id is not None:  # One partition: never touches other runs.
+            return self.jobs_c.query_items(query, parameters=params, partition_key=run_id)
+        return self.jobs_c.query_items(query, parameters=params, enable_cross_partition_query=True)
+
+    def claim_next(self, owner: str, now: datetime, lease: timedelta = timedelta(seconds=60),
+                   run_id: str | None = None) -> dict | None:
+        items = self._open_jobs(("pending", "retry_wait", "processing"), run_id)
         for item in sorted((i for i in items if claimable(_clean(i), now)), key=lambda i: claim_order(_clean(i))):
             updated = claimed(_clean(item), owner, now, lease)
             try:
@@ -118,9 +125,9 @@ class CosmosStore:
         self._replace(item, updated)
         return updated
 
-    def expire_exhausted(self, now: datetime) -> list[dict]:
+    def expire_exhausted(self, now: datetime, run_id: str | None = None) -> list[dict]:
         failed = []
-        for item in self.jobs_c.query_items("SELECT * FROM c WHERE c.status = 'processing'", enable_cross_partition_query=True):
+        for item in self._open_jobs(("processing",), run_id):
             if is_exhausted(_clean(item), now):
                 updated = exhausted(_clean(item), now)
                 try:
