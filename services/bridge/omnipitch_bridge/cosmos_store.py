@@ -1,7 +1,8 @@
 """Cosmos DB for NoSQL implementation of the bridge store (same methods as SqliteStore).
 
-Containers in database COSMOS_DATABASE (default omnipitch): moments and jobs partitioned by
-/run_id, cursors partitioned by /cursor_id. Creates use create_item, so an existing id is a
+Containers in database COSMOS_DATABASE (default omnipitch): moments, jobs and reconciliations
+partitioned by /run_id, cursors partitioned by /cursor_id. Request charges (RU) are accumulated per
+operation in `request_charge` for cost tracing (for queries, the charge of the last page read). Creates use create_item, so an existing id is a
 no-op (409). Job updates use replace_item with the ETag that was read (412 means another writer
 won), plus the record's own version check. Auth: Entra ID by default (needs a Cosmos DB
 data-plane role); COSMOS_KEY is accepted only from the environment for a teammate in another tenant.
@@ -40,6 +41,16 @@ class CosmosStore:
         self.moments_c = db.get_container_client("moments")
         self.jobs_c = db.get_container_client("jobs")
         self.cursors_c = db.get_container_client("cursors")
+        self.reconciliations_c = db.get_container_client("reconciliations")
+        self.request_charge: dict[str, float] = {}
+
+    def _charge(self, operation: str, container) -> None:
+        headers = container.client_connection.last_response_headers or {}
+        try:
+            value = float(headers.get("x-ms-request-charge", 0) or 0)
+        except ValueError:
+            value = 0.0
+        self.request_charge[operation] = round(self.request_charge.get(operation, 0.0) + value, 2)
 
     def close(self) -> None:
         self.client.__exit__(None, None, None)  # The sync client has no close(); its context exit releases connections.
@@ -61,11 +72,38 @@ class CosmosStore:
             return True
         except CosmosResourceExistsError:
             return False  # Frozen evidence is never overwritten.
+        finally:
+            self._charge("create_moment", self.moments_c)
 
     def moments(self, run_id: str) -> list[dict]:
         items = self.moments_c.query_items("SELECT * FROM c", partition_key=run_id)
         rows = [{k: v for k, v in _clean(item).items() if k != "detected_at"} for item in items]
+        self._charge("read_moments", self.moments_c)
         return sorted(rows, key=lambda m: (m["source_sequence"], m["moment_id"]))
+
+    def moment_detected_at(self, run_id: str) -> dict[str, str]:
+        items = self.moments_c.query_items("SELECT c.moment_id, c.detected_at FROM c", partition_key=run_id)
+        return {item["moment_id"]: item["detected_at"] for item in items}
+
+    # Period reconciliation -------------------------------------------------
+    def create_reconciliation(self, record: dict) -> bool:
+        try:
+            self.reconciliations_c.create_item({**record, "id": record["reconciliation_id"]})
+            return True
+        except CosmosResourceExistsError:
+            return False  # A reconciled period is never rewritten.
+        finally:
+            self._charge("create_reconciliation", self.reconciliations_c)
+
+    def get_reconciliation(self, run_id: str, period: int) -> dict | None:
+        try:
+            return _clean(self.reconciliations_c.read_item(f"{run_id}:p{period}", partition_key=run_id))
+        except CosmosResourceNotFoundError:
+            return None
+
+    def reconciliations(self, run_id: str) -> list[dict]:
+        items = self.reconciliations_c.query_items("SELECT * FROM c", partition_key=run_id)
+        return sorted((_clean(item) for item in items), key=lambda r: r["period"])
 
     # Jobs -----------------------------------------------------------------
     def create_job(self, job: dict) -> bool:
@@ -74,6 +112,8 @@ class CosmosStore:
             return True
         except CosmosResourceExistsError:
             return False
+        finally:
+            self._charge("create_job", self.jobs_c)
 
     def _read(self, job_id: str) -> dict | None:
         found = list(self.jobs_c.query_items("SELECT * FROM c WHERE c.id = @id", parameters=[{"name": "@id", "value": job_id}],
@@ -139,9 +179,12 @@ class CosmosStore:
 
     # Test support ----------------------------------------------------------
     def purge_run(self, run_id: str) -> None:
-        for container in (self.moments_c, self.jobs_c):
-            for item in list(container.query_items("SELECT c.id FROM c", partition_key=run_id)):
-                container.delete_item(item["id"], partition_key=run_id)
+        for container in (self.moments_c, self.jobs_c, self.reconciliations_c):
+            try:
+                for item in list(container.query_items("SELECT c.id FROM c", partition_key=run_id)):
+                    container.delete_item(item["id"], partition_key=run_id)
+            except CosmosResourceNotFoundError:
+                pass  # Container not provisioned (for example reconciliations before it is created).
 
     def purge_cursor(self, cursor_id: str) -> None:
         try:

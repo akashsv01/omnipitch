@@ -215,6 +215,39 @@ Not done: the joint Phase 3 gate on a fresh run. `gate-20261016-a` (400 + 25 eve
 
 Verification 2026-10-20 (local): 120 Python tests passed, 14 cloud tests skipped (7 new in `services/api/tests/test_phase4.py`: overlay valid/rejected/error/version, recap scopes and key-moment links, AI recap validation and fallback, recap endpoint, reconnect, shared facts); `npm run test:contracts` (now with the recap fixture), `test:pitch`, typecheck, build and `test:replay:browser` (headless Chrome, ports 8011/5214) passed. Browser check in the desktop app's built-in browser at 1280 and 375 px: half-time prompt appears at the break and opens the first-half recap; a recap key moment seeks to 24:30 for a 25' goal; no horizontal overflow on mobile; no console errors after removing the pre-kickoff recap requests. Found and fixed during the check: the recap fetch was starved by a debounce at 10× speed, the panel jumped to a provisional full-time recap at the break (the second half's `period_start` shares the break's replay time), and the footer still said AI narration was not connected. Not verified: the smooth scroll to the recap (the pane did not render frames while hidden), Safari/Firefox, a live prompts-v3 run through the overlay.
 
+**Phase 4 data half, 2026-10-20 (branch `phase4-bridge`, not merged).**
+
+- **Period-end reconciliation** (bridge): one create-only record per run and period, missing moments and jobs created create-only, mismatches reported, frozen evidence never overwritten.
+  - 6 new tests on a full 1,206-event match: one valid record per period; reruns and reconcile create nothing and never rewrite; a late event before `period_end` delays reconciliation; duplicates don't change the counts; a restart mid-reconciliation completes without duplicates; evidence_differs and unexpected_stored are reported and the stored moment kept.
+  - Mutation check: counting every expected moment as "created" fails 2 tests.
+  - Live Cosmos (container `reconciliations` provisioned 2026-10-20 with approval):
+    - The first full run was 30 passed, 1 failed. The restart test reported every period as `mismatch`, because Cosmos returns `16.0` as `16` and the stored-vs-redetected comparison was textual.
+    - Fixed by comparing number values, with a regression test. The rerun of the reconciliation tests passed 11 of 11, Cosmos variants included.
+    - The real runs (`gate-20261016-a`, `gate-20261020-b`, `smoke-20261016-a`) were byte-identical before and after.
+    - **Not verified on a real full-match run:** none has been published yet, because 400-event runs contain no `period_end`.
+- **Latency and cost tracing:** `trace_report.py` plus 5 unit tests. Read-only on `gate-20261020-b`:
+  - 24 moments, 24 jobs, 24 insights;
+  - `ingest_to_detect` p50 593 s: the bridge was run by hand about 10 minutes after ingestion, so this is not pipeline latency;
+  - `detect_to_job` 0 s;
+  - `job_to_insight` p50 119 s, p95 128 s: it includes the wait before the gate script ran;
+  - 9 model calls (3 AI insights x 3 roles), each role p50 3.2-4.3 s;
+  - tokens not recorded by the narration trace;
+  - `emit_to_ingest` not measurable (fixture clock);
+  - publication not built.
+- **Push contract proposed:** `push.schema.json` plus an example (the real goal moment of `gate-20261020-b`) and 2 tests. Awaiting the frontend owner's agreement.
+- **Web PubSub (approved 2026-10-20):**
+  - Registered `Microsoft.SignalRService`.
+  - Created `omnipitch-wps-670966`: West US, Free_F1, local auth disabled.
+  - Assigned *Web PubSub Service Owner* to the owner, on that resource only.
+  - Entra-only check: a client token for a run group (200) and a send to that group (202).
+  - The publisher and negotiation endpoint are not built.
+- Totals: 133 Python tests passed, 19 cloud tests skipped (opt-in). `npm run test:contracts` passes.
+- **Not done:**
+  - Negotiation endpoint and outbox publisher (waiting on the push contract being agreed).
+  - Live reconciliation on a full match.
+  - Measured pipeline latency with the bridge polling continuously.
+  - The joint Phase 4 gate.
+
 ## Phase 5 — dataset export and basic Producer Mode
 
 - [ ] Export reusable synthetic datasets with provenance and schema version.

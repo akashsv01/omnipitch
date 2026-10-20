@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnipitch.local/contracts/reconciliation.schema.json",
+  "title": "reconciliation",
+  "description": "Created once per (run_id, period) by the bridge after the period's period_end is in the gap-free prefix: the period was re-read deduplicated, re-detected, missing moments and jobs were created (create-only) and differences from stored moments are listed. Frozen evidence is never overwritten. Recaps can say a period is reconciled.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "reconciliation_id",
+    "run_id",
+    "match_id",
+    "period",
+    "through_sequence",
+    "events_in_period",
+    "expected_moments",
+    "stored_before",
+    "created",
+    "mismatches",
+    "status",
+    "reconciled_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "reconciliation_id": {
+      "description": "<run_id>:p<period>",
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "match_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "period": {
+      "enum": [
+        1,
+        2
+      ]
+    },
+    "through_sequence": {
+      "description": "Sequence of this period's period_end event.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "events_in_period": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "expected_moments": {
+      "description": "Moments the shared detector finds for this period on the gap-free prefix.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "stored_before": {
+      "description": "Moments of this period already stored when this cycle began.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "created": {
+      "description": "Moments (each with its pending job) created in the reconciling cycle.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "mismatches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "moment_id",
+          "kind"
+        ],
+        "properties": {
+          "moment_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "description": "evidence_differs: a stored moment differs from re-detection (kept as stored). unexpected_stored: stored but not re-detected.",
+            "enum": [
+              "evidence_differs",
+              "unexpected_stored"
+            ]
+          }
+        }
+      }
+    },
+    "status": {
+      "description": "reconciled when no mismatches; mismatch otherwise (an operator should look).",
+      "enum": [
+        "reconciled",
+        "mismatch"
+      ]
+    },
+    "reconciled_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

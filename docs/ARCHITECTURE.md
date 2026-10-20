@@ -372,6 +372,65 @@ Live Cosmos tests are opt-in: set `OMNIPITCH_TEST_COSMOS_ENDPOINT` to the accoun
   - Every moment card shows an AI or Template label.
   - Data quality shows the overlay status.
 
+## Bridge Phase 4: reconciliation, tracing, push (data half)
+
+**Period-end reconciliation (implemented 2026-10-20, branch `phase4-bridge`).** When a period's `period_end` is in a run's gap-free prefix and no record exists yet, the cycle that processes the run does the following:
+
+1. It has already re-read the run deduplicated from Eventhouse and re-run the shared detector.
+2. It notes which of the period's moments were stored **before** the cycle created anything.
+3. It writes one create-only record per `(run_id, period)` (`contracts/schemas/reconciliation.schema.json`, id `<run_id>:p<period>`) with:
+   - `through_sequence` (the `period_end` sequence), `events_in_period`, `expected_moments`, `stored_before` and `created`;
+   - `mismatches`: `evidence_differs` (a stored moment differs from re-detection) or `unexpected_stored`;
+   - `status`: `reconciled` or `mismatch`.
+
+Rules that make it safe:
+- **Frozen evidence is never overwritten.** A mismatch is reported, never repaired.
+- **Missing periods wait.** A gap before `period_end` delays reconciliation, so it is never recorded on an incomplete period.
+- **Restarts are covered.** If the cycle fails before the record is written, the cursor does not advance and a restarted worker writes it, with no duplicate moments or jobs.
+- **Storage:** SQLite table `reconciliations`; in Cosmos, a `reconciliations` container (`/run_id`, shared 1000 RU/s), provisioned 2026-10-20.
+- **Comparing numbers:** stored moments are compared as values, not JSON text. Cosmos returns integral floats as integers (`16.0` becomes `16`), so number types are normalised first and booleans stay booleans.
+- **Full matches only.** Runs of 400 events stop before any `period_end`; a full `standard` match has 1,206 events, with `period_end` at 618 and 1206.
+
+**Latency and cost tracing (implemented 2026-10-20).** `services/bridge/trace_report.py --run-id <id> [--out file]` prints p50/p95 (nearest rank) per stage, anchored on each moment's source event:
+
+| Stage | Source of the timestamps | Note |
+| --- | --- | --- |
+| `emit_to_ingest` | `emitted_at` -> Eventhouse `ingestion_time()` (`run_ingestion.kql`) | Not measurable for simulator runs: `emitted_at` is the fixture clock (2026-01-01 baseline). Reported as such, never as latency. |
+| `ingest_to_detect` | -> moment `detected_at` | Includes bridge polling or idle time. |
+| `detect_to_job` | -> job `created_at` | |
+| `job_to_insight` | -> insight `created_at` (narration worker) | Includes the wait for a worker. |
+| `insight_to_published` | -> publication time | Not measurable until push delivery exists. |
+| `ingest_to_insight` | end to end | |
+
+The report also shows:
+- **Model calls and per-role timings** from insight traces. Tokens appear only where a trace records `usage`; today none do, and the report says so.
+- **Cosmos request charge (RU) of the report's own reads.** `CosmosStore.request_charge` accumulates RU per operation (for queries, the charge of the last page), and the bridge logs `request_charge_ru` per cycle.
+- **Web PubSub messages:** "not built" until push exists.
+- It never reads prompt or insight text.
+
+**Web PubSub (provisioned 2026-10-20, publisher not built).**
+
+| Setting | Value |
+| --- | --- |
+| Resource | `omnipitch-wps-670966` in `rg-omnipitch-uf` (UF Azure for Students), West US, Free_F1, 1 unit: 20 concurrent connections, 20,000 messages/day, no SLA |
+| Host | `omnipitch-wps-670966.webpubsub.azure.com`; hub `omnipitch`; one group per run (`run-<run_id>`) |
+| Auth | Local auth (access keys) is disabled. The owner has *Web PubSub Service Owner* on this resource only, and server-side code uses Entra ID tokens for `https://webpubsub.azure.com`. |
+| Verified | `generateToken` for a group returned 200 with a client token; send-to-group returned 202 |
+
+The negotiation endpoint and the outbox publisher wait on agreement of the push contract.
+
+**Push contract (proposed, not agreed).** `contracts/schemas/push.schema.json` is an envelope with `schema_version`, `message_id`, `run_id`, `type` (`state | moment | insight | period_reconciled`), `state_version`, `sent_at` and a typed `payload`:
+- The payload reuses `match-state`, `insight` and `reconciliation`; a new moment travels as a `moment_ref`.
+- `state_version` is the gap-free sequence the bridge has processed, so it is monotonic per run.
+- `message_id` is deterministic (`<run_id>:<type>:<key>`), so retries are idempotent.
+- Clients drop older or duplicate messages and refetch the snapshot API on a gap or reconnect: the snapshot is the recovery path, push only a fast path.
+- Example per type in `contracts/examples/`:
+  - `push` (moment): the real goal moment of `gate-20261020-b`.
+  - `push-insight`: the validated deterministic fallback insight for that goal. All three stored AI insights of that run contain known unsupported-meaning claims ("three-pass move", "kept the score level", "outside the box"), so none is used as a reference.
+  - `push-state`: the state of `gate-20261020-b` at sequence 400.
+  - `push-period-reconciled`: from an **offline** SQLite reconciliation of the full seed-7 match (run `example-full-seed7`); no full match has gone through Eventhouse yet.
+- Needs agreement from the frontend owner before any publisher or negotiation endpoint is built.
+
 ## Later-phase cloud flow — not implemented
 
 ```mermaid
