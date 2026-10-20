@@ -11,6 +11,7 @@
     "events_offset",
     "total_events",
     "replay",
+    "insights",
     "analysis",
     "moments"
   ],
@@ -153,6 +154,64 @@
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "insights": {
+      "description": "Narrated-insight overlay (narration worker output from Cosmos) applied to this snapshot's moments.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "status",
+        "source_run_id",
+        "narrated",
+        "ai",
+        "rejected",
+        "error",
+        "version"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "off",
+            "cosmos"
+          ]
+        },
+        "status": {
+          "enum": [
+            "off",
+            "ok",
+            "error"
+          ]
+        },
+        "source_run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "narrated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ai": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

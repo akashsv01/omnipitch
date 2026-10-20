@@ -4,9 +4,9 @@ import addFormats from 'ajv-formats';
 const ajv = new Ajv2020({ allowUnionTypes: true });
 addFormats(ajv);
 const read = path => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
-const names = ['event', 'insight', 'match-state', 'analysis', 'moment', 'replay'];
+const names = ['event', 'insight', 'match-state', 'analysis', 'moment', 'replay', 'recap'];
 for (const name of names) ajv.addSchema(read(`../../../contracts/schemas/${name}.schema.json`));
-for (const name of ['event', 'insight', 'match-state', 'replay']) {
+for (const name of ['event', 'insight', 'match-state', 'replay', 'recap']) {
   const schema = read(`../../../contracts/schemas/${name}.schema.json`);
   const fixture = read(`../../../contracts/examples/${name}.example.json`);
   const validate = ajv.getSchema(schema.$id);

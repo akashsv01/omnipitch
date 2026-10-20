@@ -195,6 +195,16 @@
       }
     ]
   },
+  "insights": {
+    "mode": "off",
+    "status": "off",
+    "source_run_id": null,
+    "narrated": 0,
+    "ai": 0,
+    "rejected": 0,
+    "error": null,
+    "version": "none"
+  },
   "analysis": {
     "metric_version": "metrics-v1",
     "grid_version": "illustrative-threat-v1",

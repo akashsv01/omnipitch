@@ -8,8 +8,9 @@ from __future__ import annotations
 import json
 
 from .narrate import clock_label
+from .semantics import derived_facts
 
-PROMPT_VERSION = "prompts-v2"
+PROMPT_VERSION = "prompts-v3"
 
 SHARED_CONTRACT = """You explain synthetic football moments for OmniPitch.
 Rules:
@@ -17,6 +18,12 @@ Rules:
 - Cite evidence IDs exactly as supplied, in the evidence_ids field. Keep IDs out of headline and prose.
 - Refer to match time only with the supplied clock label (for example 49'). Never quote milliseconds and never
   compute new numbers (no unit conversions, sums, differences or rounding); reuse numbers exactly as written.
+- Use the "derived" facts exactly: describe the score, a lead or a level game only when score_after_goal is given,
+  and box position only as stated in shot_location. Never say "outside the box", "long range" or "from distance".
+- possession_actions counts every recorded action, not passes: never write "a three-pass move" or "N passes".
+- There are no defender positions: never say a move broke through, cut through or penetrated a defence.
+- In a transition the team WON the ball, then attacked (see derived.what_happened). Never write that it lost the ball.
+- Fan text (casual_text) tells the story only; never mention missing data or evidence there. Limitations cover that.
 - Separate observation from interpretation.
 - If data is missing, say so. There is no player tracking: do not claim speed, distance covered, off-ball runs or bypassed defenders.
 - The threat score is illustrative and uncalibrated. Never turn it into a scoring probability, percentage or xG.
@@ -52,7 +59,7 @@ def evidence_packet(moment: dict, context: dict) -> dict:
         "metric_version": moment["metric_version"], "period": moment["period"], "clock": clock_label(moment["period"], moment["match_time_ms"]),
         "team": context["teams"].get(moment["team_id"]), "players": {pid: context["players"][pid] for pid in actors if pid in context["players"]},
         "evidence_ids": moment["evidence_ids"], "metrics": moment["metrics"], "facts": moment["facts"],
-        "limitations": moment["limitations"], "synthetic": True,
+        "limitations": moment["limitations"], "derived": derived_facts(moment, context), "synthetic": True,
     }
 
 

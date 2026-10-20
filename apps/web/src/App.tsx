@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from 'motion/react';
 import { Database, RefreshCw, SlidersHorizontal, WifiOff, X } from 'lucide-react';
-import { AnalysisTabs } from './components/AnalysisTabs';
+import { AnalysisTabs, type TabRequest } from './components/AnalysisTabs';
 import { ControlDock } from './components/ControlDock';
 import { BrandMark } from './components/Crest';
 import { EvidenceDrawer } from './components/EvidenceDrawer';
@@ -13,7 +13,7 @@ import { Momentum, Scoreboard } from './components/Scoreboard';
 import { API_BASE_URL } from './lib/api';
 import { usePrefs, type Audience } from './lib/prefs';
 import { useInterpolatedElapsed, useReplay } from './lib/useReplay';
-import type { Event, Moment } from './types/contracts';
+import type { Event, Moment, RecapScope } from './types/contracts';
 import './style.css';
 
 export default function App() {
@@ -80,6 +80,33 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
     void live.seek(Math.max(0, moment.replay_ms - lead - 6000));
   }, [replay, live]);
 
+  const jumpToMoment = useCallback((momentId: string, replayMs: number) => {
+    const moment = replay?.moments.find(m => m.moment_id === momentId);
+    if (moment) jumpTo(moment); else void live.seek(Math.max(0, replayMs - 6000));
+    window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+  }, [replay, jumpTo, live, reduced]);
+
+  // When a period ends during playback, offer its recap once.
+  const [tabRequest, setTabRequest] = useState<TabRequest>();
+  const [recapPrompt, setRecapPrompt] = useState<{ text: string; scope: RecapScope } | null>(null);
+  const seenPeriodEnds = useRef<{ run?: string; ends: Set<string> }>({ ends: new Set() });
+  useEffect(() => {
+    if (!replay) return;
+    const ends = replay.events.filter(e => e.type === 'period_end').map(e => e.event_id);
+    const known = seenPeriodEnds.current;
+    const fresh = known.run === replay.state.run_id ? ends.filter(id => !known.ends.has(id)) : [];
+    seenPeriodEnds.current = { run: replay.state.run_id, ends: new Set(ends) };
+    if (fresh.length && replay.state.replay_status !== 'paused') {
+      const period = replay.events.find(e => e.event_id === fresh[fresh.length - 1])?.period;
+      setRecapPrompt(period === 2 ? { text: 'Full-time recap is ready', scope: 'full_time' } : { text: 'Half-time recap is ready', scope: 'first_half' });
+    }
+  }, [replay]);
+  const openRecap = () => {
+    setTabRequest({ tab: 'recap', nonce: Date.now(), scope: recapPrompt?.scope });
+    setRecapPrompt(null);
+    setTimeout(() => document.getElementById('analysis-title')?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' }), 320); // After the banner's exit, or the layout shift cancels a smooth scroll.
+  };
+
   const disabled = live.busy || live.connection === 'offline';
 
   return <div className="shell">
@@ -110,6 +137,14 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
           <span>{live.actionError}</span>
           <button type="button" className="icon-button" aria-label="Dismiss" onClick={live.clearActionError}><X size={15} /></button>
         </motion.div>}
+        {recapPrompt && <motion.div className="notice recap-prompt" role="status" style={{ marginBottom: 12, justifyContent: 'space-between', alignItems: 'center' }}
+          initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}>
+          <span>{recapPrompt.text}: the score, up to three verified key moments and what the data supports.</span>
+          <span style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="button primary" onClick={openRecap}>Read recap</button>
+            <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setRecapPrompt(null)}><X size={15} /></button>
+          </span>
+        </motion.div>}
         {replay.replay.restored && !restoredSeen && <motion.div className="notice" style={{ marginBottom: 12, justifyContent: 'space-between' }}
           initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
           <span>Restored the saved replay after an API restart: same run, score and moments, paused where it stopped.</span>
@@ -134,11 +169,13 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
       </div>
 
       <AnalysisTabs replay={replay} audience={prefs.audience} favoritePlayer={prefs.favoritePlayer}
-        busy={live.busy} onLoadEventhouse={live.loadEventhouse}
+        busy={live.busy} onLoadEventhouse={live.loadEventhouse} onJumpMoment={jumpToMoment} tabRequest={tabRequest}
         onSelectEvent={event => { setSelectedId(event.event_id); window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }); }} />
 
       <footer className="foot">
-        <span>All teams, players and events are synthetic. Narratives are deterministic templates from verified metrics; AI narration is not connected yet.</span>
+        <span>All teams, players and events are synthetic. {replay.insights.ai > 0
+          ? `${replay.insights.ai} moment ${replay.insights.ai === 1 ? 'story is' : 'stories are'} AI-written and checked in code; the rest are templates from verified metrics.`
+          : 'Moment stories are deterministic templates from verified metrics.'}</span>
         <span>Run <span className="mono">{replay.state.run_id}</span> · API {API_BASE_URL}</span>
       </footer>
 

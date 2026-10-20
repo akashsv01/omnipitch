@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 
 from .narrate import build_fallback_insight, clock_label
+from .semantics import fan_text_errors, semantic_errors
 
 REQUIRED = {"schema_version", "run_id", "match_id", "moment_id", "headline", "casual_text", "analyst_text",
             "language", "evidence_ids", "metrics", "limitations", "generation_mode"}
@@ -96,6 +97,8 @@ def validate_insight(insight: dict, moment: dict, context: dict) -> list[str]:
     for pattern, reason in FORBIDDEN:
         if pattern.search(text):
             errors.append(f"forbidden claim: {reason}")
+    errors.extend(semantic_errors(text, moment))
+    errors.extend(fan_text_errors(str(insight["casual_text"])))
     allowed = _allowed_numbers(moment)
     # Evidence IDs of this moment may be cited in prose; their digits are identifiers, not claims.
     # Any other event-ID-shaped token is an unknown citation and is rejected.

@@ -170,6 +170,40 @@ h1, h2, h3, p { margin: 0; }
 .empty svg { color: var(--chalk-faint); }
 .empty strong { color: var(--chalk-dim); font-weight: 500; }
 
+/* Author labels and recap ------------------------------------------------- */
+.author-tag { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 500; letter-spacing: .02em; border: 1px solid var(--rule); color: var(--chalk-faint); white-space: nowrap; }
+.author-tag[data-mode="ai"] { color: var(--vale); border-color: rgba(127, 212, 230, .35); background: var(--vale-soft); }
+.author-tag[data-mode="pending"] { color: var(--flood); border-color: rgba(242, 201, 76, .35); }
+.recap { display: grid; gap: 16px; }
+.recap-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.recap-toolbar .author-tag { margin-left: 0; }
+.recap-status { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--chalk-dim); background: rgba(234, 240, 234, .06); }
+.recap-status[data-status="final"] { color: var(--ok); background: rgba(111, 211, 154, .12); }
+.recap-body { display: grid; gap: 16px; }
+.recap-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.recap-head h3 { font: 600 24px/1.1 var(--display); letter-spacing: .005em; flex: 1 1 260px; text-wrap: balance; }
+.recap-score { display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 14px; border-radius: var(--radius-m); background: var(--night-2); border: 1px solid var(--rule); font: 600 14px/1 var(--display); letter-spacing: .06em; }
+.recap-score b { font-size: 28px; color: var(--chalk); }
+.recap-score i { font-style: normal; color: var(--chalk-faint); }
+.recap-summary { color: var(--chalk-dim); font-size: 15px; line-height: 1.6; max-width: 72ch; text-wrap: pretty; }
+.recap-section { display: grid; gap: 10px; }
+.recap-section h4, .recap-card h4 { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--chalk-faint); }
+.recap-moments { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.recap-moments button { position: relative; width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 15px; text-align: left; border-radius: var(--radius-s); background: var(--night-2); border: 1px solid var(--rule); color: var(--chalk); overflow: hidden; transition: border-color .15s, background-color .15s, transform .15s var(--ease-out); }
+.recap-moments button::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--tone); }
+.recap-moments button:hover { border-color: var(--rule-strong); background: var(--panel-2); }
+.recap-moments button:active { transform: scale(.99); }
+.recap-moments .minute { font: 600 16px/1 var(--display); min-width: 52px; }
+.recap-moment-text { flex: 1; min-width: 0; font-size: 14px; }
+.recap-card { display: grid; gap: 8px; align-content: start; }
+.recap-card p { color: var(--chalk-dim); font-size: 14px; line-height: 1.5; }
+.recap-card[data-supported="false"] p { color: var(--chalk-faint); }
+@media (max-width: 640px) {
+  .recap-moments button { flex-wrap: wrap; }
+  .recap-moment-text { flex-basis: 100%; order: 3; }
+  .recap-head h3 { font-size: 21px; }
+}
+
 /* Control dock ------------------------------------------------------------ */
 .dock { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 30; width: min(1100px, calc(100vw - 24px)); display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 999px; background: rgba(19, 37, 48, .86); border: 1px solid var(--rule-strong); backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%); box-shadow: 0 18px 50px rgba(4, 12, 16, .5); }
 .play { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--flood); color: var(--night); transition: transform .15s var(--ease-out), box-shadow .2s; box-shadow: 0 0 0 0 rgba(242, 201, 76, .4); }

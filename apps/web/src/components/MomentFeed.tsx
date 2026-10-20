@@ -69,6 +69,11 @@ function MomentCard({ moment, audience, favorite, onEvidence, onJump }: {
       <span className="minute">{clockLabel(moment.period, moment.match_time_ms)}</span>
       <span className="rule-tag"><Icon size={13} aria-hidden="true" />{RULE_LABEL[moment.rule]}</span>
       {favorite && <Star size={13} fill="var(--flood)" color="var(--flood)" aria-label="Involves your favourite" />}
+      <span className="author-tag" data-mode={insight.generation_mode}
+        title={insight.generation_mode === 'ai' ? 'Written by the AI model from verified evidence; numbers, names and claims checked in code'
+          : 'Deterministic template from verified metrics'}>
+        {insight.generation_mode === 'ai' ? <><Sparkles size={11} aria-hidden="true" />AI</> : 'Template'}
+      </span>
     </div>
     <h3>{insight.headline}</h3>
     <p>{audience === 'fan' ? insight.casual_text : insight.analyst_text}</p>
