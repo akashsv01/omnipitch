@@ -7,7 +7,8 @@ from .schemas import Event, MatchState
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 # Local monorepo seam until these services become independently packaged.
-for package in ("services/simulator", "services/analytics", "services/agents"):
+# services/bridge provides the shared Cosmos client used by the insight overlay (agents.insights).
+for package in ("services/simulator", "services/analytics", "services/agents", "services/bridge"):
     if str(REPOSITORY_ROOT / package) not in sys.path:
         sys.path.insert(0, str(REPOSITORY_ROOT / package))
 from simulator.generate import generate_events  # noqa: E402

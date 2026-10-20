@@ -345,6 +345,10 @@ def _moment(rule):
     ("goal", "The attack penetrated the back line.", "defenders broken through"),
     ("threat_gain", "Vale lead 1-0 after this pass.", "score state"),
     ("transition", "A long-range effort followed.", "outside the box"),
+    # Seen on the Phase 4 live run p4-live-20261020-a (2026-10-20) and missed by the first rule set.
+    ("chance", "The keeper made a good save to keep the score intact.", "score state"),
+    ("pressing_change", "Harbor pressed hard to protect their lead.", "score state"),
+    ("chance", "Vale are still ahead after the save.", "score state"),
 ])
 def test_semantic_errors_reject_unsupported_meaning(rule, text, expected):
     from agents.semantics import semantic_errors
