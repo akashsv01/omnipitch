@@ -112,7 +112,7 @@ Access is Entra ID only, for the owner: built-in Data Contributor scoped to `/db
 
 Verification: the bridge tests run against both stores, 19 passed (9 against live Cosmos, opt-in with `OMNIPITCH_TEST_COSMOS_ENDPOINT`; each test uses its own run ID and purges its records). The first live attempt exposed a missing `close()` on the sync Cosmos client; it was fixed. Live: `run_bridge.py --store cosmos --once` on `smoke-20261016-a` created 24 moments and 24 `pending` jobs, all schema-valid and covering all five rules. A second process created 0, and the cursor persisted in Cosmos. The containers then held exactly 24 moments, 24 jobs and 1 cursor.
 
-Not done: Akash's cross-tenant access to Cosmos (key or guest role, to be agreed); a Cosmos client for the narration worker (it uses the bridge's `SqliteStore` today, and `CosmosStore` has the same methods); deployment of the bridge.
+Cross-tenant access decided 2026-10-16: UF blocks guest accounts, so the narration worker uses the Cosmos secondary key, shared privately; the `insights` container (`/run_id`) was created for it. Not done: a Cosmos client for the narration worker (it uses the bridge's `SqliteStore` today, and `CosmosStore` has the same methods); deployment of the bridge.
 
 **Narration on Cosmos DB and a live model, 2026-10-16 (branch `phase3-narration-cosmos`, not merged).** The narration worker can use Tanmayee's Cosmos DB (UF tenant, West US, free tier) through `--store cosmos`.
 
