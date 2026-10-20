@@ -237,3 +237,32 @@ def test_fan_and_analyst_modes_share_the_same_facts():
         assert validate_insight(data["insight"], data, narration_context(actors)) == []
         assert data["insight"]["moment_id"] == data["moment_id"]
         assert data["insight"]["evidence_ids"] == data["evidence_ids"]
+
+
+def test_cosmos_overlay_setup_failure_is_reported_not_raised(monkeypatch):
+    import builtins
+    from app import insight_overlay
+    real_import = builtins.__import__
+
+    def failing_import(name, *args, **kwargs):
+        if name == "agents.insights":
+            raise ModuleNotFoundError("No module named 'omnipitch_bridge'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setenv("OMNIPITCH_INSIGHTS", "cosmos")
+    monkeypatch.setenv("COSMOS_ENDPOINT", "https://example.documents.azure.com:443/")
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+    overlay = insight_overlay.from_env()
+    monkeypatch.setattr(builtins, "__import__", real_import)
+    moments, status = overlay.apply([], [], SOURCE)
+    assert status["status"] == "error" and "omnipitch_bridge" in status["error"]
+
+
+def test_api_import_path_includes_the_bridge_client():
+    """The API process (not just pytest) must be able to build the Cosmos insight store."""
+    import subprocess
+    import sys
+    code = ("import sys; from app import sample_data; "
+            "import importlib; importlib.import_module('omnipitch_bridge.cosmos_store'); print('ok')")
+    out = subprocess.run([sys.executable, "-c", code], cwd=ROOT / "services/api", capture_output=True, text=True)
+    assert out.stdout.strip() == "ok", out.stderr[-400:]

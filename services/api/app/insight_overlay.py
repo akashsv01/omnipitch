@@ -89,6 +89,11 @@ def from_env() -> InsightOverlay:
         overlay = InsightOverlay(None, "cosmos")
         overlay._error = "COSMOS_ENDPOINT must be the https account endpoint (no keys)."
         return overlay
-    from agents.insights import CosmosInsightStore
-    store = CosmosInsightStore(endpoint, os.getenv("COSMOS_DATABASE", "omnipitch"), os.getenv("COSMOS_TENANT_ID") or None)
+    try:
+        from agents.insights import CosmosInsightStore
+        store = CosmosInsightStore(endpoint, os.getenv("COSMOS_DATABASE", "omnipitch"), os.getenv("COSMOS_TENANT_ID") or None)
+    except Exception as exc:  # Report a broken insight source in every snapshot; never fail the replay.
+        overlay = InsightOverlay(None, "cosmos")
+        overlay._error = f"insight source unavailable: {type(exc).__name__}: {str(exc)[:160]}"
+        return overlay
     return InsightOverlay(store.insights, "cosmos")

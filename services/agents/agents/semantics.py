@@ -38,6 +38,10 @@ TURNOVER_REVERSED = re.compile(r"\b(stopped|ended|halted|broken up|cut short|end
                                r"|\blost (the ball|possession)\b|\bgave (the ball|it|possession) away\b|\bturned (it|the ball) over\b", re.I)
 META_IN_FAN_TEXT = re.compile(r"\b(no|not|without) (score|scoring|tracking|position\w*) (info|information|data)\b|\bevidence\b"
                               r"|\b(is|was|are) not (given|provided|available) here\b|\binfo (is|was) (not )?(given|provided)\b", re.I)
+# Other score-state wording ("keep the score intact", "the scoreline stays"): allowed only where the score is evidence.
+SCORE_STATE = re.compile(r"\b(score|scoreline|scores)( \w+){0,2} (intact|unchanged|the same|as it was|stays|stayed|remains|remained|untouched)\b"
+                         r"|\b(keep|keeps|kept|keeping|preserv\w*|protect\w*|maintain\w*|hold\w*|defend\w*) (the|their|its|a) (score|scoreline|lead|advantage|clean sheet)\b"
+                         r"|\bthe scoreline\b|\bstill (level|ahead|behind|in front)\b", re.I)
 SCORELINE = re.compile(r"(?<![\w.])(\d{1,2})\s*[-–]\s*(\d{1,2})(?![\w.])")
 MINUTE_RANGE = re.compile(r"\bminutes? \d{1,3}\s*[-–]\s*\d{1,3}\b", re.I)
 
@@ -99,7 +103,7 @@ def semantic_errors(text: str, moment: dict) -> list[str]:
     goal = _goal_score(moment)
     lines = [(int(a), int(b)) for a, b in SCORELINE.findall(scan)]
     if goal is None:
-        if LEAD.search(scan) or LEVEL.search(scan) or BEHIND.search(scan) or lines:
+        if LEAD.search(scan) or LEVEL.search(scan) or BEHIND.search(scan) or SCORE_STATE.search(scan) or lines:
             errors.append("unsupported claim: score state (the score is not in this evidence)")
         return errors
     mine, theirs = goal
