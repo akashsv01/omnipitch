@@ -396,6 +396,22 @@ class RecapAIStatus(WireModel):
     reason: str | None
 
 
+class RecapPeriodReconciliation(WireModel):
+    period: Literal[1, 2]
+    status: Literal["pending", "reconciled", "mismatch", "differs"]
+    through_sequence: int | None
+    reconciled_at: str | None
+    mismatches: int | None
+
+
+class RecapReconciliation(WireModel):
+    mode: Literal["off", "cosmos"]
+    status: Literal["off", "not_applicable", "pending", "reconciled", "mismatch", "differs", "error"]
+    periods: list[RecapPeriodReconciliation]
+    error: str | None
+
+
 class RecapResponse(WireModel):
     recap: Recap
     ai: RecapAIStatus
+    reconciliation: RecapReconciliation

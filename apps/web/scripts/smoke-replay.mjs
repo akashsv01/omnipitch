@@ -85,12 +85,20 @@ try {
   });
   const evaluate = async expression => {
     const result = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
     return result.result.value;
   };
   const text = () => evaluate('document.body.innerText');
-  const click = selector => evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el || el.disabled) throw new Error('Unavailable: ' + ${JSON.stringify(selector)}); el.click(); })()`);
-  const clickText = label => evaluate(`(() => { const el = [...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith(${JSON.stringify(label)})); if (!el || el.disabled) throw new Error('Unavailable'); el.click(); })()`);
+  // Controls can be briefly disabled right after a reload (pre-existing race, about 1 run in 8): retry until usable.
+  const clickNow = selector => evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el || el.disabled) throw new Error('Unavailable: ' + ${JSON.stringify(selector)}); el.click(); })()`);
+  const clickTextNow = label => evaluate(`(() => { const el = [...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith(${JSON.stringify(label)})); if (!el || el.disabled) throw new Error('Unavailable'); el.click(); })()`);
+  const retry = async (attempt, label) => {
+    let failure;
+    await until(async () => { try { await attempt(); return true; } catch (error) { failure = error; return false; } }, label, 5000)
+      .catch(() => { throw failure ?? new Error(`Unavailable: ${label}`); });
+  };
+  const click = selector => retry(() => clickNow(selector), selector);
+  const clickText = label => retry(() => clickTextNow(label), label);
   await send('Runtime.enable');
   await send('Page.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
