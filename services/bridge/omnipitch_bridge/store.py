@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS moments (
 CREATE TABLE IF NOT EXISTS jobs (
   job_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS jobs_by_status ON jobs (status);
+CREATE TABLE IF NOT EXISTS outbox (
+  message_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, status TEXT NOT NULL, version INTEGER NOT NULL, payload TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS outbox_by_status ON outbox (status);
 CREATE TABLE IF NOT EXISTS reconciliations (
   run_id TEXT NOT NULL, period INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (run_id, period));
 """
@@ -58,6 +61,10 @@ def new_job(moment: dict, now: datetime, max_attempts: int = DEFAULT_MAX_ATTEMPT
 
 class StaleJob(RuntimeError):
     """The job changed since it was read (version mismatch) or the caller no longer holds the lease."""
+
+
+class StaleOutbox(RuntimeError):
+    """The outbox record changed since it was read (another publisher updated it)."""
 
 
 class SqliteStore:
@@ -196,6 +203,41 @@ class SqliteStore:
                     except StaleJob:
                         pass
         return failed
+
+
+    # Outbox (push publication) --------------------------------------------
+    def create_outbox(self, record: dict) -> bool:
+        """Persist a message before any send; an existing message_id is a no-op."""
+        with self.lock:
+            cursor = self.connection.execute("INSERT OR IGNORE INTO outbox VALUES (?, ?, ?, ?, ?)",
+                                             (record["message_id"], record["run_id"], record["status"], record["version"],
+                                              json.dumps(record, sort_keys=True)))
+        return cursor.rowcount == 1
+
+    def outbox_ids(self, run_id: str) -> set[str]:
+        with self.lock:
+            return {row[0] for row in self.connection.execute("SELECT message_id FROM outbox WHERE run_id = ?", (run_id,))}
+
+    def outbox(self, run_id: str | None = None, status: str | None = None) -> list[dict]:
+        query, params = "SELECT payload FROM outbox WHERE 1 = 1", []
+        if run_id is not None:
+            query, params = query + " AND run_id = ?", params + [run_id]
+        if status is not None:
+            query, params = query + " AND status = ?", params + [status]
+        with self.lock:
+            return [json.loads(row[0]) for row in self.connection.execute(query, params)]
+
+    def update_outbox(self, record: dict, expected_version: int) -> None:
+        with self.lock:
+            cursor = self.connection.execute(
+                "UPDATE outbox SET status = ?, version = ?, payload = ? WHERE message_id = ? AND version = ?",
+                (record["status"], record["version"], json.dumps(record, sort_keys=True), record["message_id"], expected_version))
+        if cursor.rowcount != 1:
+            raise StaleOutbox(f"outbox {record['message_id']} changed since version {expected_version}")
+
+    def completed_jobs_since(self, since: datetime) -> list[dict]:
+        """ready/fallback jobs updated at or after `since`: their insights may still need publishing."""
+        return [job for job in self.jobs() if job["status"] in ("ready", "fallback") and parse_iso(job["updated_at"]) >= since]
 
 
 # Job transitions shared by every store: stores only differ in how a conditional write is done.

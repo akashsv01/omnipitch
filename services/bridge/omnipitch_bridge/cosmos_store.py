@@ -16,7 +16,7 @@ from azure.core import MatchConditions
 from azure.cosmos import CosmosClient
 from azure.cosmos.exceptions import CosmosAccessConditionFailedError, CosmosResourceExistsError, CosmosResourceNotFoundError
 
-from .store import StaleJob, claim_order, claimable, claimed, completed, exhausted, is_exhausted, iso, parse_iso, utcnow
+from .store import StaleJob, StaleOutbox, claim_order, claimable, claimed, completed, exhausted, is_exhausted, iso, parse_iso, utcnow
 
 SYSTEM_FIELDS = ("id", "_rid", "_self", "_etag", "_attachments", "_ts")
 
@@ -42,6 +42,8 @@ class CosmosStore:
         self.jobs_c = db.get_container_client("jobs")
         self.cursors_c = db.get_container_client("cursors")
         self.reconciliations_c = db.get_container_client("reconciliations")
+        self.outbox_c = db.get_container_client("outbox")
+        self.insights_c = db.get_container_client("insights")
         self.request_charge: dict[str, float] = {}
 
     def _charge(self, operation: str, container) -> None:
@@ -177,9 +179,59 @@ class CosmosStore:
                     pass
         return failed
 
+    # Outbox (push publication) --------------------------------------------
+    def create_outbox(self, record: dict) -> bool:
+        try:
+            self.outbox_c.create_item({**record, "id": record["message_id"]})
+            return True
+        except CosmosResourceExistsError:
+            return False
+        finally:
+            self._charge("create_outbox", self.outbox_c)
+
+    def outbox_ids(self, run_id: str) -> set[str]:
+        ids = {item["id"] for item in self.outbox_c.query_items("SELECT c.id FROM c", partition_key=run_id)}
+        self._charge("read_outbox", self.outbox_c)
+        return ids
+
+    def outbox(self, run_id: str | None = None, status: str | None = None) -> list[dict]:
+        query, params = "SELECT * FROM c WHERE 1 = 1", []
+        if status is not None:
+            query, params = query + " AND c.status = @status", [{"name": "@status", "value": status}]
+        items = (self.outbox_c.query_items(query, parameters=params, partition_key=run_id) if run_id is not None
+                 else self.outbox_c.query_items(query, parameters=params, enable_cross_partition_query=True))
+        rows = [{**_clean(item), "_etag": item["_etag"]} for item in items]
+        self._charge("read_outbox", self.outbox_c)
+        return rows
+
+    def update_outbox(self, record: dict, expected_version: int) -> None:
+        body = {k: v for k, v in record.items() if k != "_etag"}
+        try:
+            self.outbox_c.replace_item(record["message_id"], {**body, "id": record["message_id"]}, etag=record["_etag"],
+                                       match_condition=MatchConditions.IfNotModified)
+        except CosmosAccessConditionFailedError as exc:
+            raise StaleOutbox(f"outbox {record['message_id']} changed since version {expected_version}") from exc
+        finally:
+            self._charge("update_outbox", self.outbox_c)
+
+    def completed_jobs_since(self, since: datetime) -> list[dict]:
+        items = self.jobs_c.query_items(
+            "SELECT * FROM c WHERE ARRAY_CONTAINS(@done, c.status) AND c.updated_at >= @since",
+            parameters=[{"name": "@done", "value": ["ready", "fallback"]}, {"name": "@since", "value": iso(since)}],
+            enable_cross_partition_query=True)
+        rows = [_clean(item) for item in items]
+        self._charge("read_completed_jobs", self.jobs_c)
+        return rows
+
+    def insights(self, run_id: str) -> list[dict]:
+        """Narration records (Cosmos `insights`, create-only, insight_id = moment_id) for one run."""
+        rows = [_clean(item) for item in self.insights_c.query_items("SELECT * FROM c", partition_key=run_id)]
+        self._charge("read_insights", self.insights_c)
+        return rows
+
     # Test support ----------------------------------------------------------
     def purge_run(self, run_id: str) -> None:
-        for container in (self.moments_c, self.jobs_c, self.reconciliations_c):
+        for container in (self.moments_c, self.jobs_c, self.reconciliations_c, self.outbox_c):
             try:
                 for item in list(container.query_items("SELECT c.id FROM c", partition_key=run_id)):
                     container.delete_item(item["id"], partition_key=run_id)

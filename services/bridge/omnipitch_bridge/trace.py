@@ -95,7 +95,7 @@ def run_report(run_id: str, moments: list[dict], ingestion: dict[str, dict], det
             "stages_seconds": stages,
             "notes": [note for note in (
                 f"emit_to_ingest not measurable for {synthetic} moments: emitted_at is the simulator's fixture clock" if synthetic else None,
-                "insight_to_published not measurable: push delivery is not built yet" if published is None else None) if note],
+                "insight_to_published not measurable: no insight messages were published for this run" if not published else None) if note],
             "model": model_usage(insights),
             "cosmos_request_charge_ru": request_charge,
             "pubsub_messages": pubsub_messages}

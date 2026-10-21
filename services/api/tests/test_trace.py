@@ -48,5 +48,5 @@ def test_run_report_notes_what_cannot_be_measured():
     assert report["stages_seconds"]["ingest_to_insight"] == {"n": 1, "p50": 13.5, "p95": 13.5}
     assert report["stages_seconds"]["emit_to_ingest"]["n"] == 0
     assert any("fixture clock" in note for note in report["notes"])
-    assert any("push delivery is not built" in note for note in report["notes"])
+    assert any("no insight messages were published" in note for note in report["notes"])
     assert report["pubsub_messages"] is None

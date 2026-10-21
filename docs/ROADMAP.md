@@ -269,6 +269,23 @@ Verification 2026-10-20 (local): 120 Python tests passed, 14 cloud tests skipped
 - **Full match published for the joint gate:** `gate-20261020-d` (seed 7, standard, 1,206 events + 25 duplicates, `period_end` at 618 and 1206). Sent to Event Hubs by the publisher; Eventhouse arrival is not checked from this machine.
 - 144 Python tests passed, 19 skipped.
 
+**Phase 4 publish and live reconciliation, 2026-10-21 (Tanmayee; uncommitted at the time of writing).**
+
+- **Live period-end reconciliation: VERIFIED** on the full match `gate-20261020-d`:
+  - Eventhouse: 1,231 rows, 1,206 unique, sequences 1–1206.
+  - `run_bridge.py --store cosmos --once` created 55 moments and 55 `pending` jobs.
+  - Period 1: through 618, 618 events, 29 expected and created, `reconciled`.
+  - Period 2: through 1206, 588 events, 26 expected and created, `reconciled`.
+  - Both records are schema-valid. A second run created 0 and reconciled nothing again.
+  - That cycle cost 1,813.9 RU, and an idle rerun 220 RU, mostly 409s from create-only writes. Worth optimising if a continuous bridge strains the 1000 RU/s budget.
+- **Negotiate endpoint and outbox publisher: implemented and tested offline. Live push is UNVERIFIED.**
+  - 8 new tests with a fake publisher and a fake Web PubSub client cover: valid envelopes; state first; 55 moments and 2 period messages for the full match; state versions growing with the prefix (300 → 700); reruns and duplicates publishing nothing new; a failed send retried with the same `message_id`; a restart between send and mark resending once and counting once; one insight message after a job completes; and negotiate 503/200/422.
+  - Mutation check: never marking `sent` fails 6 of the 8.
+  - Live push needs the Cosmos `outbox` container (awaiting approval) and an API started with `WEBPUBSUB_ENDPOINT`.
+- `trace_report.py` now reads publication times and counts from the outbox.
+- 152 Python tests passed, 19 skipped (opt-in cloud).
+- **Not done:** live push (outbox container); the joint gate. Akash's `phase4_live.py` can now run against the 55 `pending` jobs of `gate-20261020-d`.
+
 ## Phase 5 — dataset export and basic Producer Mode
 
 - [ ] Export reusable synthetic datasets with provenance and schema version.
