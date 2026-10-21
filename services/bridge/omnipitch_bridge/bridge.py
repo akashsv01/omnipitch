@@ -20,7 +20,7 @@ from typing import Callable, Protocol
 
 from jsonschema import Draft202012Validator, FormatChecker
 
-from app.analysis import TEAMS
+from app.analysis import AWAY, HOME, TEAMS
 from app.schemas import Event
 from omnipitch_analytics.detect import detect_moments
 
@@ -86,9 +86,14 @@ def contiguous_prefix(events: list[dict]) -> list[dict]:
 class Bridge:
     def __init__(self, source: EventSource, store: SqliteStore, cursor_id: str,
                  lookback: timedelta = DEFAULT_LOOKBACK, clock: Callable[[], datetime] = utcnow,
-                 log: Callable[[dict], None] = lambda record: None):
+                 log: Callable[[dict], None] = lambda record: None, outbox=None,
+                 insight_source: Callable[[str], list[dict]] | None = None,
+                 insight_watch: timedelta = timedelta(hours=6)):
         self.source, self.store, self.cursor_id = source, store, cursor_id
         self.lookback, self.clock, self.log = lookback, clock, log
+        # Push (optional): the outbox persists every message before it is published.
+        self.outbox, self.insight_watch = outbox, insight_watch
+        self.insight_source = insight_source or getattr(store, "insights", None)
 
     def process_run(self, run_id: str) -> dict:
         started = time.perf_counter()
@@ -121,6 +126,8 @@ class Bridge:
                 created_jobs += self.store.create_job(job)
             for period in pending_periods:
                 reconciled.append(self._reconcile_period(run_id, period, prefix, detected, stored_before, created_ids, now))
+            if self.outbox is not None:
+                self._enqueue_run(run_id, prefix, detected)
         result = {"run_id": run_id, "rows": len(rows), "rejected_rows": rejected,
                   "contiguous_through": prefix[-1]["sequence"] if prefix else 0,
                   "moments_detected": len(detected), "moments_created": created_moments, "jobs_created": created_jobs,
@@ -152,6 +159,47 @@ class Bridge:
                   "created": record["created"], "mismatches": len(mismatches)})
         return record
 
+    def _enqueue_run(self, run_id: str, prefix: list[dict], detected: list[dict]) -> None:
+        """Fast path: state and new moments do not wait for narration; reconciliations follow their period."""
+        from .push import envelope, moment_ref, state_payload
+        version = prefix[-1]["sequence"]
+        known = self.store.outbox_ids(run_id)
+        self.outbox.enqueue(envelope("state", run_id, version, version,
+                                     state_payload(prefix, {HOME["id"]: HOME["name"], AWAY["id"]: AWAY["name"]})), known)
+        for moment in detected:
+            self.outbox.enqueue(envelope("moment", run_id, moment["moment_id"], version, moment_ref(moment)), known)
+        for record in self.store.reconciliations(run_id):
+            self.outbox.enqueue(envelope("period_reconciled", run_id, record["period"], record["through_sequence"], record), known)
+
+    def _enqueue_insights(self) -> int:
+        """Insight path: watch recently completed jobs and publish their stored insight once."""
+        from jsonschema import ValidationError
+        from .push import envelope
+        if self.insight_source is None:
+            return 0
+        by_run: dict[str, list[dict]] = {}
+        for job in self.store.completed_jobs_since(self.clock() - self.insight_watch):
+            if job.get("insight_id"):
+                by_run.setdefault(job["run_id"], []).append(job)
+        queued = 0
+        for run_id, jobs in by_run.items():
+            known = self.store.outbox_ids(run_id)
+            missing = [j for j in jobs if f"{run_id}:insight:{j['insight_id']}" not in known]
+            if not missing:
+                continue
+            records = {r["insight_id"]: r for r in self.insight_source(run_id)}
+            for job in missing:
+                record = records.get(job["insight_id"])
+                if record is None:
+                    continue  # Job completed before its insight is visible; picked up next cycle.
+                try:
+                    queued += self.outbox.enqueue(envelope("insight", run_id, job["insight_id"], job["source_sequence"],
+                                                           record["insight"]), known)
+                except ValidationError as exc:
+                    self.log({"stage": "enqueue_insight", "outcome": "invalid", "insight_id": job["insight_id"],
+                              "error": exc.message[:200]})
+        return queued
+
     def run_once(self) -> dict:
         cursor = self.store.get_cursor(self.cursor_id)
         since = (cursor - self.lookback) if cursor else EPOCH
@@ -160,15 +208,24 @@ class Bridge:
         newest = max([_utc(run["last_ingested"]) for run in touched] + ([cursor] if cursor else []), default=None)
         if newest is not None and newest != cursor:
             self.store.set_cursor(self.cursor_id, newest)  # Only after every touched run was written.
+        published = None
+        if self.outbox is not None:
+            self._enqueue_insights()
+            published = self.outbox.publish_pending()
         charge = getattr(self.store, "request_charge", None)
         summary = {"stage": "cycle", "since": since.isoformat(), "runs": len(touched),
                    **({"request_charge_ru": round(sum(charge.values()), 2)} if charge is not None else {}),
                    "moments_created": sum(r["moments_created"] for r in results),
                    "jobs_created": sum(r["jobs_created"] for r in results),
-                   "cursor": newest.isoformat() if newest else None}
+                   "cursor": newest.isoformat() if newest else None,
+                   **({"published": published["sent"], "publish_failed": published["failed"]} if published else {})}
         self.log(summary)
         return {**summary, "results": results}
 
     def reconcile(self, limit: int = 10) -> list[dict]:
         """Full pass over recent runs regardless of the cursor, so a bounded lookback cannot miss rows forever."""
-        return [self.process_run(run["run_id"]) for run in self.source.recent_runs(limit)]
+        results = [self.process_run(run["run_id"]) for run in self.source.recent_runs(limit)]
+        if self.outbox is not None:  # Messages enqueued by the pass are published in the same pass.
+            self._enqueue_insights()
+            self.outbox.publish_pending()
+        return results

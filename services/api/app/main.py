@@ -198,6 +198,47 @@ async def ingest(request: Request, run_id: str) -> IngestResult:
 
 
 
+# Push: Web PubSub negotiation (fast path only; the snapshot API stays the recovery path) ----------
+
+_PUSH_CLIENT = None
+
+
+def push_client():
+    """WebPubSubClient from WEBPUBSUB_ENDPOINT (+ WEBPUBSUB_HUB), Entra ID server-side; None if not configured."""
+    global _PUSH_CLIENT
+    endpoint = os.getenv("WEBPUBSUB_ENDPOINT", "").strip()
+    if not endpoint:
+        return None
+    if _PUSH_CLIENT is None:
+        from omnipitch_bridge.push import HUB, WebPubSubClient
+        _PUSH_CLIENT = WebPubSubClient(endpoint, os.getenv("WEBPUBSUB_HUB", HUB))
+    return _PUSH_CLIENT
+
+
+@app.get("/api/v1/negotiate")
+def negotiate(run_id: str = Query(..., min_length=1, max_length=128)) -> dict:
+    """Short-lived client URL (receive-only) for one source run's group. 503 push_not_configured means poll only."""
+    from omnipitch_bridge.push import group_for
+    try:
+        group = group_for(run_id)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "invalid_run_id", "message": str(exc)})
+    try:
+        client = push_client()
+    except ValueError as exc:
+        raise HTTPException(503, detail={"code": "push_not_configured", "message": str(exc)})
+    if client is None:
+        raise HTTPException(503, detail={"code": "push_not_configured", "message": "WEBPUBSUB_ENDPOINT is not set; poll the snapshot API."})
+    minutes = 60
+    try:
+        negotiated = client.client_url(group, minutes)
+    except Exception as exc:  # Credential or service failure: explicit, never a fake URL.
+        raise HTTPException(502, detail={"code": "push_negotiate_failed", "message": f"{type(exc).__name__}: {str(exc)[:200]}"})
+    from datetime import datetime, timedelta, timezone
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return {**negotiated, "expires_at": expires}
+
+
 # Azure mode: Eventhouse as the analytics event source ---------------------------------------
 
 @app.get("/api/v1/eventhouse/runs")

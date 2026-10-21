@@ -46,6 +46,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--store", choices=("sqlite", "cosmos"), default=None,
                         help="Record store (default OMNIPITCH_BRIDGE_STORE or sqlite)")
     parser.add_argument("--db", help="SQLite store path (default data/generated/bridge.sqlite3)")
+    parser.add_argument("--push", action="store_true",
+                        help="Publish state/moment/reconciliation/insight messages to Web PubSub through the outbox "
+                             "(WEBPUBSUB_ENDPOINT, WEBPUBSUB_HUB; Entra ID). Also OMNIPITCH_PUSH=on.")
     args = parser.parse_args(argv)
 
     try:
@@ -65,8 +68,18 @@ def main(argv: list[str] | None = None) -> int:
     else:
         store = SqliteStore(args.db)
     cursor_id = f"eventhouse:{config.eventhouse_database}.{config.eventhouse_table}"
-    bridge = Bridge(reader, store, cursor_id, timedelta(seconds=args.lookback), log=log)
-    log({"stage": "startup", "outcome": "ok", "source": cursor_id, "store": kind, "cursor": store.get_cursor(cursor_id)})
+    outbox = None
+    if args.push or os.getenv("OMNIPITCH_PUSH", "off").strip().lower() == "on":
+        from .push import HUB, Outbox, WebPubSubClient
+        try:
+            client = WebPubSubClient(os.getenv("WEBPUBSUB_ENDPOINT", ""), os.getenv("WEBPUBSUB_HUB", HUB))
+        except ValueError as exc:
+            log({"stage": "startup", "outcome": "error", "error": str(exc)})
+            return 2
+        outbox = Outbox(store, client, utcnow, log=log)
+    bridge = Bridge(reader, store, cursor_id, timedelta(seconds=args.lookback), log=log, outbox=outbox)
+    log({"stage": "startup", "outcome": "ok", "source": cursor_id, "store": kind, "push": outbox is not None,
+         "cursor": store.get_cursor(cursor_id)})
 
     cycle = 0
     while True:

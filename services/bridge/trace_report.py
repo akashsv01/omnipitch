@@ -2,7 +2,7 @@
 
 Reads Eventhouse ingestion times (az login identity) and the run's moments, jobs and insights from Cosmos
 (COSMOS_ENDPOINT; Entra ID or COSMOS_KEY from the environment). Prints p50/p95 per stage, model calls and
-timings from insight traces, and the Cosmos request charge (RU) of the report's own reads. The bridge logs
+timings from insight traces, Web PubSub messages sent (outbox) and the Cosmos request charge (RU) of the report's own reads. The bridge logs
 its per-cycle RU as `request_charge_ru`. Writes JSON with --out. No payload text, prompts or secrets.
 """
 from __future__ import annotations
@@ -39,9 +39,16 @@ def main(argv: list[str] | None = None) -> int:
     insights = [{k: v for k, v in item.items() if k in ("moment_id", "created_at", "trace")}
                 for item in insights_c.query_items("SELECT c.moment_id, c.created_at, c.trace FROM c", partition_key=args.run_id)]
     store._charge("read_insights", insights_c)
+    from azure.cosmos.exceptions import CosmosResourceNotFoundError
+    try:  # Push publication times come from the outbox (sent insight messages); absent if push never ran.
+        sent = store.outbox(args.run_id, status="sent")
+        published = {r["envelope"]["payload"]["moment_id"]: r["sent_at"] for r in sent if r["type"] == "insight"}
+        pubsub_messages = len(sent)
+    except CosmosResourceNotFoundError:
+        published, pubsub_messages = None, None
     report = run_report(args.run_id, store.moments(args.run_id), EventhouseReader(config).ingestion_times(args.run_id),
                         store.moment_detected_at(args.run_id), store.jobs(args.run_id), insights,
-                        request_charge=store.request_charge)
+                        published=published or None, request_charge=store.request_charge, pubsub_messages=pubsub_messages)
     print(f"run {report['run_id']}: {report['moments']} moments, {report['jobs']} jobs, {report['insights']} insights")
     print(f"{'stage':<22}{'n':>5}{'p50 s':>12}{'p95 s':>12}")
     for stage, row in report["stages_seconds"].items():

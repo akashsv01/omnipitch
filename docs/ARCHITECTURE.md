@@ -409,7 +409,7 @@ The report also shows:
 - **Web PubSub messages:** "not built" until push exists.
 - It never reads prompt or insight text.
 
-**Web PubSub (provisioned 2026-10-20, publisher not built).**
+**Web PubSub (provisioned 2026-10-20; publisher and negotiate implemented 2026-10-21).**
 
 | Setting | Value |
 | --- | --- |
@@ -418,7 +418,27 @@ The report also shows:
 | Auth | Local auth (access keys) is disabled. The owner has *Web PubSub Service Owner* on this resource only, and server-side code uses Entra ID tokens for `https://webpubsub.azure.com`. |
 | Verified | `generateToken` for a group returned 200 with a client token; send-to-group returned 202 |
 
-The negotiation endpoint and the outbox publisher wait on agreement of the push contract.
+**Negotiate:** `GET /api/v1/negotiate?run_id=<source_run_id>` (`services/api/app/main.py`, route agreed with the frontend owner).
+- Returns `{url: wss://…/client/hubs/omnipitch?access_token=…, group: "run-<run_id>", expires_at}`. The token lasts 60 minutes, and its connection joins the run's group on connect, receive-only.
+- Server-side Entra ID: `WEBPUBSUB_ENDPOINT` (+ `WEBPUBSUB_HUB`, default `omnipitch`).
+- Errors:
+  - `503 push_not_configured` when unset; the browser then stays on polling.
+  - `422 invalid_run_id`.
+  - `502 push_negotiate_failed` when the service or credential fails; never a fake URL.
+
+**Outbox publisher** (`services/bridge/omnipitch_bridge/push.py`, `run_bridge.py --push`): **persist first, then publish.**
+- **Fast path:** each processed run enqueues a `state` message (`state_version` = processed gap-free sequence), one `moment` per detected moment and one `period_reconciled` per reconciliation record. They do not wait for narration.
+- **Insight path:** the bridge watches `ready`/`fallback` jobs updated in the last 6 h, reads their stored insight (Cosmos `insights`, create-only) and enqueues one `insight` message. The narration worker is unchanged.
+- **Before saving:** every envelope is validated against `push.schema.json`.
+- **Records:** stored once under the deterministic `message_id` as `pending`.
+- **Sending:** each attempt stamps `sent_at`, sends to group `run-<run_id>` over REST with Entra ID, then marks the record `sent` with a version/ETag-conditional write.
+- **Failures:** a failed send stays `pending` with `attempts` and `last_error` and is retried next cycle with the same `message_id`. A crash between send and mark resends the same `message_id` after restart: delivery is at least once, and the browser drops duplicates by `message_id`.
+- **Storage:** SQLite table `outbox`; Cosmos container `outbox` (`/run_id`, provisioned 2026-10-21).
+- **Reconcile passes:** a reconcile pass also publishes what it enqueues.
+- **Live check (2026-10-21):** 58 messages for `gate-20261020-d` were received in order on the real socket; a rerun sent 0.
+- **Tracing:** `trace_report.py` reads sent insight messages for `insight_to_published` and counts sent messages.
+
+
 
 **Push contract (proposed, not agreed).** `contracts/schemas/push.schema.json` is an envelope with `schema_version`, `message_id`, `run_id`, `type` (`state | moment | insight | period_reconciled`), `state_version`, `sent_at` and a typed `payload`:
 - The payload reuses `match-state`, `insight` and `reconciliation`; a new moment travels as a `moment_ref`.
