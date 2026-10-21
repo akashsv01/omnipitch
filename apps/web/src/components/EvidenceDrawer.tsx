@@ -6,12 +6,18 @@ import { METRIC_LABEL, RULE_LABEL, clockLabel, eventLabel, fmt, playerIndex, sur
 import { Pitch } from './Pitch';
 import { RULE_ICON } from './MomentFeed';
 
+const AUTHOR = {
+  ai: 'The AI model (three roles) from this evidence only. Code then checked every number, name, event ID and claim (score, box, passes, defenders), and the API re-checks it before showing it.',
+  fallback: 'A deterministic template from the metrics above. No model was involved.',
+  fixture: 'A hand-authored test fixture.',
+};
 const MODE_LABEL = { fallback: 'Deterministic template', ai: 'AI generated, validated', fixture: 'Hand-authored fixture' };
 
 export function EvidenceDrawer({ moment, events, roster, onClose, onSelectEvent, reduced }: {
   moment: Moment; events: Event[]; roster: Player[]; onClose: () => void; onSelectEvent: (event: Event) => void; reduced: boolean;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
   const people = playerIndex(roster);
   const evidence = events.filter(event => moment.evidence_ids.includes(event.event_id));
   const Icon = RULE_ICON[moment.rule];
@@ -19,14 +25,24 @@ export function EvidenceDrawer({ moment, events, roster, onClose, onSelectEvent,
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Tab') return;
+      // Modal: keep keyboard focus inside the drawer.
+      const items = [...(drawerRef.current?.querySelectorAll<HTMLElement>('button, [href], [tabindex]:not([tabindex="-1"])') ?? [])]
+        .filter(el => !el.hasAttribute('disabled'));
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('keydown', onKey); previous?.focus(); };
   }, [onClose]);
 
   return <>
     <motion.div className="scrim" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
-    <motion.aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="evidence-title"
+    <motion.aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-labelledby="evidence-title"
       initial={reduced ? { opacity: 0 } : { x: '100%' }} animate={reduced ? { opacity: 1 } : { x: 0 }} exit={reduced ? { opacity: 0 } : { x: '100%' }}
       transition={{ type: 'spring', stiffness: 380, damping: 40 }}>
       <div className="drawer-head">
@@ -79,6 +95,7 @@ export function EvidenceDrawer({ moment, events, roster, onClose, onSelectEvent,
         <section className="drawer-section">
           <h3>Provenance</h3>
           <dl className="facts">
+            <dt>Written by</dt><dd>{AUTHOR[moment.insight.generation_mode]}</dd>
             <dt>Moment</dt><dd className="mono">{moment.moment_id}</dd>
             <dt>Rule</dt><dd>{moment.rule} {moment.rule_version}</dd>
             <dt>Metric version</dt><dd>{moment.metric_version}</dd>

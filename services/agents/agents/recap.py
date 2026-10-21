@@ -98,6 +98,7 @@ def build_recap(events: list[dict], moments: list[dict], scope: str, context: di
     headline = (f"{teams[leader]} lead {max(score.values())}-{min(score.values())}" if leader and not final
                 else f"{teams[leader]} win {max(score.values())}-{min(score.values())}" if leader and scope == "full_time"
                 else f"{teams[leader]} lead {max(score.values())}-{min(score.values())} at the break" if leader
+                else f"Ends level at {score['home']}-{score['away']}" if final and scope == "full_time"
                 else f"Level at {score['home']}-{score['away']}")
 
     # Tactical trend: one supported claim or an explicit insufficient-data message.

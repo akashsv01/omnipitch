@@ -4,6 +4,8 @@ Phases describe intended work, not committed completion dates. Implement only th
 
 ## Current state
 
+**Phase 5 in progress (2026-10-21).** Deployed candidate live (PR #19). Akash's half is done: accessibility, quiet and alternate seeds, evidence display, default judge run, API outage tests; see the Phase 5 test report. Open: bridge-side Cosmos outage test, health probes, budget alert, measured latency (Tanmayee); redeploy with `OMNIPITCH_DEFAULT_RUN`; freeze on Oct 23.
+
 **Phase 4 complete (2026-10-21).** The joint gate passed on the full match `gate-20261020-d` through the real pipeline: simulator → Event Hubs → Eventhouse → bridge (moments, jobs, both period reconciliations) → narration (prompts v3, checked in code) → validated Cosmos insights in the UI → Web PubSub push → reconnect. Reconnect restores score, clock and insights (API restart and tab reopen); the halftime and full-time recaps are final, link to verified moments and show "Reconciled" from the bridge's records; fan and analyst views read one checked insight per moment. Details: Phase 4 below. Next: deployment for judges (Phase 6 work brought forward), then Phase 5 polish. Earlier Phase 4 note: Implemented and tested locally: meaning checks in code (score state, box position, pass counts, defender breach, transition direction, fan text that mentions missing data) with prompts v3 and derived facts in the evidence packet; a validated overlay that shows the narration worker's Cosmos insights in the UI (`OMNIPITCH_INSIGHTS=cosmos`), re-checking each one against the API's own moment and reporting its status; halftime/full-time recaps (`GET /api/v1/replay/recap`, contract `recap.schema.json`) built from verified moments, with an optional checked AI rewrite (`OMNIPITCH_RECAP_AI=on`); a Recap tab whose key moments seek the replay; a half-time/full-time prompt; AI/Template labels on every moment. Live check 2026-10-20 (`services/api/tests/phase4_live.py --run-id p4-live-20261020-a --seed-local --ai-jobs 6`): 55 moments and jobs created in Cosmos with the bridge's detector (Eventhouse hop UNVERIFIED for this run), 6 of 6 model-narrated jobs (prompts v3, `gpt-4.1-mini`) published validated AI insights, 49 fallback; the API overlay showed all 55 with 0 rejected, both recaps linked verified moments, and a restarted API restored score, clock and insights. Reading the six AI texts found one meaning error the checks missed ("keep the score intact" on a chance); the score-state rule was extended, and the overlay now rejects that stored insight on display (54 narrated, 5 AI, 1 rejected, seen in the browser after an API restart that restored the run). The same live check exposed an API defect the tests missed: with `OMNIPITCH_INSIGHTS=cosmos` every request returned 500 because `services/bridge` (the shared Cosmos client) was not on the API's import path; fixed, and a failed insight source is now reported in the snapshot instead of failing requests. Not yet done: the joint run through Eventhouse and Tanmayee's bridge, bilingual text, deployment.
 
 **Current phase (2026-10-20): Phase 3 complete; Phase 4 next.** Phases 1–3 are implemented and verified. Phase 2: the cloud path simulator → Event Hubs → Fabric Eventstream → Eventhouse → API → browser was verified on `smoke-20261016-a`. Phase 3: the bridge worker writes moments and jobs to Cosmos DB, and the narration worker (live `gpt-4.1-mini`, Entra ID) turns each into exactly one validated insight with a labelled fallback; the joint gate passed on `gate-20261020-b`. Everything runs locally against the cloud services; nothing is deployed yet. Earlier summary of the local scope (2026-10-14): Phase 1 and the local scope of Phase 2 are implemented and verified (2026-10-14). That covers a seeded state-machine simulator with scenarios; replay with speed, seek and generate; contracts v1.1; a SQLite event ledger with deduplication and restart recovery; deterministic metrics (progression, illustrative threat, windowed PPDA with sample gates); five moment rules with frozen evidence; prepared agent prompts with a validator, fallback narrator and evaluation set; and a redesigned, motion-rich match room with an evidence drawer and fan/analyst modes. Cloud status is in the Phase 2 table below: the Event Hubs → Fabric Eventhouse path is verified end to end. No model is called; every insight is `generation_mode: fallback`.
@@ -358,18 +360,54 @@ Trace report (`trace_report.py`, report `data/generated/trace-gate-20261020-d.js
   - no Log Analytics workspace;
   - the bridge runs locally when a demo run is published (not 24/7).
 
-## Phase 5 — dataset export and basic Producer Mode
+## Phase 5 — hardening and scope freeze (project guide, Oct 20–23)
 
-- [ ] Export reusable synthetic datasets with provenance and schema version.
-- [ ] Basic producer selection and recap tools.
+Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate, late-event, outage, reconnect and quiet-run tests pass; shared deployment works; no new features after the freeze (Oct 23). Artifacts: test report, deployed candidate, measured latency and costs.
 
-## Phase 6 — cloud integration, reliability and submission polish
+- [x] Deployed candidate (Tanmayee, PR #19, 2026-10-21): UI and API on Container Apps (free grant, scale to zero, managed identity, no keys), verified from the internet. https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io
+- [x] Default judge run (Akash, 2026-10-21): `OMNIPITCH_DEFAULT_RUN` loads one Eventhouse run on a fresh start in azure mode, so a scale-to-zero restart doesn't leave visitors on an empty replay. It never replaces a restored or chosen run; failures show in `/api/v1/backend`. **Pending:** set `OMNIPITCH_DEFAULT_RUN=gate-20261020-d` on `omnipitch-api` and redeploy both images (Tanmayee).
+- [x] Accessibility and states (Akash, 2026-10-21):
+  - **Automated audit** (AccessLint, live DOM, full match loaded): 69 violations before, 1 after. The remaining one is a false positive: the selected Audience label is `#0f1e26` on a full-width `#eaf0ea` thumb, about 15.6:1.
+  - **Fixes:**
+    - `--chalk-faint` raised to `#839da5` (4.66:1 or better on every panel colour);
+    - the event chips became a labelled group of toggle buttons;
+    - a `<main>` landmark, a skip link and an `<h1>`;
+    - the brand link's name now matches its text;
+    - the recap period switch uses pressed buttons;
+    - `touch-action: manipulation`;
+    - the evidence drawer traps Tab and contains overscroll.
+  - **Verified:** Tab then Enter on the skip link focuses `main`; Tab and Shift+Tab stay inside the drawer; Escape closes it (headless smoke test).
+- [x] Quiet and alternate seeds (Akash): `test_phase5.py` runs whole matches through the match room (quiet 1/7/21, high_press 3, standard 42). For each it checks the snapshot contract, evidence integrity, every insight's checks, both recaps (schema-valid, final, at most 3 verified key moments, trend only with valid windows) and the score. Quiet matches have under half the moments of a standard match. A goalless final reads "Ends level at 0-0".
+- [x] Evidence display: provenance now says who wrote the text and what was checked (AI: three roles plus code checks plus API re-check; template: no model).
+- [x] Frontend hosting: same-origin nginx Container App with the API under `/api` (PR #19), instead of Static Web Apps. No CORS change was needed.
+- [ ] Bridge-side outage tests (Tanmayee): Cosmos down during a cycle (no partial counts). Eventhouse down (`test_failed_cycle_keeps_cursor_and_retries`) and Web PubSub down (`test_failed_send_is_retried_with_the_same_message_id`) are already covered.
+- [ ] Container Apps health probes on `/health` and `/ready`, a budget alert, and a documented stop-everything command (Tanmayee; resources need approval).
+- [ ] Measured pipeline latency with the bridge polling continuously, and cost per day for the demo window (Tanmayee).
+- [ ] Freeze contracts and scope on 2026-10-23 (joint).
+- [ ] Bilingual text: only if time allows after the freeze; the guide makes a second language optional once the MVP gates pass.
 
-- [ ] Connect Event Hubs, Fabric Eventstream/Eventhouse and bridge worker.
-- [ ] Add Cosmos persistence, grounded retrieval and Web PubSub delivery.
-- [ ] Verify recovery, idempotence, latency and evaluation with recorded results.
-- [ ] Prepare demo/submission assets and reproducible instructions.
+**Phase 5 test report, 2026-10-21 (local; 167 Python tests passed, 19 cloud tests skipped; `test:contracts`, `test:push`, `test:pitch`, build and `test:replay:browser` 3/3 passed):**
+
+| Gate item | Evidence | Status |
+| --- | --- | --- |
+| Duplicates | `test_phase2::test_duplicate_and_out_of_order_ingestion_do_not_change_counts`; `test_bridge::test_duplicate_delivery_and_reprocessing_create_nothing`, `test_duplicates_do_not_change_reconciliation`; `test_push::test_reruns_and_duplicates_publish_nothing_new`; `test_narration::test_duplicate_claim_after_lease_expiry_publishes_one_insight`; live: 25 duplicates on `gate-20261020-d` (1,231 rows, 1,206 unique) | PASS |
+| Late events | `test_bridge::test_late_event_delays_moments_then_fills_in_without_changing_frozen_evidence`, `test_late_event_before_period_end_delays_reconciliation`; `test_phase2::test_gap_stops_windowed_metrics_at_contiguous_prefix` | PASS |
+| Outages | Bridge: `test_failed_cycle_keeps_cursor_and_retries` (Eventhouse), `test_failed_send_is_retried_with_the_same_message_id` and `test_restart_between_send_and_mark_resends_once_and_counts_once` (Web PubSub). API: `test_phase5` Cosmos overlay, reconciliation and push outages; `test_azure_mode` default-run failure. Narration: timeout, rate-limit and fallback tests | PASS, except bridge-side Cosmos outage (not written yet) |
+| Reconnect | `test_phase4::test_reconnect_restores_score_clock_and_insights`; `test_phase2::test_restart_restores_replay_position`; push client reconnect (`test:push`); live joint gate on `gate-20261020-d` (PR #17: API restart and tab reopen) | PASS |
+| Quiet run | `test_phase5::test_whole_match_room_holds_for_quiet_and_alternate_seeds`, `test_quiet_matches_stay_quiet_in_the_match_room`; `test_phase2::test_quiet_scenario_has_fewer_shots_and_moments` | PASS |
+| Shared deployment works | PR #19, verified from the internet on 2026-10-21. Known limit: one shared replay per API instance (max 1 replica), so concurrent visitors see the same replay state | PASS, with known limit; default run pending redeploy |
+| Measured latency and costs | Costs: $0 on the Container Apps free grant (PR #19); Event Hubs about $0.73/day until deleted. Latency: only hand-run timings so far | UNVERIFIED (latency) |
+| No new features after the freeze | Freeze on 2026-10-23 | Pending |
+
+## Phase 6 — release and submission (project guide, Oct 24–27)
+
+- [ ] Fresh-clone setup, release tag, final smoke tests, judge runbook, public repo documentation, access/health/budget checks and submission verification (Tanmayee).
+- [ ] Cross-browser demo, storyboard, screenshots, a video under two minutes, link checks and the final submission review (Akash).
+- [ ] Delete the Event Hubs namespace after the freeze, unless a new demo run is needed (Akash).
 
 ## Stretch
+
+- [ ] Export reusable synthetic datasets with provenance and schema version (was the repo's Phase 5).
+- [ ] Basic producer selection and recap tools (was the repo's Phase 5; the guide allows a producer queue only if the core is stable).
 
 - [ ] Simple 3D replay after the 2D path is reliable.

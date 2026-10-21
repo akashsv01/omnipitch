@@ -1,5 +1,6 @@
 """OmniPitch API with explicit localhost CORS and an explicit local/azure backend mode."""
 import os
+from threading import Lock
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -36,8 +37,44 @@ app.add_middleware(CORSMiddleware, allow_origins=cors_origins(), allow_credentia
                    allow_methods=["GET", "POST"], allow_headers=["Accept", "Content-Type"])
 
 
+_default_lock = Lock()
+_default_state = {"checked": False, "run": None, "outcome": "not_configured", "error": None}
+
+
 def store():
-    return replay_module.get_replay_store()
+    replay = replay_module.get_replay_store()
+    if not _default_state["checked"]:
+        load_default_run(replay)
+    return replay
+
+
+def load_default_run(replay) -> None:
+    """Judge deployments scale to zero and keep replay state in ephemeral storage. On a fresh start in azure mode,
+    OMNIPITCH_DEFAULT_RUN loads that Eventhouse run once, so visitors never land on an empty default replay.
+    A failure is recorded (/ready shows it) and the API keeps serving; it never substitutes other data."""
+    with _default_lock:
+        if _default_state["checked"]:
+            return
+        _default_state["checked"] = True
+        run = os.getenv("OMNIPITCH_DEFAULT_RUN", "").strip()
+        _default_state["run"] = run or None
+        if not run:
+            return
+        if not SETTINGS.azure:
+            _default_state["outcome"] = "skipped_local_mode"
+            return
+        if replay.restored or replay.meta.get("source_run_id"):
+            _default_state["outcome"] = "kept_restored_run"  # Never replace a replay someone is already watching.
+            return
+        try:
+            reader = eventhouse()
+            summary = reader.run_summary(run)
+            detail = (f"Eventhouse {SETTINGS.eventhouse_database}.{SETTINGS.eventhouse_table}: {summary['raw_rows']} rows, "
+                      f"{summary['unique_events']} unique events (default run)")
+            replay.load_eventhouse(replay.state.run_id, run, reader.events(run), detail)
+            _default_state["outcome"] = "loaded"
+        except Exception as exc:  # EventhouseError, HTTPException or a replay error: report, keep serving.
+            _default_state.update(outcome="failed", error=f"{type(exc).__name__}: {str(getattr(exc, 'detail', exc))[:200]}")
 
 
 _reader: EventhouseReader | None = None
@@ -101,7 +138,8 @@ def ready() -> ReadyResponse:
 def backend() -> dict:
     """Non-secret description of where data comes from."""
     return {**SETTINGS.describe(), "missing": SETTINGS.missing() if SETTINGS.azure else [],
-            "replay_source": store().meta["source"], "replay_source_run_id": store().meta.get("source_run_id")}
+            "replay_source": store().meta["source"], "replay_source_run_id": store().meta.get("source_run_id"),
+            "default_run": dict(_default_state)}
 
 
 @app.get("/api/v1/matches/demo/state", response_model=MatchState)
