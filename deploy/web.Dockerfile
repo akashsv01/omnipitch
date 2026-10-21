@@ -13,8 +13,9 @@ COPY apps/web apps/web
 RUN test -n "$PUBLIC_URL" && cd apps/web && VITE_API_BASE_URL="$PUBLIC_URL" npm run build
 
 FROM nginx:1.27-alpine
-# API_UPSTREAM: the API app inside the Container Apps environment, e.g. http://omnipitch-api
+# API_UPSTREAM: the API inside the Container Apps environment, e.g. https://omnipitch-api.<env-domain> (internal ingress)
 ENV API_UPSTREAM=http://omnipitch-api
 COPY deploy/nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY --chmod=755 deploy/nginx-resolver.sh /docker-entrypoint.d/15-omnipitch-resolver.sh
 COPY --from=build /src/apps/web/dist /usr/share/nginx/html
 EXPOSE 8080

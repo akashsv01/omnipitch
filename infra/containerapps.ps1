@@ -72,10 +72,12 @@ if (Run "api") {
 }
 
 if (Run "web") {
-    Say "UI $WebApp (external ingress, scale 0-1, proxies /api to $ApiApp)"
+    # Express environments resolve neither short app names nor `.internal.` names: use <app>.<default domain> over https.
+    $domain = az containerapp env show -g $ResourceGroup -n $Environment --query properties.defaultDomain -o tsv
+    Say "UI $WebApp (external ingress, scale 0-1, proxies /api to https://$ApiApp.$domain)"
     az containerapp create -g $ResourceGroup -n $WebApp --environment $Environment --image "ghcr.io/$Owner/omnipitch-web:$Tag" `
         --ingress external --target-port 8080 --min-replicas 0 --max-replicas 1 --cpu 0.25 --memory 0.5Gi `
-        --env-vars "API_UPSTREAM=http://$ApiApp" --tags project=omnipitch -o none
+        --env-vars "API_UPSTREAM=https://$ApiApp.$domain" --tags project=omnipitch -o none
     $fqdn = az containerapp show -g $ResourceGroup -n $WebApp --query properties.configuration.ingress.fqdn -o tsv
     Write-Host "UI: https://$fqdn  (the web image must be built with --build-arg PUBLIC_URL=https://$fqdn)"
 }

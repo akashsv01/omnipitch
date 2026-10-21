@@ -453,13 +453,35 @@ The report also shows:
   - `push-period-reconciled`: from an **offline** SQLite reconciliation of the full seed-7 match (run `example-full-seed7`); no full match has gone through Eventhouse yet.
 - Needs agreement from the frontend owner before any publisher or negotiation endpoint is built.
 
-## Deployment for judges (prepared 2026-10-21, not deployed)
+## Deployment for judges (deployed 2026-10-21)
 
 **Created 2026-10-21 (approved):**
 - Providers `Microsoft.App`, `Microsoft.OperationalInsights` and `Microsoft.ManagedIdentity` registered.
 - Environment `omnipitch-env`, West US, Consumption profile only, logs off (no Log Analytics workspace). Default domain `politetree-022e7a46.westus.azurecontainerapps.io`, so the UI will be at `https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io`.
-- User-assigned identity `omnipitch-api-id`: client id `d2eb9a47-94f7-450a-ac10-cfaa61a4f6b9`, principal `3d3dde66-7db6-4c1d-9311-28b9618fb844`. **No roles yet.**
-- No apps created yet.
+- User-assigned identity `omnipitch-api-id`: client id `d2eb9a47-94f7-450a-ac10-cfaa61a4f6b9`, principal `3d3dde66-7db6-4c1d-9311-28b9618fb844`.
+- Identity access (approved):
+  - Cosmos built-in Data Reader on `/dbs/omnipitch`, plus `OmniPitch Metadata Reader` at `/`;
+  - Web PubSub Service Owner on `omnipitch-wps-670966` only;
+  - Fabric Viewer on workspace `OmniPitch`, added by the owner in the portal (the UF tenant allowed it).
+- Images (public on GHCR): `ghcr.io/tanmayee043/omnipitch-api:05af885` and `ghcr.io/tanmayee043/omnipitch-web:05af885-r2`.
+- Apps: `omnipitch-api` (internal ingress, port 8000, 0–1 replicas, 0.25 vCPU) and `omnipitch-web` (external, port 8080, 0–1 replicas), with `API_UPSTREAM=https://omnipitch-api.politetree-022e7a46.westus.azurecontainerapps.io`.
+- **Public URL:** https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io
+
+**Deviations found while deploying:**
+- `az containerapp env create` produced an **express** environment. In it:
+  - an internal app's address has no `.internal.` segment;
+  - `allowInsecure` is not supported;
+  - short app names (`http://omnipitch-api`) **do not resolve**. The first UI revision crash-looped with nginx `host not found in upstream`.
+  - The fix (`05af885-r2`): nginx resolves `API_UPSTREAM` per request through the container's DNS server (`deploy/nginx-resolver.sh`) and proxies over https with SNI. It now starts even when the API is unreachable (502 instead of a crash).
+- **The API is reachable directly from the internet** (`/health` returned 200) despite internal ingress; the express environment does not enforce it. The exposure is about the same as through the public UI proxy, plus the API's `/docs`.
+- Log streaming (`az containerapp logs show`) fails with logs off (CLI `KeyError: 'eventStreamEndpoint'`). Replica and revision status were used for diagnosis instead.
+
+**Live verification from the internet (2026-10-21):**
+- UI 200 (0.9 s); `/health` 200; `/ready` → `ready`, azure mode, Eventhouse reachable **as the managed identity** (2,506 rows); Eventhouse run list returned 4 runs.
+- Negotiate 200 (group `run-gate-20261020-d`, `wss://`).
+- In a browser: `Azure · Eventhouse`, run `gate-20261020-d` loaded, parity match, Live updates `Live`, all requests to the site's own origin.
+- After seeking to full time: 2-1, overlay `ok` 55 narrated / 5 AI / 0 rejected (Cosmos read as the managed identity); recap `first_half` final through 618 with reconciliation `reconciled`.
+- A fresh page load restored the run by itself (2-1 at full time, `Azure · Eventhouse`) with 0 console errors.
 
 Constraint: **no spend beyond free tiers** (UF Azure for Students, West US). Azure Static Web Apps is not offered in any region the subscription policy allows, so both pieces run on Azure Container Apps (consumption plan, scale to zero, 0.25 vCPU / 0.5 GiB, max 1 replica).
 
