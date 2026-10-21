@@ -296,6 +296,41 @@ Verification 2026-10-20 (local): 120 Python tests passed, 14 cloud tests skipped
   - The browser UI against the live socket (Akash).
   - The joint gate with reconnect. Akash's `phase4_live.py` can now run against the 55 `pending` jobs of `gate-20261020-d`.
 
+**Phase 4 joint gate: live push and reconnect on `gate-20261020-d`, 2026-10-21 (run on Tanmayee's machine, the identity with the Web PubSub role).**
+
+Setup:
+- An API on port 8000 in azure mode with `OMNIPITCH_INSIGHTS=cosmos` and `WEBPUBSUB_ENDPOINT` (local `.env`, Entra ID).
+- The UI on Vite :5173 in the in-app browser.
+- The run loaded from Data quality → Fabric Eventhouse, then seeked to full time through the replay control API.
+- Merged `main` code (`be58569`).
+- No token or client URL was printed, logged or captured; the page HTML contained no `access_token`.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Negotiate | **PASS** | `GET /api/v1/negotiate?run_id=gate-20261020-d` returned 200, group `run-gate-20261020-d`, a `wss://` URL and `expires_at`. |
+| UI live | **PASS** | Live updates `Live` (Web PubSub, run `gate-20261020-d`); Narrated insights 55 from Cosmos, 5 AI-written, 0 rejected; AI cards on the goals at 25', 58', 69' and the chances at 26', 27'; scoreboard 2-1 at full time (90:00 +2). |
+| Insight messages | **PASS** | With the UI open, one `run_bridge.py --store cosmos --push --once` cycle sent 55 and failed 0. The outbox for the run holds 55 insight messages, all `sent`, with no failed attempts and 55 distinct IDs (113 in total: 1 state, 55 moment, 2 period_reconciled, 55 insight). The UI showed 55 messages used, 0 ignored, last `insight`, and its counts and score stayed unchanged. A second cycle published 0. |
+| Trace report | **Recorded** | Stage timings, model and message counts below. |
+| API restart recovery | **PASS** | API stopped for about 12 s: the UI showed `Offline` ("Can't reach the API… Showing the last received state") and kept 2-1. After the restart, the UI recovered without a reload. The snapshot was identical: 1206/1206 `finished`, 2-1, period 2, 2,822,767 ms; 55 moments (5 ai, 50 fallback); overlay `ok` 55/5/0. |
+| Tab reopen recovery | **PASS** | Old tab closed, fresh tab opened at :5173: run `gate-20261020-d` restored, 2-1 at full time, Live updates `Live` (new negotiation), 55/5/0, the same 5 AI cards. |
+| Console errors | **PASS** (fresh tab) | The fresh tab had 0 console messages. The long-lived tab from earlier sessions had stale network errors (`ERR_NETWORK_IO_SUSPENDED` from the machine sleeping, `ERR_CONNECTION_REFUSED` from stopping the old API) that predate this run, so it was not used as evidence. |
+| Recaps (optional) | **PASS / UNVERIFIED** | `first_half` final through 618 (3 key moments: goal, chance, chance, all AI); `full_time` final through 1206 (3 goals, all AI); recap AI rewrite `off`. **UNVERIFIED:** clicking a key moment to seek the replay. |
+
+Trace report (`trace_report.py`, report `data/generated/trace-gate-20261020-d.json`, gitignored):
+- **Moments, jobs, insights:** 55 each.
+- **Stage timings reflect when people ran things, not pipeline latency:**
+  - `ingest_to_detect` p50 320 s: the bridge was run by hand about 5 minutes after ingestion;
+  - `detect_to_job` 0 s;
+  - `job_to_insight` p50 1,679 s, p95 1,699 s: narrated later by `phase4_live.py`;
+  - `insight_to_published` p50 658 s, p95 711 s: the push cycle was run about 11 minutes after narration.
+- **Model:** 17 calls to `azure-openai:gpt-41-mini` (5 AI insights × 3 roles, plus 2 broadcaster repairs), **16,065 tokens**. Role p50 2.4–3.8 s.
+- **Messages:** 113 Web PubSub messages.
+- `emit_to_ingest` not measurable (fixture clock).
+
+**Observation, not a failure:** while the API was stopped, Live updates stayed `Live` rather than going to `Reconnecting`. The browser's socket connects to Azure Web PubSub directly, not through the API, so an API outage doesn't drop it. Recovery came from the snapshot API as designed. Whether the push status should also reflect API reachability is a frontend decision.
+
+**Phase 4 gate:** reconnect restores the correct score, clock and insights (PASS for both API restart and tab reopen); the halftime recap links to verified moments (final, through 618, key moments from reconciled moments); fan and analyst views share one insight per moment (verified by the narration owner on this run). Live push works for every message type.
+
 ## Phase 5 — dataset export and basic Producer Mode
 
 - [ ] Export reusable synthetic datasets with provenance and schema version.
