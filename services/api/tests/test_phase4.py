@@ -287,3 +287,55 @@ def test_model_usage_is_recorded_per_role_in_the_trace():
     assert trace["analyst"]["usage"] == {"prompt_tokens": 900, "completion_tokens": 120, "total_tokens": 1020}
     from omnipitch_bridge.trace import model_usage
     assert model_usage([{"insight": {"generation_mode": "ai"}, "trace": trace}])["tokens"] == 1020
+
+
+# Reconciled status in recaps (read-only bridge records) ----------------------------------------
+
+def _record(period, through, status="reconciled", mismatches=()):
+    return {"schema_version": "1.0", "reconciliation_id": f"{SOURCE}:p{period}", "run_id": SOURCE, "match_id": "harbor-vale",
+            "period": period, "through_sequence": through, "events_in_period": through, "expected_moments": 1,
+            "stored_before": 1, "created": 0, "mismatches": list(mismatches), "status": status,
+            "reconciled_at": "2026-10-21T03:00:00Z"}
+
+
+def test_recap_reconciliation_status_comes_only_from_matching_records():
+    from app.reconciliations import ReconciliationSource
+    store, _ = make_store()
+    seek_to_sequence(store, len(store.dicts))
+    events, _ = store.recap_inputs()
+    ends = {e["period"]: e["sequence"] for e in events if e["type"] == "period_end"}
+    records = {"value": [_record(1, ends[1])]}
+    def fetch(run_id):
+        if records.get("fail"):
+            raise ConnectionError("cosmos unreachable")
+        return records["value"] if run_id == SOURCE else []
+    source = ReconciliationSource(fetch, "cosmos", ttl_s=0)
+    assert ReconciliationSource(None).status(SOURCE, "first_half", events)["status"] == "off"
+    assert source.status(None, "first_half", events)["status"] == "not_applicable"
+    first = source.status(SOURCE, "first_half", events)
+    assert first["status"] == "reconciled" and first["periods"][0]["through_sequence"] == ends[1]
+    assert source.status(SOURCE, "full_time", events)["status"] == "pending"  # Period 2 has no record yet.
+    records["value"] = [_record(1, ends[1]), _record(2, ends[2])]
+    assert source.status(SOURCE, "full_time", events)["status"] == "reconciled"
+    records["value"] = [_record(1, ends[1], "mismatch", [{"moment_id": "x", "kind": "evidence_differs"}]), _record(2, ends[2])]
+    full = source.status(SOURCE, "full_time", events)
+    assert full["status"] == "mismatch" and full["periods"][0]["mismatches"] == 1
+    records["value"] = [_record(1, ends[1] - 5)]  # Covers different events than the replay shows.
+    assert source.status(SOURCE, "first_half", events)["status"] == "differs"
+    records["fail"] = True
+    failed = source.status(SOURCE, "first_half", events)
+    assert failed["status"] == "error" and "ConnectionError" in failed["error"]
+
+
+def test_recap_endpoint_reports_reconciliation(monkeypatch):
+    from app.reconciliations import ReconciliationSource
+    store, _ = make_store()
+    monkeypatch.setattr(replay_module, "replay_store", store)
+    monkeypatch.setattr(main, "_recaps", RecapService())
+    end = first_period_end(store)
+    monkeypatch.setattr(main, "_reconciliations", ReconciliationSource(lambda run: [_record(1, end)], "cosmos", ttl_s=0))
+    seek_to_sequence(store, end)
+    body = TestClient(main.app).get("/api/v1/replay/recap", params={"scope": "first_half"}).json()
+    assert body["reconciliation"]["status"] == "reconciled" and body["recap"]["status"] == "final"
+    monkeypatch.setattr(main, "_reconciliations", ReconciliationSource(None, "off"))
+    assert TestClient(main.app).get("/api/v1/replay/recap", params={"scope": "first_half"}).json()["reconciliation"]["status"] == "off"

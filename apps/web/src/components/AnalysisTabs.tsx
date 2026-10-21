@@ -264,7 +264,7 @@ function Quality({ replay, busy, onLoadEventhouse, push }: { replay: ReplaySnaps
             <div className="stat"><b>{push.ignored}</b><span>ignored (duplicate, stale or invalid)</span></div>
           </div>
           <p className="hint">Run <span className="mono">{push.runId}</span>{push.lastType ? ` · last ${push.lastType.replace('_', ' ')} at ${push.lastAt}` : ''}
-            {push.error ? ` · ${push.error}` : ''}. A push only fetches the next snapshot sooner; the snapshot API stays the source of truth, and polling continues.</p>
+            {push.error ? ` · ${push.error}` : ''}. A push only fetches the next snapshot sooner; the snapshot API stays the source of truth, and polling continues. The socket connects to Web PubSub directly, so it can stay Live while the API is down (the top bar shows API reachability).</p>
         </>}
     </div>
     <div className="card">

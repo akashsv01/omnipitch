@@ -151,7 +151,17 @@ export async function loadFromEventhouse(runId: string, sourceRunId: string): Pr
 }
 
 export interface RecapAIStatus { mode: 'off' | 'on'; status: 'off' | 'waiting' | 'pending' | 'ready' | 'fallback'; reason: string | null }
-export interface RecapResult { recap: Recap; ai: RecapAIStatus }
+export interface RecapPeriodReconciliation {
+  period: 1 | 2; status: 'pending' | 'reconciled' | 'mismatch' | 'differs';
+  through_sequence: number | null; reconciled_at: string | null; mismatches: number | null;
+}
+/** The bridge's period-end reconciliation for the replay's source run (read-only; see services/api/app/reconciliations.py). */
+export interface RecapReconciliation {
+  mode: 'off' | 'cosmos';
+  status: 'off' | 'not_applicable' | 'pending' | 'reconciled' | 'mismatch' | 'differs' | 'error';
+  periods: RecapPeriodReconciliation[]; error: string | null;
+}
+export interface RecapResult { recap: Recap; ai: RecapAIStatus; reconciliation: RecapReconciliation }
 
 /** null means the recap is not available yet (period not started); errors are thrown. */
 /**

@@ -11,6 +11,7 @@ from .config import settings
 from .eventhouse import EventhouseError, EventhouseReader
 from .replay import replay_error
 from .sample_data import sample_events, sample_state
+from .reconciliations import from_env as reconciliation_source_from_env
 from .recaps import from_env as recap_service_from_env
 from .schemas import (MAX_EVENTS, EventhouseLoad, RecapResponse, EventPage, EventsResponse, GenerateRequest, HealthResponse,
                       IngestResult, LedgerSummary, MatchState, ReadyResponse, ReplayControl, ReplaySnapshot)
@@ -119,6 +120,7 @@ def replay(run_id: str | None = None, after_sequence: int = Query(0, ge=0)) -> R
 
 
 _recaps = None
+_reconciliations = None
 
 
 def recaps():
@@ -128,15 +130,25 @@ def recaps():
     return _recaps
 
 
+def reconciliations():
+    global _reconciliations
+    if _reconciliations is None:
+        _reconciliations = reconciliation_source_from_env()
+    return _reconciliations
+
+
 @app.get("/api/v1/replay/recap", response_model=RecapResponse)
 def replay_recap(scope: str = Query("first_half", pattern="^(first_half|full_time)$")) -> RecapResponse:
     """Halftime or full-time recap of the revealed replay; provisional until that period has ended."""
-    events, moments = store().recap_inputs()
+    replay = store()
+    events, moments = replay.recap_inputs()
     result = recaps().recap(events, moments, scope)
     if result is None:
         raise HTTPException(404, detail={"code": "recap_not_available",
                                          "message": "The first half has not started yet." if scope == "first_half"
                                          else "The full-time recap is available once the second half starts."})
+    # Read-only: "reconciled" only from the bridge's record for the replay's source run and these events.
+    result["reconciliation"] = reconciliations().status(replay.meta.get("source_run_id"), scope, events)
     return RecapResponse.model_validate(result, strict=False)
 
 

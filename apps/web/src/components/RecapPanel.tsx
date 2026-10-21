@@ -67,6 +67,16 @@ export function RecapPanel({ replay, audience, onJump, request }: {
     : ai?.status === 'fallback' ? { label: 'Template (AI recap rejected)', mode: 'fallback' }
     : { label: 'Template', mode: 'fallback' };
 
+  const rec = result?.reconciliation;
+  const recon = !recap || !rec || rec.status === 'off' || rec.status === 'not_applicable' ? null
+    : rec.status === 'reconciled' ? { label: 'Reconciled', tone: 'final',
+        title: `The bridge re-read ${rec.periods.length > 1 ? 'both periods' : 'the period'} from Eventhouse and found every moment: ${rec.periods.map(p => `P${p.period} through event ${p.through_sequence}`).join(', ')}` }
+    : rec.status === 'pending' ? { label: 'Not reconciled yet', tone: 'provisional', title: 'The bridge has not reconciled this period yet.' }
+    : rec.status === 'error' ? { label: 'Reconciliation unknown', tone: 'warn', title: rec.error ?? 'The reconciliation source failed.' }
+    : { label: rec.status === 'mismatch' ? 'Reconciliation mismatch' : 'Reconciled on other events', tone: 'warn',
+        title: rec.status === 'mismatch' ? 'The bridge found moments that differ from what it stored; an operator should look.'
+          : 'The reconciliation record covers different events than this replay shows.' };
+
   return <div className="recap" aria-live="polite">
     <div className="recap-toolbar">
       <div className="segmented small" role="radiogroup" aria-label="Recap period">
@@ -78,6 +88,7 @@ export function RecapPanel({ replay, audience, onJump, request }: {
       {recap && <span className="recap-status" data-status={recap.status}>
         {recap.status === 'final' ? 'Final' : `Provisional · ${recap.clock}`}
       </span>}
+      {recon && <span className="recap-status" data-status={recon.tone} title={recon.title}>{recon.label}</span>}
       {author && <span className="author-tag" data-mode={author.mode} title={ai?.reason ?? undefined}>
         {author.mode === 'ai' && <Sparkles size={11} aria-hidden="true" />}{author.label}
       </span>}
@@ -139,6 +150,7 @@ export function RecapPanel({ replay, audience, onJump, request }: {
         {audience === 'analyst' && <section className="recap-section">
           <h4>Sources and limitations</h4>
           <p className="hint">Through event {recap.through_sequence} · {recap.recap_version} · sources: <span className="mono">{recap.sources.join(', ') || 'none'}</span></p>
+          {rec && rec.periods.length > 0 && <p className="hint">Reconciliation: {rec.periods.map(p => `P${p.period} ${p.status}${p.through_sequence ? ` through ${p.through_sequence}` : ''}${p.mismatches ? `, ${p.mismatches} mismatches` : ''}${p.reconciled_at ? ` at ${p.reconciled_at}` : ''}`).join(' · ')}</p>}
           <ul className="limitations">{recap.limitations.map(item => <li key={item}>{item}</li>)}</ul>
         </section>}
         {audience === 'fan' && <p className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

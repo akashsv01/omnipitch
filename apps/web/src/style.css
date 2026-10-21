@@ -179,6 +179,7 @@ h1, h2, h3, p { margin: 0; }
 .recap-toolbar .author-tag { margin-left: 0; }
 .recap-status { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; color: var(--chalk-dim); background: rgba(234, 240, 234, .06); }
 .recap-status[data-status="final"] { color: var(--ok); background: rgba(111, 211, 154, .12); }
+.recap-status[data-status="warn"] { color: var(--danger); background: rgba(255, 107, 107, .12); }
 .recap-body { display: grid; gap: 16px; }
 .recap-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .recap-head h3 { font: 600 24px/1.1 var(--display); letter-spacing: .005em; flex: 1 1 260px; text-wrap: balance; }
