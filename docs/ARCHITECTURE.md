@@ -466,6 +466,7 @@ The report also shows:
 - Images (public on GHCR): `ghcr.io/tanmayee043/omnipitch-api:05af885` and `ghcr.io/tanmayee043/omnipitch-web:05af885-r2`.
 - Apps: `omnipitch-api` (internal ingress, port 8000, 0–1 replicas, 0.25 vCPU) and `omnipitch-web` (external, port 8080, 0–1 replicas), with `API_UPSTREAM=https://omnipitch-api.politetree-022e7a46.westus.azurecontainerapps.io`.
 - **Public URL:** https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io
+- **Default run:** `OMNIPITCH_DEFAULT_RUN=<eventhouse run>` (API, azure mode) loads that run once on a fresh start, never over a restored or chosen run. The outcome shows as `default_run` in `/api/v1/backend`. The replay is one shared state per API instance, so keep max replicas at 1.
 
 **Deviations found while deploying:**
 - `az containerapp env create` produced an **express** environment. In it:

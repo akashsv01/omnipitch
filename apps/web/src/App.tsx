@@ -110,8 +110,9 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
   const disabled = live.busy || live.connection === 'offline';
 
   return <div className="shell">
+    <a className="skip-link" href="#match">Skip to the match</a>
     <header className="topbar">
-      <a className="brand" href="/" aria-label="OmniPitch home"><BrandMark /><span className="brand-name">OmniPitch</span>
+      <a className="brand" href="/"><BrandMark /><span className="brand-name">OmniPitch</span>
         <span className="brand-tag">Synthetic match intelligence</span></a>
       <AudienceToggle value={prefs.audience} onChange={audience => updatePrefs({ audience })} />
       {replay && <SourceBadge replay={replay} />}
@@ -127,7 +128,8 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
 
     {!replay && <Boot offline={live.connection === 'offline'} message={live.connectionError} onRetry={live.reconnect} />}
 
-    {replay && <>
+    {replay && <main id="match" tabIndex={-1}>
+      <h1 className="sr-only">OmniPitch match room: {replay.state.home_team.name} against {replay.state.away_team.name}</h1>
       <AnimatePresence>
         {live.connection === 'offline' && <motion.div className="alert" role="alert" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
           <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><WifiOff size={16} />{live.connectionError} Showing the last received state; controls return when the API does.</span>
@@ -171,7 +173,9 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
       <AnalysisTabs replay={replay} audience={prefs.audience} favoritePlayer={prefs.favoritePlayer}
         busy={live.busy} onLoadEventhouse={live.loadEventhouse} onJumpMoment={jumpToMoment} tabRequest={tabRequest} push={live.push}
         onSelectEvent={event => { setSelectedId(event.event_id); window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }); }} />
+    </main>}
 
+    {replay && <>
       <footer className="foot">
         <span>All teams, players and events are synthetic. {replay.insights.ai > 0
           ? `${replay.insights.ai} moment ${replay.insights.ai === 1 ? 'story is' : 'stories are'} AI-written and checked in code; the rest are templates from verified metrics.`

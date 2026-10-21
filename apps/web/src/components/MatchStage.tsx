@@ -64,10 +64,10 @@ export function MatchStage({ replay, selected, onSelect, prefs, updatePrefs, goa
       </span>
     </div>
     {focus && <SelectedLine event={focus} name={people.get(focus.player_id ?? '')?.name} audience={audience} pinned={!!selected} onClear={() => onSelect(undefined)} />}
-    <div className="feed" role="list" aria-label="Latest events">
+    <div className="feed" role="group" aria-label="Latest events: select one to show it on the pitch">
       {recent.length === 0 && <span className="hint" style={{ padding: '6px 4px' }}>Events appear here as the replay runs.</span>}
       <AnimatePresence initial={false}>
-        {recent.map(event => <motion.button layout="position" key={`${event.run_id}:${event.event_id}`} role="listitem" type="button" className="feed-item"
+        {recent.map(event => <motion.button layout="position" key={`${event.run_id}:${event.event_id}`} type="button" className="feed-item"
           aria-pressed={selected?.event_id === event.event_id}
           initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ type: 'spring', stiffness: 500, damping: 40 }}
           onClick={() => onSelect(selected?.event_id === event.event_id ? undefined : event)}>

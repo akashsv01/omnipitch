@@ -79,8 +79,8 @@ export function RecapPanel({ replay, audience, onJump, request }: {
 
   return <div className="recap" aria-live="polite">
     <div className="recap-toolbar">
-      <div className="segmented small" role="radiogroup" aria-label="Recap period">
-        {SCOPES.map(item => <button key={item.id} type="button" role="radio" aria-checked={scope === item.id}
+      <div className="segmented small" role="group" aria-label="Recap period">
+        {SCOPES.map(item => <button key={item.id} type="button" aria-pressed={scope === item.id}
           disabled={item.id === 'full_time' && !secondHalf} onClick={() => { if (item.id !== scope) { setResult(undefined); setScope(item.id); } }}>
           {scope === item.id && <motion.span layoutId="recap-scope" className="thumb" />}{item.label}
         </button>)}

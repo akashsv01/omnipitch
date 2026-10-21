@@ -169,3 +169,43 @@ def test_publisher_dry_run_validates_and_reports(tmp_path, monkeypatch):
     report = json.loads((tmp_path / "data/generated/publish-dry.json").read_text())
     assert report["unique_events"] == 50 and report["duplicates_requested"] == 5 and report["partition_key"] == "dry:harbor-vale"
     assert publish.explain(Exception("ClientAuthenticationError: Unauthorized 401")).startswith("Signed in, but")
+
+
+# Judge deployments: a default Eventhouse run on a fresh start (OMNIPITCH_DEFAULT_RUN) --------------------
+
+def _fresh_default(monkeypatch, reader, run="gate-run", restored=False):
+    monkeypatch.setattr(main, "SETTINGS", azure_settings())
+    monkeypatch.setattr(main, "_reader", reader)
+    monkeypatch.setattr(main, "_default_state", {"checked": False, "run": None, "outcome": "not_configured", "error": None})
+    monkeypatch.setenv("OMNIPITCH_DEFAULT_RUN", run)
+    store = ReplayStore(db=Database(":memory:"), backend_mode="azure")
+    store.restored = restored
+    monkeypatch.setattr(replay_module, "replay_store", store)
+    return store, TestClient(main.app)
+
+
+def test_default_run_loads_once_on_a_fresh_start(monkeypatch):
+    events = simulate_match(7, "standard", run_id="gate-run")[:200]
+    store, client = _fresh_default(monkeypatch, FakeReader(events))
+    snap = client.get("/api/v1/replay").json()
+    assert snap["replay"]["source"] == "eventhouse" and snap["replay"]["source_run_id"] == "gate-run"
+    assert snap["total_events"] == 200 and snap["state"]["run_id"] == "gate-run"
+    backend = client.get("/api/v1/backend").json()["default_run"]
+    assert backend["outcome"] == "loaded" and backend["run"] == "gate-run"
+    # Loaded once: a visitor's later choice is never overwritten by the default.
+    calls = []
+    main._reader.events = lambda run_id: calls.append(run_id) or []
+    client.get("/api/v1/replay")
+    assert calls == []
+
+
+def test_default_run_never_replaces_a_restored_replay_and_reports_failures(monkeypatch):
+    events = simulate_match(7, "standard", run_id="gate-run")[:50]
+    store, client = _fresh_default(monkeypatch, FakeReader(events), restored=True)
+    assert client.get("/api/v1/replay").json()["replay"]["source"] != "eventhouse"
+    assert client.get("/api/v1/backend").json()["default_run"]["outcome"] == "kept_restored_run"
+    store, client = _fresh_default(monkeypatch, FakeReader(events, error=EventhouseError("eventhouse_unavailable", "down")))
+    snap = client.get("/api/v1/replay")
+    assert snap.status_code == 200 and snap.json()["replay"]["source"] != "eventhouse"  # Keeps serving; no substitute data.
+    default = client.get("/api/v1/backend").json()["default_run"]
+    assert default["outcome"] == "failed" and "down" in default["error"]
