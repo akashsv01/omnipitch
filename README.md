@@ -71,7 +71,8 @@ services/analytics/  Deterministic metrics and moment detection (Python adapter)
 services/agents/     Role prompts, validator, fallback narrator, eval fixtures
 services/bridge/     Bridge worker: Eventhouse -> moments and narration jobs (SQLite or Cosmos DB store)
 analytics/           Versioned illustrative threat grid and KQL (setup + queries)
-infra/               Azure CLI script that recreates the Event Hubs resources
+infra/               Azure CLI scripts: Event Hubs; Container Apps deployment (free tiers)
+deploy/              Dockerfiles for the API and UI, and the UI's nginx config
 contracts/           Shared JSON Schemas (v1.1) and committed examples
 docs/                Architecture, roadmap, and archived history
 AGENTS.md            Primary coding-agent instructions

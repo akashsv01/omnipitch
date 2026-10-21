@@ -83,6 +83,14 @@ class CosmosStore:
         self._charge("read_moments", self.moments_c)
         return sorted(rows, key=lambda m: (m["source_sequence"], m["moment_id"]))
 
+    def existing_ids(self, run_id: str) -> tuple[set[str], set[str]]:
+        """IDs only (two single-partition queries): skipping known records avoids paying for 409 conflicts."""
+        moments = {i["id"] for i in self.moments_c.query_items("SELECT c.id FROM c", partition_key=run_id)}
+        self._charge("read_moment_ids", self.moments_c)
+        jobs = {i["id"] for i in self.jobs_c.query_items("SELECT c.id FROM c", partition_key=run_id)}
+        self._charge("read_job_ids", self.jobs_c)
+        return moments, jobs
+
     def moment_detected_at(self, run_id: str) -> dict[str, str]:
         items = self.moments_c.query_items("SELECT c.moment_id, c.detected_at FROM c", partition_key=run_id)
         return {item["moment_id"]: item["detected_at"] for item in items}

@@ -116,14 +116,17 @@ class Bridge:
             stored_before = {m["moment_id"]: m for m in self.store.moments(run_id)} if pending_periods else {}
             detected = detect_moments(prefix, run_id, prefix[0]["match_id"], TEAMS)
             created_ids: set[str] = set()
+            known_moments, known_jobs = self.store.existing_ids(run_id)
             for moment in detected:
                 DETECTED_MOMENT_VALIDATOR.validate(moment)
                 job = new_job(moment, now)
                 JOB_VALIDATOR.validate(job)
-                if self.store.create_moment(moment, now):
+                # Writes stay create-only (safe if two bridges race); known records are simply not retried.
+                if moment["moment_id"] not in known_moments and self.store.create_moment(moment, now):
                     created_moments += 1
                     created_ids.add(moment["moment_id"])
-                created_jobs += self.store.create_job(job)
+                if job["job_id"] not in known_jobs:
+                    created_jobs += self.store.create_job(job)
             for period in pending_periods:
                 reconciled.append(self._reconcile_period(run_id, period, prefix, detected, stored_before, created_ids, now))
             if self.outbox is not None:

@@ -398,3 +398,18 @@ def test_number_type_round_trips_are_not_mismatches():
     assert _canonical({"metrics": [{"value": 16.0}], "flag": True}) == _canonical({"metrics": [{"value": 16}], "flag": True})
     assert _canonical({"value": 16.5}) != _canonical({"value": 16})
     assert _canonical({"flag": True}) != _canonical({"flag": 1.0})  # Booleans stay booleans.
+
+
+def test_rerun_skips_writes_for_known_records(tmp_path, match):
+    source = FakeEventhouse()
+    source.ingest(match, T0)
+    store = SqliteStore(tmp_path / "bridge.sqlite3")
+    bridge = Bridge(source, store, "eventhouse:test", timedelta(minutes=2), Clock(T0))
+    bridge.run_once()
+    calls = {"moment": 0, "job": 0}
+    create_moment, create_job = store.create_moment, store.create_job
+    store.create_moment = lambda *a, **k: (calls.__setitem__("moment", calls["moment"] + 1), create_moment(*a, **k))[1]
+    store.create_job = lambda *a, **k: (calls.__setitem__("job", calls["job"] + 1), create_job(*a, **k))[1]
+    report = bridge.reconcile()[0]
+    assert report["moments_detected"] == len(expected_moment_ids(match)) and report["moments_created"] == 0
+    assert calls == {"moment": 0, "job": 0}  # No write attempts at all for records that already exist.

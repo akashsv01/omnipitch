@@ -345,6 +345,19 @@ Trace report (`trace_report.py`, report `data/generated/trace-gate-20261020-d.js
 - **Tests:** 155 Python passed, 19 skipped. `test:contracts`, `test:push`, `test:pitch`, the build and `test:replay:browser` passed.
 - **Known:** when push isn't configured, the browser logs one 503 from negotiate per page load; the page then stays on polling, as designed.
 
+**Deployment prep, 2026-10-21 (Tanmayee, branch `deploy-prep`).**
+
+- **Bridge Cosmos cost:** each cycle now reads a run's existing moment and job IDs (two single-partition ID-only queries) and attempts writes only for missing records. Writes stay create-only. Measured live on `gate-20261020-d`: an idle rerun went from **220 RU / ~23 s to 8.2 RU / 2.5 s** (0 created). Reprocessing four recent runs created nothing. Test added (no write attempts for known records). 156 passed, 19 skipped.
+- **Read-only deployment checks** (UF Azure for Students):
+  - Azure Static Web Apps is **not available** in any region the subscription policy allows (Static Web Apps: Central US, East US 2, West US 2, West Europe, East Asia; the policy allows West US, Germany West Central, France Central, Norway East, Denmark East).
+  - Container Apps is available in West US.
+  - `Microsoft.App`, `Microsoft.OperationalInsights`, `Microsoft.ManagedIdentity`, `Microsoft.ContainerRegistry` and `Microsoft.Web` are not registered.
+- **Agreed cost rule:** no spend beyond free tiers. Plan:
+  - API and UI as two Container Apps (consumption plan, scale to zero) in West US;
+  - images on GitHub Container Registry (no Azure Container Registry);
+  - no Log Analytics workspace;
+  - the bridge runs locally when a demo run is published (not 24/7).
+
 ## Phase 5 — dataset export and basic Producer Mode
 
 - [ ] Export reusable synthetic datasets with provenance and schema version.

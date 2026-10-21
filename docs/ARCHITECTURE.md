@@ -453,6 +453,32 @@ The report also shows:
   - `push-period-reconciled`: from an **offline** SQLite reconciliation of the full seed-7 match (run `example-full-seed7`); no full match has gone through Eventhouse yet.
 - Needs agreement from the frontend owner before any publisher or negotiation endpoint is built.
 
+## Deployment for judges (prepared 2026-10-21, not deployed)
+
+**Created 2026-10-21 (approved):**
+- Providers `Microsoft.App`, `Microsoft.OperationalInsights` and `Microsoft.ManagedIdentity` registered.
+- Environment `omnipitch-env`, West US, Consumption profile only, logs off (no Log Analytics workspace). Default domain `politetree-022e7a46.westus.azurecontainerapps.io`, so the UI will be at `https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io`.
+- User-assigned identity `omnipitch-api-id`: client id `d2eb9a47-94f7-450a-ac10-cfaa61a4f6b9`, principal `3d3dde66-7db6-4c1d-9311-28b9618fb844`. **No roles yet.**
+- No apps created yet.
+
+Constraint: **no spend beyond free tiers** (UF Azure for Students, West US). Azure Static Web Apps is not offered in any region the subscription policy allows, so both pieces run on Azure Container Apps (consumption plan, scale to zero, 0.25 vCPU / 0.5 GiB, max 1 replica).
+
+| Piece | Image | Notes |
+| --- | --- | --- |
+| API `omnipitch-api` | `deploy/api.Dockerfile` (python:3.11-slim, non-root uid 10001, 262 MB) | **Internal ingress only.** User-assigned managed identity (`AZURE_CLIENT_ID`), azure mode, `OMNIPITCH_INSIGHTS=cosmos`, `WEBPUBSUB_ENDPOINT`. No `.env` or keys in the image. |
+| UI `omnipitch-web` | `deploy/web.Dockerfile` (Vite build → nginx, 74 MB) | **External ingress.** nginx serves the build and forwards `/api/*`, `/health`, `/ready` to `http://omnipitch-api`. The browser therefore uses one origin and the API's localhost-only CORS rule needs no change. Built with `PUBLIC_URL` = its own HTTPS URL. |
+
+- **Registry:** public images on GitHub Container Registry, no Azure Container Registry.
+- **Logs:** the environment is created with logs off, so there is no Log Analytics workspace.
+- **Bridge:** not deployed; it runs locally when a demo run is published.
+- **Order** (`infra/containerapps.ps1 -Step …`): register providers → environment → read its default domain → build and push both images (UI with `PUBLIC_URL=https://omnipitch-web.<domain>`) → identity → roles → API → UI.
+- **Identity access:**
+  - Cosmos: built-in Data **Reader** on `/dbs/omnipitch`, plus the metadata-only role at `/`. The API only reads Cosmos.
+  - Web PubSub: *Service Owner* on the one resource (needed to issue client tokens).
+  - Fabric: **Viewer** on workspace `OmniPitch`. It's added in the Fabric portal and depends on the UF tenant allowing service identities.
+- **Known limitation:** replay state lives in SQLite in `/tmp`, so a scale-to-zero restart resets the replay to its default. A judge reloads a run from Data quality → Fabric Eventhouse. The insights, moments and recaps come from Cosmos and Eventhouse, so nothing is lost.
+- **Local container check (2026-10-21, local mode):** UI 200; `/health` and `/api/v1/replay` proxied (200); SPA deep link 200; negotiate `503 push_not_configured` when unset; in a browser, all API calls went to the UI's own origin; 0 console errors.
+
 ## Later-phase cloud flow — not implemented
 
 ```mermaid
