@@ -266,3 +266,24 @@ def test_api_import_path_includes_the_bridge_client():
             "import importlib; importlib.import_module('omnipitch_bridge.cosmos_store'); print('ok')")
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT / "services/api", capture_output=True, text=True)
     assert out.stdout.strip() == "ok", out.stderr[-400:]
+
+
+def test_model_usage_is_recorded_per_role_in_the_trace():
+    """PR #14 request: total tokens per role in the insight trace (read by bridge trace_report)."""
+    from types import SimpleNamespace
+    from agents.model import AzureOpenAIClient, AzureOpenAIConfig
+    from agents.workflow import _call, Deadline
+
+    class Http:
+        def post(self, url, json, timeout, headers):
+            body = {"choices": [{"message": {"content": '{"ok": true}'}}],
+                    "usage": {"prompt_tokens": 900, "completion_tokens": 120, "total_tokens": 1020}}
+            return SimpleNamespace(status_code=200, headers={}, text="", json=lambda: body)
+
+    credential = SimpleNamespace(get_token=lambda scope: SimpleNamespace(token="test-token"))
+    client = AzureOpenAIClient(AzureOpenAIConfig("https://example.openai.azure.com", "dep"), credential=credential, http=Http())
+    trace = {}
+    assert _call(client, "analyst", [], Deadline(30), 10, trace) == {"ok": True}
+    assert trace["analyst"]["usage"] == {"prompt_tokens": 900, "completion_tokens": 120, "total_tokens": 1020}
+    from omnipitch_bridge.trace import model_usage
+    assert model_usage([{"insight": {"generation_mode": "ai"}, "trace": trace}])["tokens"] == 1020

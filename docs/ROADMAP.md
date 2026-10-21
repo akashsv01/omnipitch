@@ -248,6 +248,27 @@ Verification 2026-10-20 (local): 120 Python tests passed, 14 cloud tests skipped
   - Measured pipeline latency with the bridge polling continuously.
   - The joint Phase 4 gate.
 
+**Phase 4 frontend push client and PR #14 answers, 2026-10-20 (Akash, branch `phase4-push-client`).**
+
+- **Push contract agreed** with two clarifications to its description (no schema change):
+  - Only `state` messages are ordered by `state_version`. `moment`, `insight` and `period_reconciled` messages are deduplicated by `message_id` only, because they are published after the state has moved on (the moment example has version 340 after state 400).
+  - No gap rule is needed. Every accepted message and every (re)connect makes the browser fetch a snapshot, and the snapshot API stays authoritative.
+- **Browser client** (`apps/web/src/lib/push.ts`):
+  - Negotiates `GET /api/v1/negotiate?run_id=<source_run_id>` and opens `json.webpubsub.azure.v1`.
+  - Handles group messages: drops duplicate, stale, foreign-run and invalid ones, and validates each envelope against `push.schema.json` with AJV.
+  - A `state` or `moment` message triggers an incremental snapshot; `insight`, `period_reconciled` or a (re)connect triggers a full one.
+  - Reconnects with backoff and a fresh token.
+  - A 404/503 from negotiate means "not configured": polling only, no retries.
+  - Data quality shows the push status.
+- **Verification:**
+  - `npm run test:push` drives the real module with a fake socket and the contract examples. A mutation that orders every type by `state_version` fails it.
+  - `test:contracts` now validates the push examples. Typecheck and build passed.
+  - Browser, with the API's negotiate endpoint not built yet: one 404, then "Not configured; polling only", no retries, and the narrated insights still shown.
+  - **UNVERIFIED** until the negotiate endpoint exists: the real Web PubSub socket.
+- **Token usage per role** in the insight trace (`trace[role].usage`, read by `trace_report`), tested with a fake HTTP client. It applies to runs narrated after this change.
+- **Full match published for the joint gate:** `gate-20261020-d` (seed 7, standard, 1,206 events + 25 duplicates, `period_end` at 618 and 1206). Sent to Event Hubs by the publisher; Eventhouse arrival is not checked from this machine.
+- 144 Python tests passed, 19 skipped.
+
 ## Phase 5 — dataset export and basic Producer Mode
 
 - [ ] Export reusable synthetic datasets with provenance and schema version.

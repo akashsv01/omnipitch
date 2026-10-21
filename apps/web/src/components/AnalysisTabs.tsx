@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowDown, CheckCircle2, Info, ShieldCheck } from 'lucide-react';
+import type { PushStatus } from '../lib/push';
 import type { RecapScope, Analysis, Event, IngestResult, PpdaWindow, ReplaySnapshot } from '../types/contracts';
 import type { Audience } from '../lib/prefs';
 import { fetchLedger, ingestEvents, type LedgerView } from '../lib/api';
@@ -17,10 +18,10 @@ const TABS: { id: Tab; label: string }[] = [
 
 export type TabRequest = { tab: Tab; nonce: number; scope?: RecapScope };
 
-export function AnalysisTabs({ replay, audience, favoritePlayer, onSelectEvent, busy = false, onLoadEventhouse, onJumpMoment, tabRequest }: {
+export function AnalysisTabs({ replay, audience, favoritePlayer, onSelectEvent, busy = false, onLoadEventhouse, onJumpMoment, tabRequest, push }: {
   replay: ReplaySnapshot; audience: Audience; favoritePlayer: string | null; onSelectEvent: (event: Event) => void;
   busy?: boolean; onLoadEventhouse?: (sourceRunId: string) => void;
-  onJumpMoment: (momentId: string, replayMs: number) => void; tabRequest?: TabRequest;
+  onJumpMoment: (momentId: string, replayMs: number) => void; tabRequest?: TabRequest; push?: PushStatus;
 }) {
   const [tab, setTab] = useState<Tab>('teams');
   useEffect(() => { if (tabRequest) setTab(tabRequest.tab); }, [tabRequest]);
@@ -52,7 +53,7 @@ export function AnalysisTabs({ replay, audience, favoritePlayer, onSelectEvent, 
       {tab === 'pressing' && <Pressing analysis={replay.analysis} audience={audience} />}
       {tab === 'players' && <Players replay={replay} favoritePlayer={favoritePlayer} audience={audience} />}
       {tab === 'shots' && <Shots replay={replay} onSelectEvent={onSelectEvent} />}
-      {tab === 'quality' && <Quality replay={replay} busy={busy} onLoadEventhouse={onLoadEventhouse} />}
+      {tab === 'quality' && <Quality replay={replay} busy={busy} onLoadEventhouse={onLoadEventhouse} push={push} />}
     </motion.div>
   </section>;
 }
@@ -220,7 +221,11 @@ function Shots({ replay, onSelectEvent }: { replay: ReplaySnapshot; onSelectEven
   </div>;
 }
 
-function Quality({ replay, busy, onLoadEventhouse }: { replay: ReplaySnapshot; busy: boolean; onLoadEventhouse?: (id: string) => void }) {
+const PUSH_LABEL: Record<PushStatus['state'], string> = {
+  off: 'Off', connecting: 'Connecting', live: 'Live', retrying: 'Reconnecting', unavailable: 'Not configured',
+};
+
+function Quality({ replay, busy, onLoadEventhouse, push }: { replay: ReplaySnapshot; busy: boolean; onLoadEventhouse?: (id: string) => void; push?: PushStatus }) {
   const runId = replay.state.run_id;
   const [ledger, setLedger] = useState<LedgerView>();
   const [result, setResult] = useState<{ before: LedgerView; ingest: IngestResult; after: Analysis['teams'] }>();
@@ -248,6 +253,20 @@ function Quality({ replay, busy, onLoadEventhouse }: { replay: ReplaySnapshot; b
   }
   const summary = ledger?.summary;
   return <div style={{ display: 'grid', gap: 18 }}>
+    <div className="card">
+      <h3>Live updates</h3>
+      {!push || push.state === 'off'
+        ? <p className="hint">Polling only: this replay has no source run to follow (simulator data).</p>
+        : <>
+          <div className="stat-pair">
+            <div className="stat"><b>{PUSH_LABEL[push.state]}</b><span>Web PubSub</span></div>
+            <div className="stat"><b>{push.received}</b><span>messages used</span></div>
+            <div className="stat"><b>{push.ignored}</b><span>ignored (duplicate, stale or invalid)</span></div>
+          </div>
+          <p className="hint">Run <span className="mono">{push.runId}</span>{push.lastType ? ` · last ${push.lastType.replace('_', ' ')} at ${push.lastAt}` : ''}
+            {push.error ? ` · ${push.error}` : ''}. A push only fetches the next snapshot sooner; the snapshot API stays the source of truth, and polling continues.</p>
+        </>}
+    </div>
     <div className="card">
       <h3>Narrated insights</h3>
       {replay.insights.mode === 'off'

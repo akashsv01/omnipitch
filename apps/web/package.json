@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test:contracts": "node scripts/check-contracts.mjs",
     "test:pitch": "node scripts/check-pitch.mjs",
+    "test:push": "node scripts/check-push.mjs",
     "test:replay:browser": "node scripts/smoke-replay.mjs"
   },
   "dependencies": {

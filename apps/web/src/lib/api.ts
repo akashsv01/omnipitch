@@ -7,16 +7,20 @@ import momentSchema from '../../../../contracts/schemas/moment.schema.json';
 import analysisSchema from '../../../../contracts/schemas/analysis.schema.json';
 import replaySchema from '../../../../contracts/schemas/replay.schema.json';
 import recapSchema from '../../../../contracts/schemas/recap.schema.json';
+import reconciliationSchema from '../../../../contracts/schemas/reconciliation.schema.json';
+import pushSchema from '../../../../contracts/schemas/push.schema.json';
+import type { Negotiated, PushEnvelope } from './push';
 import type { Event, IngestResult, LedgerSummary, MatchState, Recap, RecapScope, ReplaySnapshot, Scenario, Speed } from '../types/contracts';
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
 const ajv = new Ajv2020({ allowUnionTypes: true });
 addFormats(ajv);
-for (const schema of [eventSchema, stateSchema, insightSchema, momentSchema, analysisSchema]) ajv.addSchema(schema);
+for (const schema of [eventSchema, stateSchema, insightSchema, momentSchema, analysisSchema, reconciliationSchema]) ajv.addSchema(schema);
 const validateState = ajv.compile<MatchState>(stateSchema);
 const validateEvent = ajv.getSchema<Event>(eventSchema.$id)!;
 const validateReplay = ajv.compile<ReplaySnapshot>(replaySchema);
 const validateRecap = ajv.compile<Recap>(recapSchema);
+export const validatePush = ajv.compile<PushEnvelope>(pushSchema);
 
 export class ApiError extends Error {
   constructor(message: string, public readonly kind: 'network' | 'http' | 'contract', public readonly status?: number) {
@@ -150,6 +154,25 @@ export interface RecapAIStatus { mode: 'off' | 'on'; status: 'off' | 'waiting' |
 export interface RecapResult { recap: Recap; ai: RecapAIStatus }
 
 /** null means the recap is not available yet (period not started); errors are thrown. */
+/**
+ * Web PubSub client URL for one source run (GET /api/v1/negotiate). null when the API has no push configured
+ * (404, or 503 push_not_configured): the page then stays on polling.
+ */
+export async function negotiatePush(runId: string): Promise<Negotiated | null> {
+  let value: unknown;
+  try {
+    value = await getJson(`/api/v1/negotiate?run_id=${encodeURIComponent(runId)}`);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 503)) return null;
+    throw error;
+  }
+  const negotiated = value as Negotiated;
+  if (!negotiated || typeof negotiated.url !== 'string' || !/^wss:\/\//.test(negotiated.url) || typeof negotiated.group !== 'string') {
+    throw new ApiError('Negotiate response must carry a wss:// url and a group.', 'contract');
+  }
+  return negotiated;
+}
+
 export async function fetchRecap(scope: RecapScope): Promise<RecapResult | null> {
   let value: unknown;
   try {

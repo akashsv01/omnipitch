@@ -366,6 +366,7 @@ Live Cosmos tests are opt-in: set `OMNIPITCH_TEST_COSMOS_ENDPOINT` to the accoun
   - **Player focus:** from recorded events only.
   - **AI rewrite** (`OMNIPITCH_RECAP_AI=on`): runs once per final recap in a background thread. Numbers, names, scorelines and banned claims are checked in code. If the rewrite fails, the template recap is served and `ai.reason` says why.
 - **Live check:** `services/api/tests/phase4_live.py --run-id <run>` (bridge jobs, or `--seed-local` to create them with the bridge's detector; `--store sqlite --ai-jobs 0` is an offline rehearsal) narrates a capped number of jobs, checks the overlay, recaps and restart, and writes `data/generated/<run>.jsonl` for a UI upload. Report: `data/generated/phase4-live-<run>.json`.
+- **Push client** (`apps/web/src/lib/push.ts`, contract `push.schema.json`): follows the replay's `source_run_id`, negotiates a client URL, and treats every message as a cue to fetch a snapshot sooner (insight, reconciliation and reconnect fetch the full snapshot). `state` messages are ordered by `state_version`; other types are deduplicated by `message_id`. Polling continues as the fallback, and the API's snapshot stays the source of truth.
 - **UI:**
   - The Recap tab offers a scope switch, a provisional/final chip and an author chip, and its key moments seek the replay.
   - A half-time or full-time prompt appears when a period ends during playback.
