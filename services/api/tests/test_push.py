@@ -167,3 +167,18 @@ def test_negotiate_endpoint(monkeypatch):
     assert body["expires_at"].endswith("Z")
     bad = client.get("/api/v1/negotiate", params={"run_id": "bad/run id"})
     assert bad.status_code == 422 and bad.json()["detail"]["code"] == "invalid_run_id"
+
+
+def test_reconcile_pass_publishes_what_it_enqueues(tmp_path, seeded_full):
+    publisher = FakePublisher()
+    store = SqliteStore(tmp_path / "bridge.sqlite3")
+    plain = Bridge(FakeEventhouse(), store, "test", timedelta(minutes=2), Clock(T0))
+    source = FakeEventhouse()
+    source.ingest(seeded_full[:200], T0)
+    plain.source = source
+    plain.run_once()  # Processed earlier without push: nothing enqueued.
+    assert store.outbox("push-test") == []
+    pushing = Bridge(source, store, "test", timedelta(minutes=2), Clock(T0),
+                     outbox=Outbox(store, publisher, Clock(T0)), insight_source=lambda run_id: [])
+    pushing.reconcile()
+    assert publisher.sent and all(r["status"] == "sent" for r in store.outbox("push-test"))

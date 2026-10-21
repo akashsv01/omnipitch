@@ -224,4 +224,8 @@ class Bridge:
 
     def reconcile(self, limit: int = 10) -> list[dict]:
         """Full pass over recent runs regardless of the cursor, so a bounded lookback cannot miss rows forever."""
-        return [self.process_run(run["run_id"]) for run in self.source.recent_runs(limit)]
+        results = [self.process_run(run["run_id"]) for run in self.source.recent_runs(limit)]
+        if self.outbox is not None:  # Messages enqueued by the pass are published in the same pass.
+            self._enqueue_insights()
+            self.outbox.publish_pending()
+        return results

@@ -433,7 +433,9 @@ The report also shows:
 - **Records:** stored once under the deterministic `message_id` as `pending`.
 - **Sending:** each attempt stamps `sent_at`, sends to group `run-<run_id>` over REST with Entra ID, then marks the record `sent` with a version/ETag-conditional write.
 - **Failures:** a failed send stays `pending` with `attempts` and `last_error` and is retried next cycle with the same `message_id`. A crash between send and mark resends the same `message_id` after restart: delivery is at least once, and the browser drops duplicates by `message_id`.
-- **Storage:** SQLite table `outbox`; Cosmos container `outbox` (`/run_id`), **not yet provisioned**.
+- **Storage:** SQLite table `outbox`; Cosmos container `outbox` (`/run_id`, provisioned 2026-10-21).
+- **Reconcile passes:** a reconcile pass also publishes what it enqueues.
+- **Live check (2026-10-21):** 58 messages for `gate-20261020-d` were received in order on the real socket; a rerun sent 0.
 - **Tracing:** `trace_report.py` reads sent insight messages for `insight_to_published` and counts sent messages.
 
 
