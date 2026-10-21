@@ -169,7 +169,7 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
       </div>
 
       <AnalysisTabs replay={replay} audience={prefs.audience} favoritePlayer={prefs.favoritePlayer}
-        busy={live.busy} onLoadEventhouse={live.loadEventhouse} onJumpMoment={jumpToMoment} tabRequest={tabRequest}
+        busy={live.busy} onLoadEventhouse={live.loadEventhouse} onJumpMoment={jumpToMoment} tabRequest={tabRequest} push={live.push}
         onSelectEvent={event => { setSelectedId(event.event_id); window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }); }} />
 
       <footer className="foot">

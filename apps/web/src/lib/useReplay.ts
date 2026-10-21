@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { controlReplay, fetchReplay, generateReplay, loadFromEventhouse, loadReplay, mergeSnapshot } from './api';
+import { controlReplay, fetchReplay, generateReplay, loadFromEventhouse, loadReplay, mergeSnapshot, negotiatePush, validatePush } from './api';
+import { OFF_STATUS, PushClient, type PushSignal, type PushStatus, type SocketLike } from './push';
 import type { ReplaySnapshot, Scenario, Speed } from '../types/contracts';
 
 export type Connection = 'connecting' | 'online' | 'offline';
@@ -35,10 +36,21 @@ export function useReplay() {
     setConnectionError(undefined);
   }, []);
 
+  // A push only asks for the next snapshot sooner; the snapshot API stays authoritative.
+  const kick = useRef<() => void>(() => undefined);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
+    let polling = false;
+    let again = false;
+    kick.current = () => {
+      if (!active) return;
+      if (polling) { again = true; return; }
+      clearTimeout(timer);
+      void poll();
+    };
     async function poll() {
+      polling = true;
       const current = generation.current;
       if (!acting.current) {
         try {
@@ -54,11 +66,33 @@ export function useReplay() {
           }
         }
       }
-      if (active) timer = setTimeout(poll, document.hidden ? 2000 : 450);
+      polling = false;
+      if (!active) return;
+      if (again) { again = false; void poll(); return; }
+      timer = setTimeout(poll, document.hidden ? 2000 : 450);
     }
     void poll();
     return () => { active = false; clearTimeout(timer); };
   }, [accept, refreshKey]);
+
+  // Web PubSub fast path for the replay's source run (an uploaded file's or an Eventhouse run's ID).
+  const [push, setPush] = useState<PushStatus>(OFF_STATUS);
+  const pushClient = useRef<PushClient>(undefined);
+  if (!pushClient.current) {
+    pushClient.current = new PushClient({
+      negotiate: negotiatePush,
+      openSocket: (url, protocol) => new WebSocket(url, protocol) as unknown as SocketLike,  // Handlers are assigned as properties.
+      validate: (envelope): envelope is Parameters<typeof validatePush>[0] => validatePush(envelope),
+      setTimer: (fn, ms) => setTimeout(fn, ms),
+      clearTimer: handle => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    }, (signal: PushSignal) => {
+      if (signal.kind === 'full') needFull.current = true;
+      kick.current();
+    }, setPush);
+  }
+  const sourceRunId = replay?.replay.source_run_id ?? null;
+  useEffect(() => { pushClient.current?.start(sourceRunId); }, [sourceRunId]);
+  useEffect(() => () => pushClient.current?.stop(), []);
 
   const act = useCallback(async (operation: (runId: string) => Promise<ReplaySnapshot>) => {
     const runId = latest.current?.state.run_id;
@@ -80,7 +114,7 @@ export function useReplay() {
   }, [accept]);
 
   return {
-    replay, connection, connectionError, actionError, busy, receivedAt,
+    replay, connection, connectionError, actionError, busy, receivedAt, push,
     clearActionError: () => setActionError(undefined),
     reconnect: () => { setConnection('connecting'); setRefreshKey(value => value + 1); },
     play: () => act(run => controlReplay(run, { action: 'play' })),

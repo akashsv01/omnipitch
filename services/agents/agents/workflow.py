@@ -44,6 +44,9 @@ def _call(client: ModelClient, role: str, messages: list[dict], deadline: Deadli
     try:
         output = client.complete(role, messages, deadline.remaining(per_call))
         trace[role] = {"ms": round((time.perf_counter() - started) * 1000), "keys": sorted(output)}
+        usage = client.last_usage() if hasattr(client, "last_usage") else None
+        if usage:
+            trace[role]["usage"] = usage  # Tokens per role, for cost tracing (bridge trace_report).
         return output
     except ModelError as exc:
         trace[role] = {"ms": round((time.perf_counter() - started) * 1000), "error": type(exc).__name__}

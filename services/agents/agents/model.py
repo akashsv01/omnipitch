@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import threading
 import os
 from typing import Protocol
 
@@ -70,6 +71,7 @@ class AzureOpenAIClient:
             credential = (AzureCliCredential(tenant_id=config.tenant_id) if config.tenant_id
                           else DefaultAzureCredential(exclude_interactive_browser_credential=True))
         self.credential = credential
+        self._local = threading.local()  # Roles run concurrently: usage is kept per calling thread.
         if http is None:
             import httpx
             http = httpx.Client()
@@ -96,11 +98,19 @@ class AzureOpenAIClient:
             raise ModelError(f"{role}: HTTP {response.status_code}; this identity needs 'Cognitive Services OpenAI User' on the resource")
         if response.status_code >= 400:
             raise ModelError(f"{role}: HTTP {response.status_code}: {response.text[:200]}")
+        self._local.usage = None
         try:
-            content = response.json()["choices"][0]["message"]["content"]
+            payload = response.json()
+            usage = payload.get("usage") or {}
+            self._local.usage = {k: usage[k] for k in ("prompt_tokens", "completion_tokens", "total_tokens") if isinstance(usage.get(k), int)} or None
+            content = payload["choices"][0]["message"]["content"]
             parsed = json.loads(content)
         except (KeyError, IndexError, ValueError) as exc:
             raise ModelError(f"{role}: response was not a JSON object") from exc
         if not isinstance(parsed, dict):
             raise ModelError(f"{role}: response was not a JSON object")
         return parsed
+
+    def last_usage(self) -> dict | None:
+        """Token usage of this thread's most recent successful response (for the insight trace)."""
+        return getattr(self._local, "usage", None)
