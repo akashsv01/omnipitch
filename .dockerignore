@@ -1,0 +1,15 @@
+# Keep secrets, local state and build output out of images.
+**/.env
+**/.env.*
+!**/.env.example
+.venv
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+data
+docs
+.git
+.github
+.cursor
+**/*.sqlite3

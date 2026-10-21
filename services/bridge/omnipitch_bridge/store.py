@@ -104,6 +104,13 @@ class SqliteStore:
                 "SELECT payload FROM moments WHERE run_id = ? ORDER BY source_sequence, moment_id", (run_id,)).fetchall()
         return [json.loads(row[0]) for row in rows]
 
+    def existing_ids(self, run_id: str) -> tuple[set[str], set[str]]:
+        """(moment_ids, job_ids) already stored for a run, so a cycle writes only what is missing."""
+        with self.lock:
+            moments = {r[0] for r in self.connection.execute("SELECT moment_id FROM moments WHERE run_id = ?", (run_id,))}
+            jobs = {r[0] for r in self.connection.execute("SELECT job_id FROM jobs WHERE run_id = ?", (run_id,))}
+        return moments, jobs
+
     def moment_detected_at(self, run_id: str) -> dict[str, str]:
         """moment_id -> detected_at (UTC), for latency tracing."""
         with self.lock:

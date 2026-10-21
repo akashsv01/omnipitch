@@ -1,0 +1,2 @@
+*.sh text eol=lf
+deploy/nginx.conf.template text eol=lf

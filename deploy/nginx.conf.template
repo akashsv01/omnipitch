@@ -1,0 +1,33 @@
+# Rendered by the nginx image's envsubst at start (API_UPSTREAM). Logs carry no query strings.
+# API_UPSTREAM is resolved per request through the container's own DNS server (written to
+# conf.d/00-resolver.conf by deploy/nginx-resolver.sh), so nginx starts even if the API is not
+# resolvable yet, and https upstreams get SNI and their own Host header.
+log_format omnipitch '$remote_addr [$time_local] "$request_method $uri" $status $body_bytes_sent $request_time';
+
+server {
+    listen 8080;
+    server_name _;
+    access_log /dev/stdout omnipitch;
+    root /usr/share/nginx/html;
+
+    # Same-origin API: the browser never calls the API host directly.
+    location ~ ^/(api/|health$|ready$) {
+        set $api_upstream ${API_UPSTREAM};
+        proxy_pass $api_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    location / {
+        add_header Cache-Control "no-cache";
+        try_files $uri /index.html;
+    }
+}
