@@ -4,7 +4,7 @@ Phases describe intended work, not committed completion dates. Implement only th
 
 ## Current state
 
-**Phase 5 in progress (2026-10-21).** Deployed candidate live (PR #19). Akash's half is done: accessibility, quiet and alternate seeds, evidence display, default judge run, API outage tests; see the Phase 5 test report. Open: bridge-side Cosmos outage test, health probes, budget alert, measured latency (Tanmayee); redeploy with `OMNIPITCH_DEFAULT_RUN`; freeze on Oct 23.
+**Phase 5 complete (2026-10-25); Phase 6 next.** The deployed candidate runs the latest `main` with the default judge run, HTTP health probes and a budget alert. All gate tests pass: duplicates, late events, outages (including the bridge's store outage), reconnect, quiet runs and measured latency (`latency-20261025-a`). Scope is frozen: bug fixes only. Next, Phase 6: cross-browser checks, video, judge runbook, release tag and submission.
 
 **Phase 4 complete (2026-10-21).** The joint gate passed on the full match `gate-20261020-d` through the real pipeline: simulator → Event Hubs → Eventhouse → bridge (moments, jobs, both period reconciliations) → narration (prompts v3, checked in code) → validated Cosmos insights in the UI → Web PubSub push → reconnect. Reconnect restores score, clock and insights (API restart and tab reopen); the halftime and full-time recaps are final, link to verified moments and show "Reconciled" from the bridge's records; fan and analyst views read one checked insight per moment. Details: Phase 4 below. Next: deployment for judges (Phase 6 work brought forward), then Phase 5 polish. Earlier Phase 4 note: Implemented and tested locally: meaning checks in code (score state, box position, pass counts, defender breach, transition direction, fan text that mentions missing data) with prompts v3 and derived facts in the evidence packet; a validated overlay that shows the narration worker's Cosmos insights in the UI (`OMNIPITCH_INSIGHTS=cosmos`), re-checking each one against the API's own moment and reporting its status; halftime/full-time recaps (`GET /api/v1/replay/recap`, contract `recap.schema.json`) built from verified moments, with an optional checked AI rewrite (`OMNIPITCH_RECAP_AI=on`); a Recap tab whose key moments seek the replay; a half-time/full-time prompt; AI/Template labels on every moment. Live check 2026-10-20 (`services/api/tests/phase4_live.py --run-id p4-live-20261020-a --seed-local --ai-jobs 6`): 55 moments and jobs created in Cosmos with the bridge's detector (Eventhouse hop UNVERIFIED for this run), 6 of 6 model-narrated jobs (prompts v3, `gpt-4.1-mini`) published validated AI insights, 49 fallback; the API overlay showed all 55 with 0 rejected, both recaps linked verified moments, and a restarted API restored score, clock and insights. Reading the six AI texts found one meaning error the checks missed ("keep the score intact" on a chance); the score-state rule was extended, and the overlay now rejects that stored insight on display (54 narrated, 5 AI, 1 rejected, seen in the browser after an API restart that restored the run). The same live check exposed an API defect the tests missed: with `OMNIPITCH_INSIGHTS=cosmos` every request returned 500 because `services/bridge` (the shared Cosmos client) was not on the API's import path; fixed, and a failed insight source is now reported in the snapshot instead of failing requests. Not yet done: the joint run through Eventhouse and Tanmayee's bridge, bilingual text, deployment.
 
@@ -383,8 +383,24 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
 - [x] Frontend hosting: same-origin nginx Container App with the API under `/api` (PR #19), instead of Static Web Apps. No CORS change was needed.
 - [x] Bridge-side outage tests (Tanmayee, 2026-10-25). Store (Cosmos) down mid-write: the cursor stays put and the partial write is completed on retry, with exactly one job per moment (`test_store_outage_mid_write_leaves_no_partial_state_after_recovery`). Down before any write: nothing is written and the cursor stays (`test_store_outage_before_any_write_keeps_cursor`). **Fix:** the worker loop caught only Eventhouse errors, so a Cosmos outage would have crashed the polling process. It now logs any dependency error (type and status only) and retries on the next cycle (`test_worker_cycle_survives_any_dependency_outage`; restoring the old handler fails it). Eventhouse down (`test_failed_cycle_keeps_cursor_and_retries`) and Web PubSub down (`test_failed_send_is_retried_with_the_same_message_id`) are already covered.
 - [x] Health probes, budget alert and stop-everything (Tanmayee, 2026-10-25). **Probes:** liveness and readiness are HTTP checks (API `GET /health`, UI `GET /`); the platform's TCP startup probe is kept for cold starts. Both apps came back Healthy and ready with 0 restarts, and the site and `/health` answered 200. **Budget:** a monthly subscription budget with email alerts at 50, 80 and 100 % of actual spend. **Stop-everything:** documented in ARCHITECTURE → Operations.
-- [ ] Measured pipeline latency with the bridge polling continuously, and cost per day for the demo window (Tanmayee).
-- [ ] Freeze contracts and scope on 2026-10-23 (joint).
+- [x] Measured pipeline latency with the bridge polling continuously (Tanmayee and Akash, 2026-10-25). Run `latency-20261025-a`: seed 7, standard, full match plus 25 duplicates; bridge polling every 2 s with push on; narrator running continuously. *Every moment was attempted with the live model under a 10K tokens-per-minute cap; 46 jobs fell back after 2 rate-limited attempts; job→insight timings include retry waits.*
+
+  | Stage | p50 | p95 | n |
+  | --- | --- | --- | --- |
+  | ingest → detect | 6.5 s | 6.5 s | 55 |
+  | detect → job | 0 s | 0 s | 55 |
+  | job → insight | 322.5 s | 521.2 s | 55 |
+  | insight → published | 7.7 s | 25.0 s | 55 |
+  | ingest → insight (end to end) | 329.0 s | 527.7 s | 55 |
+  | emit → ingest | not measurable (simulator fixture clock) | | |
+
+  - **Model:** 30 calls, 28,492 tokens (9 AI insights × 3 roles plus 3 broadcaster repairs); per-role p50 3.5–5.8 s.
+  - **Insights:** 55, of which 9 AI and 46 template fallback.
+  - **Bridge:** 55 moments and jobs; both periods reconciled (29 + 26, 0 mismatches); 134 cycles with 0 errors.
+  - **Push:** 113 messages (1 state, 55 moment, 2 period_reconciled, 55 insight), 0 failures.
+  - **Reading:** detection and publication take seconds. End-to-end time is dominated by narration queueing behind the model rate limit, not by per-call latency. Ingest → detect includes about one extra cycle, while the previous run was still inside the bridge's 2-minute re-check window.
+  - Cost per day is tracked outside the repository.
+- [x] Freeze contracts and scope (joint; recorded 2026-10-25 and agreed through review of this change). From here on, bug fixes only.
 - [ ] Bilingual text: only if time allows after the freeze; the guide makes a second language optional once the MVP gates pass.
 
 **Repository hygiene (Tanmayee, 2026-10-25):** subscription and tenant IDs, resource names, deployed URLs, university names and cost figures were removed from the docs, README and infra scripts before the repository goes public. The infra scripts now take every environment-specific name as a required parameter. Earlier commits in git history still contain some of these identifiers; none is a key, password or connection string.
@@ -399,8 +415,8 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
 | Reconnect | `test_phase4::test_reconnect_restores_score_clock_and_insights`; `test_phase2::test_restart_restores_replay_position`; push client reconnect (`test:push`); live joint gate on `gate-20261020-d` (PR #17: API restart and tab reopen) | PASS |
 | Quiet run | `test_phase5::test_whole_match_room_holds_for_quiet_and_alternate_seeds`, `test_quiet_matches_stay_quiet_in_the_match_room`; `test_phase2::test_quiet_scenario_has_fewer_shots_and_moments` | PASS |
 | Shared deployment works | PR #19, verified from the internet on 2026-10-21. Known limit: one shared replay per API instance (max 1 replica), so concurrent visitors see the same replay state | PASS, with known limit; default run pending redeploy |
-| Measured latency | Only hand-run timings so far | UNVERIFIED |
-| No new features after the freeze | Freeze on 2026-10-23 | Pending |
+| Measured latency | `latency-20261025-a` with continuous bridge and narrator (see the latency item above) | PASS (2026-10-25) |
+| No new features after the freeze | Freeze recorded 2026-10-25 | PASS |
 
 ## Phase 6 — release and submission (project guide, Oct 24–27)
 
