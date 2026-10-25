@@ -1,16 +1,15 @@
-# Recreate the Phase 2 Event Hubs resources (idempotent). Billable: a Standard namespace draws
-# about $0.73/day of Azure credit while it exists. Delete with:  az group delete -n rg-omnipitch-dev --yes
+# Create the Phase 2 Event Hubs resources (idempotent): namespace, hub, consumer group, listen-only rule, sender role.
+# Delete them when no longer needed:  az group delete -n <resource-group> --yes
 #
 # Usage (after `az login`, from any directory):
-#   pwsh infra/eventhubs.ps1                         # or: powershell -File infra/eventhubs.ps1
-#   pwsh infra/eventhubs.ps1 -Namespace omnipitch-ehns-<other>   # if the default name was taken
+#   pwsh infra/eventhubs.ps1 -Subscription <id> -ResourceGroup <rg> -Location <region> -Namespace <globally-unique-name>
 #
-# Never prints keys. The Fabric teammate's listen-only key is fetched separately by the owner (see docs).
+# Never prints keys. The listen-only key for the Fabric Eventstream is fetched separately and shared privately.
 param(
-    [string]$Subscription = "41939648-74f3-45b6-8b24-f986d316e0ef",   # Azure for Students
-    [string]$ResourceGroup = "rg-omnipitch-dev",
-    [string]$Location = "eastus",                                       # allowed: centralus, westus2, mexicocentral, eastus2, eastus
-    [string]$Namespace = "omnipitch-ehns-qn36t",
+    [Parameter(Mandatory)] [string]$Subscription,
+    [Parameter(Mandatory)] [string]$ResourceGroup,
+    [Parameter(Mandatory)] [string]$Location,
+    [Parameter(Mandatory)] [string]$Namespace,
     [string]$Hub = "match-events",
     [string]$ConsumerGroup = "fabric-eventstream",
     [string]$ListenRule = "eventstream-listen"

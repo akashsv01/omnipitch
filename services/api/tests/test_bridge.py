@@ -413,3 +413,67 @@ def test_rerun_skips_writes_for_known_records(tmp_path, match):
     report = bridge.reconcile()[0]
     assert report["moments_detected"] == len(expected_moment_ids(match)) and report["moments_created"] == 0
     assert calls == {"moment": 0, "job": 0}  # No write attempts at all for records that already exist.
+
+
+# Bridge-side outages (Phase 5) ---------------------------------------------------------------
+
+class StoreOutage(RuntimeError):
+    """Stands in for a Cosmos DB error (for example 503 ServiceUnavailable or a timeout)."""
+    status_code = 503
+
+
+def test_store_outage_mid_write_leaves_no_partial_state_after_recovery(make, match):
+    source = FakeEventhouse()
+    source.ingest(match, T0)
+    bridge, store, _ = make(source)
+    original = store.create_job
+    calls = {"n": 0}
+
+    def flaky_create_job(job):
+        calls["n"] += 1
+        if calls["n"] == 5:
+            raise StoreOutage("Cosmos DB unavailable")
+        return original(job)
+    store.create_job = flaky_create_job
+    with pytest.raises(StoreOutage):
+        bridge.run_once()
+    run_id = match[0]["run_id"]
+    assert store.get_cursor(bridge.cursor_id) is None  # Nothing claims the window was processed.
+    assert (len(store.moments(run_id)), len(store.jobs(run_id))) == (5, 4)  # The partial write the outage left.
+    store.create_job = original
+    report = bridge.run_once()
+    expected = expected_moment_ids(match)
+    assert {m["moment_id"] for m in store.moments(run_id)} == expected
+    assert {j["job_id"] for j in store.jobs(run_id)} == expected  # Every moment has exactly one job.
+    assert (report["moments_created"], report["jobs_created"]) == (len(expected) - 5, len(expected) - 4)
+    assert store.get_cursor(bridge.cursor_id) == T0
+
+
+def test_store_outage_before_any_write_keeps_cursor(make, match):
+    source = FakeEventhouse()
+    source.ingest(match, T0)
+    bridge, store, _ = make(source)
+    original = store.existing_ids
+    store.existing_ids = lambda run_id: (_ for _ in ()).throw(StoreOutage("Cosmos DB unavailable"))
+    with pytest.raises(StoreOutage):
+        bridge.run_once()
+    assert store.jobs(match[0]["run_id"]) == [] and store.get_cursor(bridge.cursor_id) is None
+    store.existing_ids = original
+    bridge.run_once()
+    assert len(store.jobs(match[0]["run_id"])) == len(expected_moment_ids(match))
+
+
+def test_worker_cycle_survives_any_dependency_outage(tmp_path, match):
+    from omnipitch_bridge.worker import run_cycle
+    source = FakeEventhouse()
+    source.ingest(match, T0)
+    store = SqliteStore(tmp_path / "bridge.sqlite3")
+    bridge = Bridge(source, store, "eventhouse:test", timedelta(minutes=2), Clock(T0))
+    logged = []
+    original = store.create_moment
+    store.create_moment = lambda *a, **k: (_ for _ in ()).throw(StoreOutage("Cosmos DB unavailable"))
+    assert run_cycle(bridge, store, 1, 0, log=logged.append) is False  # Logged, not raised: the process stays up.
+    assert logged[-1]["outcome"] == "error" and logged[-1]["error_type"] == "StoreOutage" and logged[-1]["code"] == 503
+    store.create_moment = original
+    assert run_cycle(bridge, store, 2, 0, log=logged.append) is True
+    assert len(store.jobs(match[0]["run_id"])) == len(expected_moment_ids(match))

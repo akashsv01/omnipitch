@@ -16,7 +16,7 @@ Implemented locally (no cloud credentials needed):
 
 **Cloud status (2026-10-15).**
 
-- **Event Hubs:** verified live. The simulator publishes with Entra ID (no keys). The namespace costs Azure credit while it exists; `infra/eventhubs.ps1` recreates it in about 2 minutes.
+- **Event Hubs:** verified live. The simulator publishes with Entra ID (no keys). Delete the namespace when it isn't needed; `infra/eventhubs.ps1` recreates it in about 2 minutes.
 - **Fabric Eventstream → Eventhouse:** verified end to end on 2026-10-16. The run `smoke-20261016-a` was ingested, deduplicated, checked against Python metrics and shown in the browser (see [ROADMAP](docs/ROADMAP.md)).
 - **API:** has an explicit `azure` mode that reads Eventhouse and never falls back silently.
 - **Later phases:** Cosmos DB, Foundry/Agent Framework and Web PubSub are planned, not connected.
@@ -71,7 +71,7 @@ services/analytics/  Deterministic metrics and moment detection (Python adapter)
 services/agents/     Role prompts, validator, fallback narrator, eval fixtures
 services/bridge/     Bridge worker: Eventhouse -> moments and narration jobs (SQLite or Cosmos DB store)
 analytics/           Versioned illustrative threat grid and KQL (setup + queries)
-infra/               Azure CLI scripts: Event Hubs; Container Apps deployment (free tiers)
+infra/               Azure CLI scripts: Event Hubs; Container Apps deployment
 deploy/              Dockerfiles for the API and UI, and the UI's nginx config
 contracts/           Shared JSON Schemas (v1.1) and committed examples
 docs/                Architecture, roadmap, and archived history
