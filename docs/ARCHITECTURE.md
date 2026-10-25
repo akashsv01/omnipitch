@@ -486,7 +486,7 @@ Both pieces run on Azure Container Apps (consumption plan, scale to zero, 0.25 v
 
 ### Operations
 
-**Health probes.** Configure them in the portal (container app → Containers → Health probes), on the container's own port:
+**Health probes** (applied 2026-10-25): liveness and readiness over HTTP on the container's own port; the platform's TCP startup probe is kept so cold starts get time. Set them in the portal (container app → Containers → Health probes) or by patching the app's template:
 
 | App | Liveness | Readiness | Startup |
 | --- | --- | --- | --- |
