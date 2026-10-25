@@ -158,8 +158,8 @@ flowchart LR
 | Component | Code | State (2026-10-16) |
 | --- | --- | --- |
 | Publisher | `services/simulator/simulator/publish.py` | **Verified live.** Validates every event against the schema, sends with `DefaultAzureCredential` (or `AzureCliCredential` pinned by `EVENTHUB_TENANT_ID`), partition key `run_id:match_id`, optional duplicate re-delivery, report in `data/generated/publish-<run>.json`. The namespace `IncomingMessages` metric confirmed a 20-event probe. Runs of 5 and 400+25 events were also sent. |
-| Event Hubs | `infra/eventhubs.ps1` (idempotent Azure CLI script) | **Exists again (recreated 2026-10-16), verified feeding Fabric.** Azure for Students subscription (UMD tenant), `rg-omnipitch-dev` (East US). Namespace `omnipitch-ehns-qn36t` (Standard, 1 TU, about $0.73/day), hub `match-events` (2 partitions, 24 h retention), consumer group `fabric-eventstream`, hub-scoped `Azure Event Hubs Data Sender` for the developer, listen-only SAS rule `eventstream-listen` (key never stored in the repo). It was deleted on 2026-10-15 to save credit, and recreating the rule issues a new key. |
-| Eventstream | Portal (no code) | **Verified live (2026-10-16).** UF tenant, Fabric trial capacity, workspace `OmniPitch`. Eventstream `omnipitch-stream` (schema-aware preview off): source `azure-event-hub` via connection `omnipitch-eh-listen` (Shared Access Key, Basic feature level, consumer group `fabric-eventstream`, JSON) → destination `omnipitch-eventhouse`, direct ingestion, existing table, existing mapping `OmniPitchEvents_json`. |
+| Event Hubs | `infra/eventhubs.ps1` (idempotent Azure CLI script) | **Exists again (recreated 2026-10-16), verified feeding Fabric.** In the Event Hubs owner's subscription (East US): a Standard namespace (1 TU), hub `match-events` (2 partitions, 24 h retention), consumer group `fabric-eventstream`, hub-scoped `Azure Event Hubs Data Sender` for the developer, listen-only SAS rule `eventstream-listen` (key never stored in the repo). It was deleted once and recreated; recreating the rule issues a new key. |
+| Eventstream | Portal (no code) | **Verified live (2026-10-16).** the Fabric owner's tenant, Fabric trial capacity, workspace `OmniPitch`. Eventstream `omnipitch-stream` (schema-aware preview off): source `azure-event-hub` via connection `omnipitch-eh-listen` (Shared Access Key, Basic feature level, consumer group `fabric-eventstream`, JSON) → destination `omnipitch-eventhouse`, direct ingestion, existing table, existing mapping `OmniPitchEvents_json`. |
 | Eventhouse / KQL | `analytics/kql/*.kql`, `services/api/app/eventhouse.py` | **Verified live (2026-10-16).** Eventhouse `omnipitch`, KQL database `omnipitch`. `setup.kql` was applied (table, JSON mapping, ingestion-time policy on). Queries are parameterized (`declare query_parameters`), never string-built from user input. The server timeout must be a `timedelta` for azure-kusto-data 6.x. |
 | API | `services/api/app/main.py`, `config.py` | **Verified live (2026-10-16).** `/ready` probes Eventhouse in azure mode. `POST /api/v1/replay/eventhouse` loads a run and keeps its cloud `run_id`. `GET /api/v1/eventhouse/runs[/{id}]` returns raw vs unique rows and KQL-vs-Python parity (the run detail takes about 6 s against the trial capacity). Runs locally; not deployed. |
 | Frontend | `EventhousePanel.tsx`, `SourceBadge` in `App.tsx`, `ControlDock.tsx` | **Verified live (2026-10-16).** The top bar reads `Local · simulator`, `Azure · not loaded` or `Azure · Eventhouse`. The dock shows `Eventhouse run <id>` for cloud runs. An azure-mode banner appears when the replay is not Eventhouse data. Data quality tab: run picker plus parity table. Eventhouse requests use a 45 s timeout; other requests use 8 s. |
@@ -203,7 +203,7 @@ There are no secrets. Connection strings are rejected by config validation.
 | Who | Needs |
 | --- | --- |
 | Publisher identity | `Azure Event Hubs Data Sender` on the hub or namespace |
-| Eventstream | Portal (no code) | **Verified live (2026-10-16).** UF tenant, Fabric trial capacity, workspace `OmniPitch`. Eventstream `omnipitch-stream` (schema-aware preview off): source `azure-event-hub` via connection `omnipitch-eh-listen` (Shared Access Key, Basic feature level, consumer group `fabric-eventstream`, JSON) → destination `omnipitch-eventhouse`, direct ingestion, existing table, existing mapping `OmniPitchEvents_json`. |
+| Eventstream | Portal (no code) | **Verified live (2026-10-16).** the Fabric owner's tenant, Fabric trial capacity, workspace `OmniPitch`. Eventstream `omnipitch-stream` (schema-aware preview off): source `azure-event-hub` via connection `omnipitch-eh-listen` (Shared Access Key, Basic feature level, consumer group `fabric-eventstream`, JSON) → destination `omnipitch-eventhouse`, direct ingestion, existing table, existing mapping `OmniPitchEvents_json`. |
 | API identity | at least Viewer on the Fabric workspace or the KQL database |
 | Whoever runs `setup.kql` | database Admin (workspace Contributor or higher) |
 
@@ -240,7 +240,7 @@ Start the API with `OMNIPITCH_BACKEND_MODE=azure` first. The script runs these s
 
 The report is written to `data/generated/cloud-smoke-<run>.json`. Browser display is the one manual check: Data quality → load the run, then the top bar reads `Azure · Eventhouse` and the parity table matches. Use `--skip-publish` when another identity published the run.
 
-Cost note: the Standard namespace draws about $0.73/day of Azure credit while it exists. Create it with `infra/eventhubs.ps1` only when the Eventstream is about to be connected, and remove it with `az group delete -n rg-omnipitch-dev --yes`. A paid Fabric F2 would cost $0.36/h while running.
+Create the namespace with `infra/eventhubs.ps1` only when the Eventstream is about to be connected, and remove it with `az group delete -n <resource-group> --yes` when it is no longer needed.
 
 ## Bridge worker (Phase 3 data half)
 
@@ -275,13 +275,13 @@ Prefix-stable detection plus create-if-absent makes duplicates, overlapping look
 
 | Cosmos DB (verified 2026-10-16) | Value |
 | --- | --- |
-| Subscription / RG | UF Azure for Students / `rg-omnipitch-uf` (West US; the policy blocks East US) |
-| Account | `omnipitch-cosmos-d5e1ec`, free tier, single region, Session consistency, local periodic backup |
+| Subscription / RG | the Fabric owner's Azure subscription / the resource group (West US; the policy blocks East US) |
+| Account | single region, Session consistency, local periodic backup, shared database throughput |
 | Database | `omnipitch`, shared 1000 RU/s (the free-tier allowance) |
 | Containers | `moments`, `jobs` and `insights` (`/run_id`), `cursors` (`/cursor_id`). `insights` was added 2026-10-16 for the narration worker (`id = insight_id = moment_id`, create-only). |
 | Access | Entra ID: built-in Data Contributor at `/dbs/omnipitch`, plus the custom `OmniPitch Metadata Reader` (`readMetadata`) at `/`. Both are needed: cross-partition queries read account metadata. |
 | Config | `COSMOS_ENDPOINT`, `COSMOS_DATABASE` in `services/api/.env`. `COSMOS_KEY` comes only from a teammate's environment, never the repo. |
-| Cross-tenant access | UF blocks guest accounts, so the UMD narration worker uses the account's **secondary** key, shared privately and kept only in that teammate's local `.env` as `COSMOS_KEY`. Regenerating the secondary key revokes it without affecting Entra access. A key grants read and write on the whole account (today only `omnipitch`). |
+| Cross-tenant access | Guest accounts aren't allowed in the Cosmos owner's tenant, so the narration worker in the other tenant uses the account's **secondary** key, shared privately and kept only in that teammate's local `.env` as `COSMOS_KEY`. Regenerating the secondary key revokes it without affecting Entra access. A key grants read and write on the whole account (today only `omnipitch`). |
 
 Live Cosmos tests are opt-in: set `OMNIPITCH_TEST_COSMOS_ENDPOINT` to the account endpoint and run `pytest services/api/tests/test_bridge.py`.
 
@@ -333,9 +333,9 @@ Live Cosmos tests are opt-in: set `OMNIPITCH_TEST_COSMOS_ENDPOINT` to the accoun
 
 **Live model (2026-10-16).**
 
-- **Deployment:** `gpt-41-mini` (`gpt-4.1-mini`, GlobalStandard, 10K TPM cap) on `omnipitch-aoai-gvoh7` (Azure for Students, East US, `rg-omnipitch-dev`).
+- **Deployment:** `gpt-41-mini` (`gpt-4.1-mini`, GlobalStandard, 10K TPM cap) on the Azure OpenAI resource (the Azure subscription, East US, the resource group).
 - **Auth:** local auth disabled; access needs Entra ID with "Cognitive Services OpenAI User".
-- **Cost:** per token only (no fixed fee). `az group delete -n rg-omnipitch-dev` removes it together with Event Hubs.
+- **Cost:** per token only (no fixed fee). `az group delete -n <resource-group> removes it together with Event Hubs.
 - **Prompts:** `prompts-v2` gives the model a clock label (not milliseconds), keeps IDs out of prose and forbids computed numbers. The validator accepts only this moment's evidence IDs in prose.
 - **Gate:** `services/api/tests/phase3_gate.py --run-id <run>` runs the joint Phase 3 gate:
   - live AI on a few jobs;
@@ -414,8 +414,8 @@ The report also shows:
 
 | Setting | Value |
 | --- | --- |
-| Resource | `omnipitch-wps-670966` in `rg-omnipitch-uf` (UF Azure for Students), West US, Free_F1, 1 unit: 20 concurrent connections, 20,000 messages/day, no SLA |
-| Host | `omnipitch-wps-670966.webpubsub.azure.com`; hub `omnipitch`; one group per run (`run-<run_id>`) |
+| Resource | the Web PubSub resource in the resource group (the Fabric owner's Azure subscription), West US, Free_F1, 1 unit: 20 concurrent connections, 20,000 messages/day, no SLA |
+| Host | the Web PubSub host; hub `omnipitch`; one group per run (`run-<run_id>`) |
 | Auth | Local auth (access keys) is disabled. The owner has *Web PubSub Service Owner* on this resource only, and server-side code uses Entra ID tokens for `https://webpubsub.azure.com`. |
 | Verified | `generateToken` for a group returned 200 with a client token; send-to-group returned 202 |
 
@@ -453,54 +453,55 @@ The report also shows:
   - `push-period-reconciled`: from an **offline** SQLite reconciliation of the full seed-7 match (run `example-full-seed7`); no full match has gone through Eventhouse yet.
 - Needs agreement from the frontend owner before any publisher or negotiation endpoint is built.
 
-## Deployment for judges (deployed 2026-10-21)
+## Deployment (Azure Container Apps)
 
-**Created 2026-10-21 (approved):**
-- Providers `Microsoft.App`, `Microsoft.OperationalInsights` and `Microsoft.ManagedIdentity` registered.
-- Environment `omnipitch-env`, West US, Consumption profile only, logs off (no Log Analytics workspace). Default domain `politetree-022e7a46.westus.azurecontainerapps.io`, so the UI will be at `https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io`.
-- User-assigned identity `omnipitch-api-id`: client id `d2eb9a47-94f7-450a-ac10-cfaa61a4f6b9`, principal `3d3dde66-7db6-4c1d-9311-28b9618fb844`.
-- Identity access (approved):
-  - Cosmos built-in Data Reader on `/dbs/omnipitch`, plus `OmniPitch Metadata Reader` at `/`;
-  - Web PubSub Service Owner on `omnipitch-wps-670966` only;
-  - Fabric Viewer on workspace `OmniPitch`, added by the owner in the portal (the UF tenant allowed it).
-- Images (public on GHCR): `ghcr.io/tanmayee043/omnipitch-api:05af885` and `ghcr.io/tanmayee043/omnipitch-web:05af885-r2`.
-- Apps: `omnipitch-api` (internal ingress, port 8000, 0–1 replicas, 0.25 vCPU) and `omnipitch-web` (external, port 8080, 0–1 replicas), with `API_UPSTREAM=https://omnipitch-api.politetree-022e7a46.westus.azurecontainerapps.io`.
-- **Public URL:** https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io
-- **Default run:** `OMNIPITCH_DEFAULT_RUN=<eventhouse run>` (API, azure mode) loads that run once on a fresh start, never over a restored or chosen run. The outcome shows as `default_run` in `/api/v1/backend`. The replay is one shared state per API instance, so keep max replicas at 1.
-
-**Deviations found while deploying:**
-- `az containerapp env create` produced an **express** environment. In it:
-  - an internal app's address has no `.internal.` segment;
-  - `allowInsecure` is not supported;
-  - short app names (`http://omnipitch-api`) **do not resolve**. The first UI revision crash-looped with nginx `host not found in upstream`.
-  - The fix (`05af885-r2`): nginx resolves `API_UPSTREAM` per request through the container's DNS server (`deploy/nginx-resolver.sh`) and proxies over https with SNI. It now starts even when the API is unreachable (502 instead of a crash).
-- **The API is reachable directly from the internet** (`/health` returned 200) despite internal ingress; the express environment does not enforce it. The exposure is about the same as through the public UI proxy, plus the API's `/docs`.
-- Log streaming (`az containerapp logs show`) fails with logs off (CLI `KeyError: 'eventStreamEndpoint'`). Replica and revision status were used for diagnosis instead.
-
-**Live verification from the internet (2026-10-21):**
-- UI 200 (0.9 s); `/health` 200; `/ready` → `ready`, azure mode, Eventhouse reachable **as the managed identity** (2,506 rows); Eventhouse run list returned 4 runs.
-- Negotiate 200 (group `run-gate-20261020-d`, `wss://`).
-- In a browser: `Azure · Eventhouse`, run `gate-20261020-d` loaded, parity match, Live updates `Live`, all requests to the site's own origin.
-- After seeking to full time: 2-1, overlay `ok` 55 narrated / 5 AI / 0 rejected (Cosmos read as the managed identity); recap `first_half` final through 618 with reconciliation `reconciled`.
-- A fresh page load restored the run by itself (2-1 at full time, `Azure · Eventhouse`) with 0 console errors.
-
-Constraint: **no spend beyond free tiers** (UF Azure for Students, West US). Azure Static Web Apps is not offered in any region the subscription policy allows, so both pieces run on Azure Container Apps (consumption plan, scale to zero, 0.25 vCPU / 0.5 GiB, max 1 replica).
+Both pieces run on Azure Container Apps (consumption plan, scale to zero, 0.25 vCPU / 0.5 GiB, max 1 replica):
 
 | Piece | Image | Notes |
 | --- | --- | --- |
-| API `omnipitch-api` | `deploy/api.Dockerfile` (python:3.11-slim, non-root uid 10001, 262 MB) | **Internal ingress only.** User-assigned managed identity (`AZURE_CLIENT_ID`), azure mode, `OMNIPITCH_INSIGHTS=cosmos`, `WEBPUBSUB_ENDPOINT`. No `.env` or keys in the image. |
-| UI `omnipitch-web` | `deploy/web.Dockerfile` (Vite build → nginx, 74 MB) | **External ingress.** nginx serves the build and forwards `/api/*`, `/health`, `/ready` to `http://omnipitch-api`. The browser therefore uses one origin and the API's localhost-only CORS rule needs no change. Built with `PUBLIC_URL` = its own HTTPS URL. |
+| API | `deploy/api.Dockerfile` (python:3.11-slim, non-root) | User-assigned managed identity (`AZURE_CLIENT_ID`); azure mode, `OMNIPITCH_INSIGHTS=cosmos`, `WEBPUBSUB_ENDPOINT`, optional `OMNIPITCH_DEFAULT_RUN`. No `.env` or keys in the image. |
+| UI | `deploy/web.Dockerfile` (Vite build → nginx) | Serves the build and forwards `/api/*`, `/health` and `/ready` to the API (`API_UPSTREAM`), so the browser uses one origin and the API's CORS rule needs no change. Built with `PUBLIC_URL` set to its own HTTPS address. |
 
-- **Registry:** public images on GitHub Container Registry, no Azure Container Registry.
-- **Logs:** the environment is created with logs off, so there is no Log Analytics workspace.
-- **Bridge:** not deployed; it runs locally when a demo run is published.
-- **Order** (`infra/containerapps.ps1 -Step …`): register providers → environment → read its default domain → build and push both images (UI with `PUBLIC_URL=https://omnipitch-web.<domain>`) → identity → roles → API → UI.
-- **Identity access:**
-  - Cosmos: built-in Data **Reader** on `/dbs/omnipitch`, plus the metadata-only role at `/`. The API only reads Cosmos.
-  - Web PubSub: *Service Owner* on the one resource (needed to issue client tokens).
-  - Fabric: **Viewer** on workspace `OmniPitch`. It's added in the Fabric portal and depends on the UF tenant allowing service identities.
-- **Known limitation:** replay state lives in SQLite in `/tmp`, so a scale-to-zero restart resets the replay to its default. A judge reloads a run from Data quality → Fabric Eventhouse. The insights, moments and recaps come from Cosmos and Eventhouse, so nothing is lost.
-- **Local container check (2026-10-21, local mode):** UI 200; `/health` and `/api/v1/replay` proxied (200); SPA deep link 200; negotiate `503 push_not_configured` when unset; in a browser, all API calls went to the UI's own origin; 0 console errors.
+- **Images:** public container images; no secrets are baked in.
+- **Bridge:** not deployed. It runs on a developer machine when a demo run is published.
+- **Steps:** `infra/containerapps.ps1 -Step …` (every name is a required parameter): environment → read its default domain → build and push both images (UI with `PUBLIC_URL`) → identity → roles → API → UI.
+- **Identity access (least privilege):**
+  - Cosmos: built-in Data **Reader** on the database plus a metadata-only role at the account root. The API never writes to Cosmos.
+  - Web PubSub: *Service Owner* on that one resource (needed to issue client tokens).
+  - Fabric: **Viewer** on the workspace, added in the Fabric portal.
+- **Default run:** `OMNIPITCH_DEFAULT_RUN=<run_id>` loads that Eventhouse run once on a fresh start, never over a restored or chosen run. The outcome shows as `default_run` in `/api/v1/backend`. The replay is one shared state per API instance, so keep max replicas at 1.
+- **Known limitation:** replay state lives in SQLite in `/tmp`, so a scale-to-zero restart resets it. The default run covers fresh starts; insights, moments and recaps come from Cosmos and Eventhouse.
+
+**Environment behaviour to know about** (the environment was created as an *express* environment):
+- **Name resolution:** short app names and `.internal.` names don't resolve, so `API_UPSTREAM` must be `https://<api-app>.<environment default domain>`. nginx resolves it per request through the container's DNS server (`deploy/nginx-resolver.sh`) and proxies over https with SNI, so it starts even when the API is unreachable (502 instead of a crash).
+- **Ingress:** `allowInsecure` is not supported, and internal ingress is not enforced: the API answers from the internet. Everything it serves except `/docs` is already reachable through the UI.
+- **Logs:** with the logs destination off, `az containerapp logs show` fails. Use replica and revision status (`az containerapp replica list`, `az containerapp revision list`) instead.
+- **MFA:** Azure management changes require an MFA sign-in. If the CLI is refused with `RequestDisallowedByAzure`, make the change in the Azure portal.
+
+**Verified from the internet (2026-10-21, redeployed 2026-10-25):**
+- UI and `/health` return 200. `/ready` → `ready`, azure mode, Eventhouse reachable as the managed identity.
+- Negotiate returns a `wss://` client URL, and Live updates show `Live`.
+- The default run loads on a fresh start (`default_run.outcome = loaded`). At full time the UI shows the narrated insights from Cosmos, and recaps read as reconciled.
+- 0 console errors on a fresh page load.
+
+### Operations
+
+**Health probes** (applied 2026-10-25): liveness and readiness over HTTP on the container's own port; the platform's TCP startup probe is kept so cold starts get time. Set them in the portal (container app → Containers → Health probes) or by patching the app's template:
+
+| App | Liveness | Readiness | Startup |
+| --- | --- | --- | --- |
+| API (port 8000) | `GET /health`, period 30 s | `GET /health`, period 10 s | `GET /health`, period 5 s, failure threshold 12 |
+| UI (port 8080) | `GET /`, period 30 s | `GET /`, period 10 s | — |
+
+- Don't probe `/ready`: it queries Eventhouse, so an Eventhouse hiccup would take the API out of service. Use `/ready` for manual checks.
+- Don't probe the UI's `/health`: it is forwarded to the API, so an API restart would restart the UI too.
+
+**Budget alert.** Portal → *Cost Management* → *Budgets* → *Add*: subscription scope, a monthly amount, email alerts at 50 %, 80 % and 100 %. Some subscription offers can't create budgets; if the option is missing, check spending on the subscription's billing page instead.
+
+**Stop everything.**
+- **Pause the site (reversible):** portal → each container app → *Stop*. CLI: `az containerapp revision deactivate -g <rg> -n <app> --revision <active revision>`. *Start* brings it back.
+- **Stop ingestion:** stop the local bridge (Ctrl-C) and pause the Eventstream in Fabric. Deleting the Event Hubs namespace stops it for good; recreating it issues new keys.
+- **Remove everything (irreversible):** `az group delete -n <rg> --yes` deletes the apps, the identity, Cosmos and Web PubSub. The Fabric workspace is separate and is removed in the Fabric portal.
 
 ## Later-phase cloud flow — not implemented
 
@@ -564,7 +565,7 @@ The [archived decision log](archive/DECISIONS.md) preserves original rationale a
 | D015 | Metric and rule versions (`metrics-v1`, rules `v1`, `illustrative-threat-v1`) are stored with every moment. Thresholds are tuned on the seed-7 fixture and documented as defaults. |
 | D016 | Until a model is connected, every insight is a validated deterministic template labelled `fallback`; prompts, validator and eval set are ready for Phase 3. |
 | D018 | Azure mode (2026-10-15) is explicit (`OMNIPITCH_BACKEND_MODE`), identity-only (Azure Identity; no connection strings in config) and fails loudly; local generate/upload are refused in azure mode. Python `metrics-v1` stays the calculator over Eventhouse rows, with KQL parity queries as an independent check. |
-| D019 | Phase 2 cloud resources live in the Azure for Students subscription, `rg-omnipitch-dev`, East US (allowed-region policy: centralus, westus2, mexicocentral, eastus2, eastus). UMD disabled Fabric trials, so Fabric runs in a teammate's UF tenant: Eventstream reads Event Hubs cross-tenant via a listen-only SAS key, and per-service tenant settings pin tokens. |
+| D019 | Phase 2 Event Hubs resources live in one developer's subscription (East US). That tenant doesn't allow Fabric trials, so Fabric runs in the other developer's tenant: Eventstream reads Event Hubs cross-tenant via a listen-only SAS key, and per-service tenant settings pin tokens. |
 | D017 | Frontend motion uses `motion` 12.23.12 and icons use `lucide-react` 0.544.0; both are needed for the requested motion-rich UI. |
 
 Runtimes verified on 2026-10-14: Node 24.11.0 and Python 3.13.7. Frontend pins: React/React DOM 19.1.0, TypeScript 5.8.3, Vite 8.3.3, React plugin 6.1.2, React types 19.1.2, AJV 8.20.0, ajv-formats 3.0.1, motion 12.23.12 and lucide-react 0.544.0. Optional Azure pins (`services/api/requirements-azure.txt`): azure-identity 1.26.0, azure-eventhub 5.15.1, azure-kusto-data 6.0.4. Backend pins are unchanged: FastAPI 0.115.12, Pydantic 2.11.4, Uvicorn 0.34.2, with pytest 8.3.5, httpx 0.28.1, jsonschema 4.23.0 and rfc3339-validator 0.1.4.
