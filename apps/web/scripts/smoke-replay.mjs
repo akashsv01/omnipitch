@@ -103,7 +103,9 @@ try {
   await send('Page.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: web });
-  await until(async () => (await text()).includes('Live pitch') && (await text()).includes('0 / '), 'initial paused run');
+  // Raw event counts live in the collapsed diagnostics; the replay position is checked through the API.
+  const revealed = async n => (await state()).state.latest_event_sequence === n;
+  await until(async () => (await text()).includes('Live pitch') && (await text()).includes('Key moments'), 'initial paused run');
   const initial = await state();
 
   // Upload an out-of-order JSONL file through the real file picker.
@@ -116,24 +118,24 @@ try {
   const document = await send('DOM.getDocument');
   const { nodeId } = await send('DOM.querySelector', { nodeId: document.root.nodeId, selector: 'input[type=file]' });
   await send('DOM.setFileInputFiles', { nodeId, files: [resolve(fixturePath)] });
-  await until(async () => (await text()).includes('0 / 3 events'), 'JSONL file loaded');
+  await until(async () => (await state()).total_events === 3 && await revealed(0), 'JSONL file loaded');
   const loaded = await state();
   assert.notEqual(loaded.state.run_id, initial.state.run_id);
   assert.equal(loaded.replay.source, 'upload');
   await post('/api/v1/replay/control', { run_id: loaded.state.run_id, action: 'speed', speed: 1 });
-  await until(async () => (await text()).includes('Uploaded JSONL') && (await state()).replay.speed === 1, 'speed applied');
+  await until(async () => (await text()).includes('Uploaded file') && (await state()).replay.speed === 1, 'speed applied');
   await click('[aria-label="Play replay"]');
-  await until(async () => (await text()).includes('1 / 3 events'), 'first event arrival');
+  await until(async () => await revealed(1) && (await text()).includes('Replaying'), 'first event arrival');
   await click('[aria-label="Pause replay"]');
   await until(async () => (await state()).state.replay_status === 'paused', 'pause confirmation');
   await sleep(2200);
   assert.equal((await state()).state.latest_event_sequence, 1);
   await click('[aria-label="Resume replay"]');
-  await until(async () => (await text()).includes('3 / 3 events'), 'playback completion');
+  await until(async () => await revealed(3) && (await text()).includes('Full-time'), 'playback completion');
   assert.equal((await state()).state.replay_status, 'finished');
   const beforeRefresh = await state();
   await send('Page.reload');
-  await until(async () => (await text()).includes('3 / 3 events'), 'refresh restores replay');
+  await until(async () => await revealed(3) && (await text()).includes('Full-time'), 'refresh restores replay');
   assert.equal((await state()).state.run_id, beforeRefresh.state.run_id);
 
   // Generating a seeded match yields moments, analysis and a working evidence drawer.

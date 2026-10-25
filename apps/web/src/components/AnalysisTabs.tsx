@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { ArrowDown, CheckCircle2, Info, ShieldCheck } from 'lucide-react';
 import type { PushStatus } from '../lib/push';
@@ -6,6 +6,7 @@ import type { RecapScope, Analysis, Event, IngestResult, PpdaWindow, ReplaySnaps
 import type { Audience } from '../lib/prefs';
 import { fetchLedger, ingestEvents, type LedgerView } from '../lib/api';
 import { fmt, playerIndex, surname, teamTone } from '../lib/format';
+import { INDICATOR } from '../lib/motion';
 import { EventhousePanel } from './EventhousePanel';
 import { Pitch } from './Pitch';
 import { RecapPanel } from './RecapPanel';
@@ -18,19 +19,17 @@ const TABS: { id: Tab; label: string }[] = [
 
 export type TabRequest = { tab: Tab; nonce: number; scope?: RecapScope };
 
-export function AnalysisTabs({ replay, audience, favoritePlayer, onSelectEvent, busy = false, onLoadEventhouse, onJumpMoment, tabRequest, push }: {
+export const AnalysisTabs = memo(function AnalysisTabs({ replay, audience, favoritePlayer, onSelectEvent, busy = false, onLoadEventhouse, onJumpMoment, tabRequest, push }: {
   replay: ReplaySnapshot; audience: Audience; favoritePlayer: string | null; onSelectEvent: (event: Event) => void;
   busy?: boolean; onLoadEventhouse?: (sourceRunId: string) => void;
   onJumpMoment: (momentId: string, replayMs: number) => void; tabRequest?: TabRequest; push?: PushStatus;
 }) {
   const [tab, setTab] = useState<Tab>('teams');
   useEffect(() => { if (tabRequest) setTab(tabRequest.tab); }, [tabRequest]);
-  return <section className="panel analysis" aria-labelledby="analysis-title">
-    <div className="panel-head">
-      <div>
-        <h2 className="panel-title" id="analysis-title">Match analysis</h2>
-        <p className="panel-sub">Deterministic metrics over {replay.analysis.through_sequence} revealed events · {replay.analysis.metric_version}</p>
-      </div>
+  return <section className="analysis" aria-labelledby="analysis-title">
+    <div className="section-head">
+      <h2 id="analysis-title">Match analysis</h2>
+      <p>Deterministic metrics over {replay.analysis.through_sequence} revealed events · {replay.analysis.metric_version}</p>
     </div>
     <div className="tabs" role="tablist" aria-label="Analysis views">
       {TABS.map(item => <button key={item.id} id={`tab-${item.id}`} role="tab" type="button" className="tab" aria-selected={tab === item.id}
@@ -43,32 +42,31 @@ export function AnalysisTabs({ replay, audience, favoritePlayer, onSelectEvent, 
             document.getElementById(`tab-${next.id}`)?.focus();
           }
         }} tabIndex={tab === item.id ? 0 : -1}>
-        {item.label}{tab === item.id && <motion.span layoutId="tab-underline" className="underline" />}
+        {item.label}{tab === item.id && <motion.span layoutId="tab-underline" className="underline" transition={INDICATOR} />}
       </button>)}
     </div>
-    <motion.div key={tab} className="tab-body" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}
-      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .22 }}>
+    <div key={tab} className="tab-body tab-fade" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
       {tab === 'recap' && <RecapPanel replay={replay} audience={audience} onJump={onJumpMoment} request={tabRequest} />}
       {tab === 'teams' && <TeamCompare analysis={replay.analysis} audience={audience} />}
       {tab === 'pressing' && <Pressing analysis={replay.analysis} audience={audience} />}
       {tab === 'players' && <Players replay={replay} favoritePlayer={favoritePlayer} audience={audience} />}
       {tab === 'shots' && <Shots replay={replay} onSelectEvent={onSelectEvent} />}
       {tab === 'quality' && <Quality replay={replay} busy={busy} onLoadEventhouse={onLoadEventhouse} push={push} />}
-    </motion.div>
+    </div>
   </section>;
-}
+});
 
 function TeamCompare({ analysis, audience }: { analysis: Analysis; audience: Audience }) {
   const home = analysis.teams.harbor;
   const away = analysis.teams.vale;
   if (!home || !away) return null;
-  const rows: { label: string; hint?: string; a: number | null; b: number | null; digits?: number; fan?: boolean; lowerBetter?: boolean }[] = [
+  const rows: { label: string; hint?: string; unit?: string; a: number | null; b: number | null; digits?: number; fan?: boolean; lowerBetter?: boolean }[] = [
     { label: 'Goals', a: home.goals, b: away.goals, fan: true },
-    { label: 'Shots', hint: 'on target', a: home.shots, b: away.shots, fan: true },
+    { label: 'Shots', hint: 'all attempts', a: home.shots, b: away.shots, fan: true },
     { label: 'On target', a: home.shots_on_target, b: away.shots_on_target, fan: true },
-    { label: 'Pass share', hint: '% of pass attempts', a: home.pass_share_pct, b: away.pass_share_pct, fan: true },
-    { label: 'Pass completion', hint: '%', a: home.completion_pct, b: away.completion_pct },
-    { label: 'Forward progress', hint: 'metres, completed passes', a: home.progression_m, b: away.progression_m, digits: 0, fan: true },
+    { label: 'Pass share', hint: 'share of pass attempts, not possession time', unit: '%', a: home.pass_share_pct, b: away.pass_share_pct, fan: true },
+    { label: 'Pass completion', unit: '%', a: home.completion_pct, b: away.completion_pct },
+    { label: 'Forward progress', hint: 'completed passes', unit: 'm', a: home.progression_m, b: away.progression_m, digits: 0, fan: true },
     { label: 'Final-third entries', a: home.final_third_entries, b: away.final_third_entries },
     { label: 'Box entries', hint: 'completed passes', a: home.box_entries, b: away.box_entries },
     { label: 'Illustrative threat', hint: 'uncalibrated grid sum', a: home.threat_gained, b: away.threat_gained, digits: 2 },
@@ -76,17 +74,21 @@ function TeamCompare({ analysis, audience }: { analysis: Analysis; audience: Aud
     { label: 'Defensive actions', a: home.defensive_actions, b: away.defensive_actions },
     { label: 'Fouls', a: home.fouls, b: away.fouls, lowerBetter: true },
   ];
-  const shown = audience === 'fan' ? rows.filter(row => row.fan).map(row => ({ ...row, hint: row.label === 'Shots' ? undefined : row.hint })) : rows;
+  const shown = audience === 'fan' ? rows.filter(row => row.fan) : rows;
   return <div className="compare">
     <div className="compare-head"><span style={{ color: 'var(--harbor)' }}>Harbor Comets</span><span /><span style={{ color: 'var(--vale)' }}>Vale Owls</span></div>
     {shown.map(row => {
-      const total = Math.max(1e-9, (row.a ?? 0) + (row.b ?? 0));
+      // One scale per metric: each bar is that team's share of the two teams' total (empty when both are zero).
+      const total = (row.a ?? 0) + (row.b ?? 0);
+      const share = (value: number | null) => total > 0 ? (value ?? 0) / total : 0;
+      const missing = row.a === null && row.b === null;
+      const lead = (a: number | null, b: number | null) => (a ?? 0) > (b ?? 0) !== !!row.lowerBetter;
       return <div className="compare-row" key={row.label}>
-        <span className="compare-value" style={{ color: (row.a ?? 0) > (row.b ?? 0) !== !!row.lowerBetter ? 'var(--chalk)' : 'var(--chalk-dim)' }}>{fmt(row.a, row.digits ?? 1)}</span>
-        <div className="bar home"><motion.i initial={false} animate={{ width: `${((row.a ?? 0) / total) * 100}%` }} style={{ background: 'var(--harbor)' }} /></div>
-        <span className="compare-label">{row.label}{audience === 'analyst' && row.hint && <small>{row.hint}</small>}</span>
-        <div className="bar"><motion.i initial={false} animate={{ width: `${((row.b ?? 0) / total) * 100}%` }} style={{ background: 'var(--vale)' }} /></div>
-        <span className="compare-value right" style={{ color: (row.b ?? 0) > (row.a ?? 0) !== !!row.lowerBetter ? 'var(--chalk)' : 'var(--chalk-dim)' }}>{fmt(row.b, row.digits ?? 1)}</span>
+        <span className="compare-value" style={{ color: lead(row.a, row.b) ? 'var(--text)' : 'var(--text-2)' }}>{fmt(row.a, row.digits ?? 1)}{row.a !== null && row.unit && <small>{row.unit}</small>}</span>
+        <div className="bar" aria-hidden="true"><i style={{ background: 'var(--harbor)', transform: `scaleX(${share(row.a)})` }} /></div>
+        <span className="compare-label">{row.label}{missing ? <small>no data yet</small> : total === 0 ? <small>none yet</small> : row.hint && <small>{row.hint}</small>}</span>
+        <div className="bar away" aria-hidden="true"><i style={{ background: 'var(--vale)', transform: `scaleX(${share(row.b)})` }} /></div>
+        <span className="compare-value right" style={{ color: lead(row.b, row.a) ? 'var(--text)' : 'var(--text-2)' }}>{fmt(row.b, row.digits ?? 1)}{row.b !== null && row.unit && <small>{row.unit}</small>}</span>
       </div>;
     })}
     {audience === 'analyst' && <p className="hint" style={{ marginTop: 10 }}>Progression and threat use each team's own attacking frame. Pass share counts attempts; it is not time in possession.</p>}
@@ -110,6 +112,7 @@ function PpdaCard({ team, window, audience }: { team: string; window: PpdaWindow
 }
 
 function Pressing({ analysis, audience }: { analysis: Analysis; audience: Audience }) {
+  const [tip, setTip] = useState<string>();
   const series = analysis.ppda_series.filter(w => w.closed);
   const width = 760, height = 220, pad = 34;
   const slots = 20;
@@ -136,18 +139,21 @@ function Pressing({ analysis, audience }: { analysis: Analysis; audience: Audien
           return <g key={team}>
             {[1, 2].map(period => {
               const line = valid.filter(w => w.period === period);
-              return line.length > 1 ? <motion.polyline key={period} fill="none" stroke={teamTone(team)} strokeWidth="2"
-                points={line.map(w => `${x(w)},${y(w.value!)}`).join(' ')} initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: .8 }} /> : null;
+              return line.length > 1 ? <polyline key={period} fill="none" stroke={teamTone(team)} strokeWidth="2"
+                points={line.map(w => `${x(w)},${y(w.value!)}`).join(' ')} /> : null;
             })}
-            {points.map(w => <circle key={`${w.period}-${w.start_ms}`} cx={x(w)} cy={y(w.value!)} r="4.5"
-              fill={w.status === 'ok' ? teamTone(team) : 'var(--night-2)'} stroke={teamTone(team)} strokeWidth="1.6">
-              <title>{`${team} P${w.period} ${w.start_ms / 60000}-${w.end_ms / 60000}': ${w.value} (${w.opponent_passes}/${w.defensive_actions})${w.status !== 'ok' ? ' – below sample gate' : ''}`}</title>
-            </circle>)}
+            {points.map(w => {
+              const text = `${team === 'harbor' ? 'Harbor' : 'Vale'}, ${w.period === 1 ? 'first' : 'second'} half minutes ${w.start_ms / 60000}–${w.end_ms / 60000}: PPDA ${w.value} (${w.opponent_passes} passes ÷ ${w.defensive_actions} actions)${w.status !== 'ok' ? ', below the sample gate, so no claim is made' : ''}`;
+              return <circle key={`${w.period}-${w.start_ms}`} className="chart-point" cx={x(w)} cy={y(w.value!)} r="5" tabIndex={0} role="img" aria-label={text}
+                fill={w.status === 'ok' ? teamTone(team) : 'var(--inset)'} stroke={teamTone(team)} strokeWidth="1.6"
+                onFocus={() => setTip(text)} onMouseEnter={() => setTip(text)} onClick={() => setTip(text)}><title>{text}</title></circle>;
+            })}
           </g>;
         })}
         <text x={pad} y={height - 10} fontSize="11" fill="var(--chalk-faint)">Kick-off</text>
         <text x={width - pad} y={height - 10} textAnchor="end" fontSize="11" fill="var(--chalk-faint)">Full-time</text>
       </svg>
+      <p className="chart-tip" aria-live="polite">{tip ?? 'Select or focus a point for its window, value and sample.'}</p>
       <div className="legend hint">
         <span><i style={{ background: 'var(--harbor)' }} />Harbor</span><span><i style={{ background: 'var(--vale)' }} />Vale</span>
         <span><i style={{ border: '1.5px solid var(--chalk-dim)' }} />Below sample gate (no claim made)</span>
@@ -186,12 +192,12 @@ function Players({ replay, favoritePlayer, audience }: { replay: ReplaySnapshot;
         {rows.length === 0 && <tr><td colSpan={7} className="hint">No player actions yet.</td></tr>}
         {rows.map(row => {
           const person = people.get(row.player_id);
-          return <motion.tr layout key={row.player_id} data-favorite={row.player_id === favoritePlayer} transition={{ type: 'spring', stiffness: 500, damping: 40 }}>
+          return <tr key={row.player_id} data-favorite={row.player_id === favoritePlayer}>
             <td><span className="player-cell"><span className="shirt" style={{ background: teamTone(row.team_id) }}>{person?.shirt}</span>
               <span>{person?.name ?? row.player_id} <span className="hint">{person?.position}</span></span></span></td>
             {visible.map(column => <td key={column.key} className="num">{fmt(row[column.key], column.key === 'threat_gained' ? 3 : column.key === 'progression_m' ? 0 : 1)}</td>)}
             {audience === 'analyst' && <td className="num">{row.passes ? `${Math.round(100 * row.passes_completed / row.passes)}%` : '–'}</td>}
-          </motion.tr>;
+          </tr>;
         })}
       </tbody>
     </table></div>

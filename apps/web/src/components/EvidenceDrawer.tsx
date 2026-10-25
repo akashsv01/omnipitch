@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { Bot, X } from 'lucide-react';
+import { RotateCcw, X } from 'lucide-react';
 import type { Event, Moment, Player } from '../types/contracts';
+import type { Audience } from '../lib/prefs';
 import { METRIC_LABEL, RULE_LABEL, clockLabel, eventLabel, fmt, playerIndex, surname, teamTone } from '../lib/format';
-import { Pitch } from './Pitch';
+import { DUR, EASE_DRAWER, EASE_OUT } from '../lib/motion';
+import { Pitch, PitchLegend } from './Pitch';
 import { RULE_ICON } from './MomentFeed';
 
 const AUTHOR = {
@@ -11,17 +13,30 @@ const AUTHOR = {
   fallback: 'A deterministic template from the metrics above. No model was involved.',
   fixture: 'A hand-authored test fixture.',
 };
-const MODE_LABEL = { fallback: 'Deterministic template', ai: 'AI generated, validated', fixture: 'Hand-authored fixture' };
+const MODE_LABEL = { fallback: 'Template', ai: 'AI-written, checked', fixture: 'Hand-authored fixture' };
 
-export function EvidenceDrawer({ moment, events, roster, onClose, onSelectEvent, reduced }: {
-  moment: Moment; events: Event[]; roster: Player[]; onClose: () => void; onSelectEvent: (event: Event) => void; reduced: boolean;
+/** What each rule detects, stated as its definition (why the system flagged it), not as an opinion. */
+const WHY: Record<Moment['rule'], string> = {
+  goal: 'A validated goal changes the score, so it is always a key moment.',
+  chance: 'An on-target shot from 18 m or closer is the clearest sign of a scoring opportunity this data supports. There is no expected-goals model.',
+  transition: 'The rule looks for a fast attack straight after a ball win: at least 35 m of forward progress, or a shot, within 12 s.',
+  threat_gain: 'The rule flags the first pass in a possession that raises the illustrative threat-grid value by at least 0.1: a step towards a chance, not a chance itself.',
+  pressing_change: 'A clear drop in PPDA between valid five-minute windows means the defending team allowed far fewer passes per defensive action.',
+};
+
+export function EvidenceDrawer({ moment, events, roster, audience, onClose, onReplay, reduced }: {
+  moment: Moment; events: Event[]; roster: Player[]; audience: Audience; onClose: () => void; onReplay: (moment: Moment) => void; reduced: boolean;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
+  const [other, setOther] = useState(false);
+  const [step, setStep] = useState<string>();
   const people = playerIndex(roster);
   const evidence = events.filter(event => moment.evidence_ids.includes(event.event_id));
   const Icon = RULE_ICON[moment.rule];
   const facts = moment.facts as Record<string, any>;
+  const primary = audience === 'fan' ? moment.insight.casual_text : moment.insight.analyst_text;
+  const secondary = audience === 'fan' ? moment.insight.analyst_text : moment.insight.casual_text;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
@@ -29,7 +44,7 @@ export function EvidenceDrawer({ moment, events, roster, onClose, onSelectEvent,
       if (event.key === 'Escape') onClose();
       if (event.key !== 'Tab') return;
       // Modal: keep keyboard focus inside the drawer.
-      const items = [...(drawerRef.current?.querySelectorAll<HTMLElement>('button, [href], [tabindex]:not([tabindex="-1"])') ?? [])]
+      const items = [...(drawerRef.current?.querySelectorAll<HTMLElement>('button, [href], summary, [tabindex]:not([tabindex="-1"])') ?? [])]
         .filter(el => !el.hasAttribute('disabled'));
       if (!items.length) return;
       const first = items[0], last = items[items.length - 1];
@@ -40,69 +55,94 @@ export function EvidenceDrawer({ moment, events, roster, onClose, onSelectEvent,
     return () => { document.removeEventListener('keydown', onKey); previous?.focus(); };
   }, [onClose]);
 
+  const slide = reduced ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
+    : { initial: { transform: 'translateX(100%)' }, animate: { transform: 'translateX(0%)' }, exit: { transform: 'translateX(100%)' } };
   return <>
-    <motion.div className="scrim" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
-    <motion.aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-labelledby="evidence-title"
-      initial={reduced ? { opacity: 0 } : { x: '100%' }} animate={reduced ? { opacity: 1 } : { x: 0 }} exit={reduced ? { opacity: 0 } : { x: '100%' }}
-      transition={{ type: 'spring', stiffness: 380, damping: 40 }}>
+    <motion.div className="scrim" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: DUR.drawer, ease: EASE_OUT }} />
+    <motion.aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-labelledby="evidence-title" {...slide}
+      transition={{ duration: DUR.drawer, ease: EASE_DRAWER }}>
       <div className="drawer-head">
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div className="moment-meta">
             <span className="minute">{clockLabel(moment.period, moment.match_time_ms)}</span>
             <span className="rule-tag"><Icon size={13} aria-hidden="true" />{RULE_LABEL[moment.rule]}</span>
-            <span className="mode-badge"><Bot size={13} aria-hidden="true" />{MODE_LABEL[moment.insight.generation_mode]}</span>
+            <span className="mode-badge" data-mode={moment.insight.generation_mode}>{MODE_LABEL[moment.insight.generation_mode]}</span>
           </div>
           <h2 id="evidence-title">{moment.insight.headline}</h2>
         </div>
         <button ref={closeRef} type="button" className="icon-button" onClick={onClose} aria-label="Close evidence"><X size={18} /></button>
       </div>
       <div className="drawer-body">
-        <div className="pitch-wrap" style={{ margin: 0 }}>
-          <Pitch events={events} highlightIds={moment.evidence_ids} roster={roster} onSelect={onSelectEvent} animate={!reduced} compact />
-        </div>
-        <section className="drawer-section">
-          <h3>What the system says</h3>
-          <div className="quote"><small>For fans</small>{moment.insight.casual_text}</div>
-          <div className="quote"><small>For analysts</small>{moment.insight.analyst_text}</div>
+        <section className="drawer-section" aria-labelledby="ev-what">
+          <h3 id="ev-what"><span className="step">1</span>What happened</h3>
+          <p className="lead">{primary}</p>
+          <button type="button" className="text-button quiet" aria-expanded={other} onClick={() => setOther(value => !value)} style={{ justifySelf: 'start' }}>
+            {other ? 'Hide' : 'Show'} the {audience === 'fan' ? 'analyst' : 'fan'} explanation
+          </button>
+          {other && <div className="quote"><small>For {audience === 'fan' ? 'analysts' : 'fans'}</small>{secondary}</div>}
         </section>
-        <section className="drawer-section">
-          <h3>Metrics behind it</h3>
-          <div className="table-wrap"><table>
-            <thead><tr><th>Metric</th><th className="num">Value</th><th>Unit</th></tr></thead>
-            <tbody>{moment.metrics.map(metric => <tr key={metric.name}>
-              <td>{METRIC_LABEL[metric.name] ?? metric.name}</td><td className="num">{fmt(metric.value, Math.abs(metric.value) < 1 ? 3 : 2)}</td><td>{metric.unit}</td>
-            </tr>)}</tbody>
-          </table></div>
+
+        <section className="drawer-section" aria-labelledby="ev-why">
+          <h3 id="ev-why"><span className="step">2</span>Why it matters</h3>
+          <p style={{ color: 'var(--text-2)' }}>{WHY[moment.rule]}</p>
         </section>
-        <Calculation moment={moment} facts={facts} />
-        <section className="drawer-section">
-          <h3>Source events ({evidence.length})</h3>
-          <ul className="evidence-list">
-            {evidence.map(event => <li key={event.event_id}>
-              <button type="button" onClick={() => onSelectEvent(event)}>
-                <i className="team-bar" style={{ background: teamTone(event.team_id) }} />
+
+        <section className="drawer-section" aria-labelledby="ev-values">
+          <h3 id="ev-values"><span className="step">3</span>Key calculated values <span className="hint">Metrics behind it</span></h3>
+          <dl className="value-grid">
+            {moment.metrics.map(metric => <div key={metric.name}>
+              <dt>{METRIC_LABEL[metric.name] ?? metric.name}</dt>
+              <dd>{fmt(metric.value, Math.abs(metric.value) < 1 ? 3 : 2)}{metric.unit && <small>{metric.unit}</small>}</dd>
+            </div>)}
+          </dl>
+        </section>
+
+        <section className="drawer-section" aria-labelledby="ev-sequence">
+          <h3 id="ev-sequence"><span className="step">4</span>Source action sequence <span className="hint">{evidence.length} recorded events</span></h3>
+          <div className="pitch-wrap">
+            <Pitch events={events} highlightIds={moment.evidence_ids} emphasisId={step} roster={roster} animate={!reduced} compact
+              onSelect={event => setStep(current => current === event.event_id ? undefined : event.event_id)} />
+          </div>
+          <PitchLegend compact />
+          <ol className="sequence">
+            {evidence.map((event, index) => <li key={event.event_id}>
+              <button type="button" aria-pressed={step === event.event_id} onClick={() => setStep(current => current === event.event_id ? undefined : event.event_id)}>
+                <span className="n">{index + 1}</span>
+                <i className="team-bar" style={{ background: teamTone(event.team_id) }} aria-hidden="true" />
                 <span><b style={{ fontWeight: 600 }}>{eventLabel(event)}</b> · {surname(people.get(event.player_id ?? ''))} · {clockLabel(event.period, event.match_time_ms)}</span>
-                <span className="mono" style={{ color: 'var(--chalk-faint)' }}>{event.event_id}</span>
+                <span className="mono" style={{ color: 'var(--text-3)' }}>{event.event_id}</span>
               </button>
             </li>)}
             {evidence.length < moment.evidence_ids.length && <li className="hint">Some cited events are outside the current replay position.</li>}
-          </ul>
+          </ol>
+          <button type="button" className="button" style={{ justifySelf: 'start' }} onClick={() => onReplay(moment)}>
+            <RotateCcw size={15} aria-hidden="true" />Replay this sequence from {clockLabel(moment.period, moment.match_time_ms)}
+          </button>
         </section>
-        <section className="drawer-section">
-          <h3>Limitations</h3>
+
+        <section className="drawer-section" aria-labelledby="ev-calc">
+          <h3 id="ev-calc"><span className="step">5</span>Calculation and detection rule</h3>
+          <Calculation moment={moment} facts={facts} />
+        </section>
+
+        <section className="drawer-section" aria-labelledby="ev-limits">
+          <h3 id="ev-limits"><span className="step">6</span>Limitations and provenance</h3>
           <ul className="limitations">{moment.insight.limitations.map(item => <li key={item}>{item}</li>)}</ul>
-        </section>
-        <section className="drawer-section">
-          <h3>Provenance</h3>
-          <dl className="facts">
-            <dt>Written by</dt><dd>{AUTHOR[moment.insight.generation_mode]}</dd>
-            <dt>Moment</dt><dd className="mono">{moment.moment_id}</dd>
-            <dt>Rule</dt><dd>{moment.rule} {moment.rule_version}</dd>
-            <dt>Metric version</dt><dd>{moment.metric_version}</dd>
-            <dt>Detected at</dt><dd>event {moment.source_sequence} (anchor {moment.anchor_sequence})</dd>
-            <dt>Coordinates</dt><dd>105 × 68 m fixed frame; metrics use the acting team's attacking frame</dd>
-            <dt>Knowledge</dt><dd>{moment.insight.knowledge_source_ids.join(', ') || 'none'}</dd>
-          </dl>
+          <details className="disclosure">
+            <summary>Provenance and identifiers</summary>
+            <div>
+              <dl className="facts">
+                <dt>Written by</dt><dd>{AUTHOR[moment.insight.generation_mode]}</dd>
+                <dt>Moment</dt><dd className="mono">{moment.moment_id}</dd>
+                <dt>Rule</dt><dd>{moment.rule} {moment.rule_version}</dd>
+                <dt>Metric version</dt><dd>{moment.metric_version}</dd>
+                <dt>Detected at</dt><dd>event {moment.source_sequence} (anchor {moment.anchor_sequence})</dd>
+                <dt>Evidence IDs</dt><dd className="mono">{moment.evidence_ids.join(', ')}</dd>
+                <dt>Coordinates</dt><dd>105 × 68 m fixed frame; metrics use the acting team's attacking frame</dd>
+                <dt>Knowledge</dt><dd>{moment.insight.knowledge_source_ids.join(', ') || 'none'}</dd>
+              </dl>
+            </div>
+          </details>
         </section>
       </div>
     </motion.aside>
@@ -137,8 +177,8 @@ function Calculation({ moment, facts }: { moment: Moment; facts: Record<string, 
   } else if (moment.rule === 'chance') {
     rows = [['Outcome', facts.outcome], ['Trigger', 'On-target shot from 18 m or closer; no xG model']];
   }
-  return <section className="drawer-section">
-    <h3>Calculation</h3>
-    <dl className="facts">{rows.map(([term, value]) => <div key={term} style={{ display: 'contents' }}><dt>{term}</dt><dd>{value}</dd></div>)}</dl>
-  </section>;
+  return <dl className="facts">
+    {rows.map(([term, value]) => <div key={term} style={{ display: 'contents' }}><dt>{term}</dt><dd>{value}</dd></div>)}
+    <div style={{ display: 'contents' }}><dt>Rule version</dt><dd>{moment.rule} {moment.rule_version} · {moment.metric_version}</dd></div>
+  </dl>;
 }

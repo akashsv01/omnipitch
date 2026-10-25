@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export type Audience = 'fan' | 'analyst';
 export type MotionPref = 'system' | 'reduced' | 'full';
@@ -30,6 +30,6 @@ export function usePrefs() {
   useEffect(() => {
     try { localStorage.setItem(KEY, JSON.stringify(prefs)); } catch { /* Ignore unavailable storage. */ }
   }, [prefs]);
-  const update = (patch: Partial<Prefs>) => setPrefs(previous => ({ ...previous, ...patch }));
+  const update = useCallback((patch: Partial<Prefs>) => setPrefs(previous => ({ ...previous, ...patch })), []);
   return [prefs, update] as const;
 }

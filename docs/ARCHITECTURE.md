@@ -134,13 +134,47 @@ Environment: `CORS_ORIGINS` (explicit localhost origins only; default `http://lo
 
 ## Frontend design system
 
-The direction is "floodlit broadcast": the 2D pitch is the one bold element, and the surrounding chrome stays quiet.
+The direction is a broadcast studio with analytical precision. The pitch is the stage; chrome is quiet and grouped by alignment and hairlines rather than identical rounded cards. (Redesigned 2026-10-25.)
 
-- **Tokens** (in `style.css :root`): night `#0f1e26`, panel `#162a35`, chalk `#eaf0ea`, grass `#1e4a38`. Harbor coral `#ff7a59` and Vale ice `#7fd4e6` always encode team; floodlight amber `#f2c94c` marks shots, goals, focus rings and active states.
-- **Type**: Barlow Condensed (scoreboard and headings), IBM Plex Sans (UI), IBM Plex Mono (IDs only).
-- **Layout**: top bar with Fan/Analyst toggle; scoreboard and momentum strip; pitch (left) beside key moments (sticky right); analysis tabs; a floating control dock. Below 1080 px the columns stack; below 760 px the dock compacts and the layer chips scroll horizontally.
-- **Motion** (`motion` 12): ball travel along each new action, goal ripples, a goal banner and scoreboard flash, digit flips, spring list insertions, a layout-animated tab underline and audience thumb, and a drawer slide. Motion follows the OS setting by default and has an explicit Reduced or Full preference.
-- **Accessibility**: SVG `title`/`desc` per pitch state, labelled controls, a keyboard slider (←/→, Shift for 5 minutes), Space to play or pause, focus return from the drawer, Escape to close, arrow-key tabs, and text labels beside every colour.
+- **Tokens** (in `style.css :root`; older names are aliases):
+  - Surfaces: background `#091211`, surface `#10201e`, raised `#172b28`.
+  - Text: `#f3f3ea`, secondary `#afbdb7`, tertiary `#839a93` (at least 4.96:1 on every surface).
+  - Colour meaning: Harbor coral `#ff806a` and Vale ice `#7dd8e7` always encode team; amber `#f2cc62` is the single action accent (shots, goals, focus, active states). Colour is never the only signal: symbols, labels and line styles carry the same meaning.
+- **Type:**
+  - Archivo, condensed through its width axis, for the score, clock, moment headlines and section titles only, never for small interface copy.
+  - IBM Plex Sans for interface and body text, with tabular figures. The `font` shorthand resets the numeric variant, so numeric displays re-assert `tabular-nums`.
+  - IBM Plex Mono for event IDs only.
+- **Layout (desktop):**
+  - A compact scorebug shows team identities, score, clock and period, and the replay state. Connection state sits in the top bar, separately.
+  - The pitch frame is sized from the remaining viewport height (`100dvh − 280px` of chrome), so the whole pitch and the replay bar fit at 1440×900 and 1366×768.
+  - The replay bar sits in reserved space under the pitch and never overlays it. Its scrubber doubles as the full-match momentum track, with a playhead.
+  - The moment rail: one featured insight (story, compact key values from the moment's own metrics, and separate "Show evidence" and "Replay from" actions) plus compact rows. While the reader is scrolled, hovering or focused in the rail, new moments wait behind an "N new moments" button.
+  - Analysis sits below the stage.
+  - Raw event counts, run IDs and backend details live in the footer's "Data source and diagnostics" disclosure.
+- **Layout (responsive):**
+  - The rail stacks below 980 px.
+  - Below 760 px: a compact scorebug (short codes, with the state in the clock line), a full-width pitch with the selected action written under it, and a fixed, thumb-sized replay bar with the page padded for it and safe-area insets. The evidence drawer becomes a full-screen sheet.
+  - Verified with no horizontal overflow at 1440, 1366, 768, 390 and 360 px.
+- **Pitch graphics:** recorded start and end points are joined by lines.
+  - Completed passes carry arrowheads; lost passes are dashed and end in a cross.
+  - Shots are amber, with a different end symbol per outcome (goal, saved or blocked, wide).
+  - Ball wins are filled diamonds and losses hollow; fouls are small red marks.
+  - Trails fade with recency and never join unrelated possessions. Attack-direction labels sit in the margin.
+  - One player label per focus action, placed away from its own line (hidden on phones in favour of the text line).
+  - The moving ball is illustrative interpolation between two recorded points of the same event and is labelled as such. No player positions, formations or tracking are drawn.
+- **Motion** (`motion` 12, plus CSS):
+  - Tokens are in `lib/motion.ts` and `--ease-*` / `--dur-*` (press 140 ms, switch 200 ms, enter 240 ms, drawer 300 ms; Emil Kowalski's ease-out, ease-in-out and drawer curves; no overshoot on data or positions).
+  - Ball travel and the pass draw are keyed by event, so a new event, seek, reset or run change cancels the old animation. They shorten at 5–10× and stop at 20× and above, so drawing never lags the authoritative replay.
+  - The goal ring and scorebug flash play once per goal event.
+  - No looping decoration (the old status pulse and live blink were removed).
+  - Reduced motion (OS setting or the in-app preference) swaps the drawer slide for a fade and turns off travel and draw.
+- **Performance:** the 8 Hz clock interpolation only re-renders the scorebug and the replay bar. The stage, rail and analysis are memoised with stable callbacks. Measured in the production build (headless Chromium, desktop): 60 fps (p95 frame 16.9 ms) and no long tasks at 5× and 20×.
+- **Accessibility:**
+  - Skip link to `main`, an `h1`, landmarks, SVG `title`/`desc` per pitch state.
+  - Labelled controls; a keyboard slider (←/→, Shift for 5 minutes, Home/End); Space to play or pause; arrow-key tabs.
+  - The evidence drawer traps focus, closes on Escape and restores focus. PPDA chart points are focusable, with a visible tooltip line.
+  - Live regions are limited to banners and recap status, so rapid event updates are not announced.
+- **Evidence drawer order:** what happened (current audience, with the other a click away); why it matters (the rule's definition); key calculated values; the numbered source sequence (selecting a step emphasises it on the drawer pitch, with "Replay this sequence"); calculation and rule version; limitations and provenance (IDs in a disclosure).
 - **Preferences** (audience, favourite team and player, layers, motion) live in `localStorage`. Favourites reorder moments within a recency band; they never change facts.
 
 ## Azure mode (Phase 2 cloud path)

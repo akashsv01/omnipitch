@@ -6,10 +6,11 @@ import { ControlDock } from './components/ControlDock';
 import { BrandMark } from './components/Crest';
 import { EvidenceDrawer } from './components/EvidenceDrawer';
 import { EventhousePanel } from './components/EventhousePanel';
-import { MatchStage } from './components/MatchStage';
+import { EventTicker, MatchStage } from './components/MatchStage';
 import { MomentFeed } from './components/MomentFeed';
 import { Preferences } from './components/Preferences';
-import { Momentum, Scoreboard } from './components/Scoreboard';
+import { Scorebug } from './components/Scoreboard';
+import { INDICATOR } from './lib/motion';
 import { API_BASE_URL } from './lib/api';
 import { usePrefs, type Audience } from './lib/prefs';
 import { useInterpolatedElapsed, useReplay } from './lib/useReplay';
@@ -30,6 +31,8 @@ export default function App() {
 function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePrefs>[0]; updatePrefs: ReturnType<typeof usePrefs>[1]; reduced: boolean }) {
   const live = useReplay();
   const { replay } = live;
+  const latest = useRef({ replay, live });
+  latest.current = { replay, live };
   const { elapsed, clockMs } = useInterpolatedElapsed(replay, live.receivedAt);
   const [selectedId, setSelectedId] = useState<string>();
   const [evidence, setEvidence] = useState<Moment>();
@@ -73,18 +76,25 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
   }, [togglePlay, evidence]);
 
   const jumpTo = useCallback((moment: Moment) => {
-    if (!replay) return;
-    const source = replay.events[moment.source_sequence - 1];
+    const { replay: current, live: controls } = latest.current;
+    if (!current) return;
+    const source = current.events[moment.source_sequence - 1];
     const lead = source && source.period === moment.period ? source.match_time_ms - moment.match_time_ms : 0;
     setSelectedId(undefined);
-    void live.seek(Math.max(0, moment.replay_ms - lead - 6000));
-  }, [replay, live]);
+    void controls.seek(Math.max(0, moment.replay_ms - lead - 6000));
+  }, []);
 
   const jumpToMoment = useCallback((momentId: string, replayMs: number) => {
-    const moment = replay?.moments.find(m => m.moment_id === momentId);
-    if (moment) jumpTo(moment); else void live.seek(Math.max(0, replayMs - 6000));
+    const moment = latest.current.replay?.moments.find(m => m.moment_id === momentId);
+    if (moment) jumpTo(moment); else void latest.current.live.seek(Math.max(0, replayMs - 6000));
     window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
-  }, [replay, jumpTo, live, reduced]);
+  }, [jumpTo, reduced]);
+  const selectEvent = useCallback((event: Event | undefined) => setSelectedId(event?.event_id), []);
+  const selectFromAnalysis = useCallback((event: Event) => {
+    setSelectedId(event.event_id);
+    window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+  }, [reduced]);
+  const loadEventhouse = useCallback((id: string) => latest.current.live.loadEventhouse(id), []);
 
   // When a period ends during playback, offer its recap once.
   const [tabRequest, setTabRequest] = useState<TabRequest>();
@@ -116,8 +126,8 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
         <span className="brand-tag">Synthetic match intelligence</span></a>
       <AudienceToggle value={prefs.audience} onChange={audience => updatePrefs({ audience })} />
       {replay && <SourceBadge replay={replay} />}
-      <span className="status-pill" data-state={live.connection} role="status">
-        <span className="status-dot" />{live.connection === 'online' ? 'Live link' : live.connection === 'offline' ? 'Offline' : 'Connecting'}
+      <span className="status" data-state={live.connection} role="status" title="Connection to the match API (separate from the replay state)">
+        <span className="dot" aria-hidden="true" />{live.connection === 'online' ? 'Connected' : live.connection === 'offline' ? 'Offline' : 'Connecting'}
       </span>
       <div style={{ position: 'relative' }}>
         <button type="button" className="icon-button" aria-label="Viewing preferences" aria-expanded={prefsOpen} aria-haspopup="dialog"
@@ -130,7 +140,8 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
 
     {replay && <main id="match" tabIndex={-1}>
       <h1 className="sr-only">OmniPitch match room: {replay.state.home_team.name} against {replay.state.away_team.name}</h1>
-      <AnimatePresence>
+      <div className="banner-stack" aria-live="polite">
+      <AnimatePresence initial={false}>
         {live.connection === 'offline' && <motion.div className="alert" role="alert" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
           <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><WifiOff size={16} />{live.connectionError} Showing the last received state; controls return when the API does.</span>
           <button type="button" className="button" onClick={live.reconnect}><RefreshCw size={14} />Retry</button>
@@ -139,7 +150,7 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
           <span>{live.actionError}</span>
           <button type="button" className="icon-button" aria-label="Dismiss" onClick={live.clearActionError}><X size={15} /></button>
         </motion.div>}
-        {recapPrompt && <motion.div className="notice recap-prompt" role="status" style={{ marginBottom: 12, justifyContent: 'space-between', alignItems: 'center' }}
+        {recapPrompt && <motion.div className="notice recap-prompt" role="status" style={{ justifyContent: 'space-between', alignItems: 'center' }}
           initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}>
           <span>{recapPrompt.text}: the score, up to three verified key moments and what the data supports.</span>
           <span style={{ display: 'flex', gap: 8 }}>
@@ -147,58 +158,81 @@ function Match({ prefs, updatePrefs, reduced }: { prefs: ReturnType<typeof usePr
             <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setRecapPrompt(null)}><X size={15} /></button>
           </span>
         </motion.div>}
-        {replay.replay.restored && !restoredSeen && <motion.div className="notice" style={{ marginBottom: 12, justifyContent: 'space-between' }}
+        {replay.replay.restored && !restoredSeen && <motion.div className="notice" style={{ justifyContent: 'space-between' }}
           initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
           <span>Restored the saved replay after an API restart: same run, score and moments, paused where it stopped.</span>
           <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setRestoredSeen(true)}><X size={15} /></button>
         </motion.div>}
       </AnimatePresence>
+      </div>
 
       {replay.replay.backend_mode === 'azure' && replay.replay.source !== 'eventhouse' && <div className="alert" role="status"
-        style={{ background: 'var(--flood-soft)', borderColor: 'rgba(242,201,76,.4)', color: 'var(--chalk)', marginBottom: 12, display: 'grid' }}>
+        style={{ background: 'var(--flood-soft)', borderColor: 'rgba(242,204,98,.4)', color: 'var(--text)', marginBottom: 10, display: 'grid' }}>
         <span><b>Azure mode, but this replay is not Eventhouse data.</b> It is the {replay.replay.source === 'simulator' ? 'local simulator match' : 'uploaded file'} restored at startup. Load a run from Fabric Eventhouse to see cloud data.</span>
         <EventhousePanel replay={replay} busy={live.busy} onLoad={live.loadEventhouse} compact />
       </div>}
 
-      <Scoreboard state={replay.state} replay={replay.replay} clockMs={clockMs} stats={replay.analysis.teams} goalKey={goal?.event_id ?? null} />
-      <Momentum buckets={replay.analysis.momentum} analyst={prefs.audience === 'analyst'} />
-
-      <div className="stage">
-        <MatchStage replay={replay} selected={selected} onSelect={event => setSelectedId(event?.event_id)} prefs={prefs} updatePrefs={updatePrefs}
-          goal={goal} animate={!reduced} audience={prefs.audience} />
+      <div className="stage-grid">
+        <div className="main-col">
+          <Scorebug state={replay.state} replay={replay.replay} clockMs={clockMs} goalKey={goal?.event_id ?? null} />
+          <MatchStage replay={replay} selected={selected} onSelect={selectEvent} prefs={prefs} updatePrefs={updatePrefs}
+            goal={goal} animate={!reduced} audience={prefs.audience} />
+          <ControlDock replay={replay} elapsed={elapsed} busy={live.busy} disabled={disabled} audience={prefs.audience}
+            onPlay={live.play} onPause={live.pause} onReset={live.reset} onSpeed={live.setSpeed} onSeek={live.seek}
+            onGenerate={live.generate} onLoad={live.load} />
+          <EventTicker replay={replay} selected={selected} onSelect={selectEvent} />
+        </div>
         <MomentFeed moments={replay.moments} audience={prefs.audience} favoriteTeam={prefs.favoriteTeam} favoritePlayer={prefs.favoritePlayer}
           roster={replay.replay.roster} onEvidence={setEvidence} onJump={jumpTo} />
       </div>
 
       <AnalysisTabs replay={replay} audience={prefs.audience} favoritePlayer={prefs.favoritePlayer}
-        busy={live.busy} onLoadEventhouse={live.loadEventhouse} onJumpMoment={jumpToMoment} tabRequest={tabRequest} push={live.push}
-        onSelectEvent={event => { setSelectedId(event.event_id); window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }); }} />
+        busy={live.busy} onLoadEventhouse={loadEventhouse} onJumpMoment={jumpToMoment} tabRequest={tabRequest} push={live.push}
+        onSelectEvent={selectFromAnalysis} />
     </main>}
 
     {replay && <>
       <footer className="foot">
-        <span>All teams, players and events are synthetic. {replay.insights.ai > 0
-          ? `${replay.insights.ai} moment ${replay.insights.ai === 1 ? 'story is' : 'stories are'} AI-written and checked in code; the rest are templates from verified metrics.`
-          : 'Moment stories are deterministic templates from verified metrics.'}</span>
-        <span>Run <span className="mono">{replay.state.run_id}</span> · API {API_BASE_URL}</span>
+        <p className="disclosure-line">All teams, players and events are synthetic. {replay.insights.ai > 0
+          ? `${replay.insights.ai} moment ${replay.insights.ai === 1 ? 'story is' : 'stories are'} AI-written and checked in code (labelled "AI, checked"); the rest are templates from verified metrics (labelled "Template").`
+          : 'Moment stories are deterministic templates from verified metrics (labelled "Template"); no AI-written text is shown.'}</p>
+        <details className="disclosure">
+          <summary>Data source and diagnostics</summary>
+          <div>
+            <dl>
+              <dt>Events revealed</dt><dd className="num">{replay.state.latest_event_sequence} / {replay.total_events} events</dd>
+              <dt>Source</dt><dd>{sourceLabel(replay)}{replay.replay.source_detail ? ` · ${replay.replay.source_detail}` : ''}</dd>
+              <dt>Backend</dt><dd>{replay.replay.backend_mode} mode · API {API_BASE_URL}</dd>
+              <dt>Run</dt><dd className="mono">{replay.state.run_id}</dd>
+              <dt>Narrated insights</dt><dd>{replay.insights.mode === 'off' ? 'off (templates only)' : `${replay.insights.narrated} narrated, ${replay.insights.ai} AI, ${replay.insights.rejected} rejected (${replay.insights.status})`}</dd>
+              <dt>Live updates</dt><dd>{live.push.state === 'off' ? 'polling only' : live.push.state}</dd>
+            </dl>
+          </div>
+        </details>
       </footer>
-
-      <ControlDock replay={replay} elapsed={elapsed} busy={live.busy} disabled={disabled}
-        onPlay={live.play} onPause={live.pause} onReset={live.reset} onSpeed={live.setSpeed} onSeek={live.seek}
-        onGenerate={live.generate} onLoad={live.load} />
 
       <AnimatePresence>
         {evidence && <EvidenceDrawer key={evidence.moment_id} moment={evidence} events={replay.events} roster={replay.replay.roster} reduced={reduced}
-          onClose={() => setEvidence(undefined)} onSelectEvent={event => { setSelectedId(event.event_id); setEvidence(undefined); }} />}
+          audience={prefs.audience} onClose={() => setEvidence(undefined)} onReplay={moment => { setEvidence(undefined); jumpTo(moment); }} />}
       </AnimatePresence>
     </>}
   </div>;
 }
 
-function SourceBadge({ replay }: { replay: NonNullable<ReturnType<typeof useReplay>['replay']> }) {
+type Snapshot = NonNullable<ReturnType<typeof useReplay>['replay']>;
+
+function sourceLabel(replay: Snapshot) {
+  const { backend_mode: mode, source, source_run_id: run, seed, scenario } = replay.replay;
+  if (source === 'eventhouse') return `Eventhouse run ${run}`;
+  if (mode === 'azure') return 'Azure: no Eventhouse run loaded';
+  if (source === 'upload') return 'Uploaded JSONL';
+  return `Simulator, seed ${seed} (${scenario?.replace('_', ' ')})`;
+}
+
+function SourceBadge({ replay }: { replay: Snapshot }) {
   const { backend_mode: mode, source, source_detail: detail } = replay.replay;
-  const label = source === 'eventhouse' ? 'Azure · Eventhouse' : mode === 'azure' ? 'Azure · not loaded' : source === 'upload' ? 'Local · uploaded file' : 'Local · simulator';
-  return <span className="status-pill" title={detail ?? `Backend mode: ${mode}`} data-state={source === 'eventhouse' ? 'online' : mode === 'azure' ? 'offline' : 'local'}>
+  const label = source === 'eventhouse' ? 'Eventhouse' : mode === 'azure' ? 'Not loaded' : source === 'upload' ? 'Uploaded file' : 'Simulator';
+  return <span className="status status-source" title={`${sourceLabel(replay)}${detail ? ` · ${detail}` : ''}`} data-state={mode === 'azure' && source !== 'eventhouse' ? 'offline' : undefined}>
     <Database size={14} aria-hidden="true" />{label}
   </span>;
 }
@@ -206,7 +240,7 @@ function SourceBadge({ replay }: { replay: NonNullable<ReturnType<typeof useRepl
 function AudienceToggle({ value, onChange }: { value: Audience; onChange: (value: Audience) => void }) {
   return <div className="segmented" role="group" aria-label="Audience mode">
     {(['fan', 'analyst'] as const).map(mode => <button key={mode} type="button" aria-pressed={value === mode} onClick={() => onChange(mode)}>
-      {value === mode && <motion.span layoutId="audience-thumb" className="thumb" transition={{ type: 'spring', stiffness: 500, damping: 36 }} />}
+      {value === mode && <motion.span layoutId="audience-thumb" className="thumb" transition={INDICATOR} />}
       {mode === 'fan' ? 'Fan view' : 'Analyst view'}
     </button>)}
   </div>;
@@ -222,11 +256,12 @@ function Boot({ offline, message, onRetry }: { offline: boolean; message?: strin
       <button type="button" className="button primary" onClick={onRetry}><RefreshCw size={15} />Try again</button>
     </div>;
   }
-  return <div className="boot" aria-busy="true" aria-label="Loading match">
-    <div className="skeleton" style={{ height: 112 }} />
-    <div className="stage" style={{ marginTop: 0 }}>
-      <div className="skeleton" style={{ aspectRatio: '113 / 90' }} />
-      <div className="skeleton" style={{ height: 420 }} />
+  return <div className="stage-grid" aria-busy="true" aria-label="Loading match">
+    <div className="boot">
+      <div className="skeleton" style={{ height: 52 }} />
+      <div className="skeleton" style={{ aspectRatio: '113 / 76' }} />
+      <div className="skeleton" style={{ height: 64 }} />
     </div>
+    <div className="skeleton" style={{ height: 480 }} />
   </div>;
 }
