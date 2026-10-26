@@ -86,7 +86,7 @@ export function RecapPanel({ replay, audience, onJump, request }: {
         </button>)}
       </div>
       {recap && <span className="recap-status" data-status={recap.status}>
-        {recap.status === 'final' ? 'Final' : `Provisional · ${recap.clock}`}
+        {recap.status === 'final' ? 'Final' : `Match so far · ${recap.clock}`}
       </span>}
       {recon && <span className="recap-status" data-status={recon.tone} title={recon.title}>{recon.label}</span>}
       {author && <span className="author-tag" data-mode={author.mode} title={ai?.reason ?? undefined}>

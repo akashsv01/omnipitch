@@ -21,6 +21,39 @@ def _fmt(value: float) -> str:
     return f"{value:g}" if abs(value) >= 10 or value == int(value) else f"{value:.1f}".rstrip("0").rstrip(".")
 
 
+TRANSITION_MIN_PROGRESS_M = 35.0  # Mirrors the detector's trigger (omnipitch_analytics.detect); used only to pick wording.
+
+
+def goal_context(moment: dict) -> str | None:
+    """What a goal did to the score, from the frozen score after the goal (before = after minus this goal).
+
+    One of: opening, equaliser, lead, extend, reduce, or None when the score is not in the facts."""
+    score = moment.get("facts", {}).get("score")
+    team = moment.get("team_id")
+    if not isinstance(score, dict) or team not in score:
+        return None
+    mine_after = score[team]
+    theirs = sum(goals for other, goals in score.items() if other != team)
+    mine_before = mine_after - 1
+    if mine_before == 0 and theirs == 0:
+        return "opening"
+    if mine_after == theirs:
+        return "equaliser"
+    if mine_before == theirs:
+        return "lead"
+    if mine_before > theirs:
+        return "extend"
+    return "reduce"
+
+
+def transition_branch(moment: dict) -> str:
+    """Which trigger the transition met: 'both', 'progress' (no shot) or 'shot' (short advance ending in a shot)."""
+    metrics = {metric["name"]: metric["value"] for metric in moment["metrics"]}
+    long = metrics.get("forward_progress", 0) >= TRANSITION_MIN_PROGRESS_M
+    shot = bool(moment.get("facts", {}).get("ended_in_shot"))
+    return "both" if long and shot else "progress" if long else "shot"
+
+
 def fallback_limitation(reason: str | None) -> str:
     """Say why the template was used; never imply AI wrote it."""
     if not reason:
@@ -40,7 +73,9 @@ def build_fallback_insight(moment: dict, context: dict, reason: str | None = Non
     if rule == "goal":
         home, away = context["home"], context["away"]
         score = facts["score"]
-        headline = f"Goal for {team}"
+        kind = goal_context(moment)
+        headline = {"opening": f"{team} open the scoring", "equaliser": f"{team} equalise", "lead": f"{team} go ahead",
+                    "extend": f"{team} extend the lead", "reduce": f"{team} pull a goal back"}.get(kind, f"Goal for {team}")
         casual = f"{player} scores from {_fmt(metrics['shot_distance'])} m. It is now {teams[home]} {score[home]}, {teams[away]} {score[away]}."
         analyst = (f"Goal at {clock}: shot from {_fmt(metrics['shot_distance'])} m, ending a possession with "
                    f"{int(metrics['possession_actions'])} recorded actions. Score {score[home]}-{score[away]}.")
@@ -58,16 +93,24 @@ def build_fallback_insight(moment: dict, context: dict, reason: str | None = Non
     elif rule == "transition":
         headline = f"{team} break after winning the ball"
         won = "an interception" if facts["turnover_type"] == "interception" else "a tackle"
-        progress = metrics["forward_progress"]
-        if progress >= 1:
-            ending = " and finish with a shot" if facts["ended_in_shot"] else ""
-            casual = f"{player} wins the ball with {won}, and {team} go {_fmt(progress)} m upfield in {_fmt(metrics['elapsed'])} seconds{ending}."
-            moved = f"{_fmt(progress)} m of forward progress"
+        progress, elapsed, actions = metrics["forward_progress"], _fmt(metrics["elapsed"]), int(metrics["actions"])
+        # Word the story by the trigger that fired: a long advance, a quick shot after the regain, or both.
+        branch = transition_branch(moment)
+        if branch == "both":
+            casual = (f"{player} wins the ball with {won}; {team} move it {_fmt(progress)} m forward "
+                      f"and get a shot away within {elapsed} seconds.")
+            analyst = (f"Transition at {clock}: {facts['turnover_type']} won, then {actions} actions, "
+                       f"{_fmt(progress)} m of forward progress and a shot within {elapsed} s.")
+        elif branch == "progress":
+            casual = (f"{player} wins the ball with {won}, and {team} carry it {_fmt(progress)} m forward "
+                      f"in {elapsed} seconds. The move does not end in a shot.")
+            analyst = (f"Transition at {clock}: {facts['turnover_type']} won, then {actions} actions and "
+                       f"{_fmt(progress)} m of forward progress within {elapsed} s; the recorded sequence ends without a shot.")
         else:
-            casual = f"{player} wins the ball with {won}, and {team} get a shot away within {_fmt(metrics['elapsed'])} seconds."
-            moved = "no further passing progress"
-        analyst = (f"Transition at {clock}: {facts['turnover_type']} won, then {int(metrics['actions'])} actions and "
-                   f"{moved} within {_fmt(metrics['elapsed'])} s{', ending in a shot' if facts['ended_in_shot'] else ''}.")
+            casual = f"{player} wins the ball with {won}, and {team} get a shot away {elapsed} seconds later."
+            moved = f"{_fmt(progress)} m of forward progress" if progress >= 1 else "no forward passing progress"
+            analyst = (f"Transition at {clock}: {facts['turnover_type']} won, then a shot {elapsed} s later, "
+                       f"after {actions} actions and {moved}.")
     elif rule == "pressing_change":
         window = facts["window"]
         start, end = window["start_ms"] // 60000, window["end_ms"] // 60000

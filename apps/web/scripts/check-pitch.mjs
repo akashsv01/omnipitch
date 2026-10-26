@@ -71,4 +71,45 @@ assert.equal(format.clockLabel(1, 46 * 60000), "45+2'");
 assert.equal(format.clockLabel(2, 0), "46'");
 assert.equal(format.runningClock(2, 61_000), '46:01');
 
-console.log('Pitch checks passed: both directions, boundary coordinates, empty state, period markers, layers, evidence highlighting and clock labels.');
+// Regression: a story said "7.2 m" while the key value beside it said "7.3 m" for the same forward_progress
+// (7.25). Displayed metrics must use the backend template rule (Python's ties-to-even, :g at 10 and above).
+assert.equal(format.metricText('forward_progress', 7.25), '7.2');
+assert.equal(format.metricText('forward_progress', 7.35), '7.3');   // 7.35 is stored just below the tie
+assert.equal(format.metricText('elapsed', 4.8), '4.8');
+assert.equal(format.metricText('elapsed', 3), '3');
+assert.equal(format.metricText('pass_distance', 27.05), '27.05');
+assert.equal(format.metricText('forward_progress', 0.05), '0.1');    // 0.05 is stored just above the tie; Python agrees
+assert.equal(format.metricText('threat_delta', 0.211), '0.211');
+assert.equal(format.metricText('ppda', 4.5), '4.5');
+assert.equal(format.fixedEven(2.5, 0), '2');
+assert.equal(format.fixedEven(3.5, 0), '4');
+
+// Regression (walkthrough review): "why it matters" follows the evidence, not the rule name.
+const evidence = await import(moduleUrl(new URL('../src/lib/evidence.ts', import.meta.url)));
+const mk = (rule, metrics, facts, team = 'vale') => ({ rule, team_id: team, metrics: metrics.map(([name, value, unit]) => ({ name, value, unit })), facts,
+  evidence_ids: ['e1', 'e2'], insight: { limitations: [], generation_mode: 'fallback' } });
+const shortShot = mk('transition', [['forward_progress', 3.7, 'm'], ['elapsed', 6.5, 's'], ['actions', 3, 'events']], { ended_in_shot: true });
+assert.equal(evidence.transitionBranch(shortShot), 'shot');
+assert.match(evidence.whyItMatters(shortShot, 'fan'), /shot came 6\.5 s after winning the ball/);
+assert.doesNotMatch(evidence.whyItMatters(shortShot, 'fan'), /long way/);
+const longNoShot = mk('transition', [['forward_progress', 42.2, 'm'], ['elapsed', 4.8, 's'], ['actions', 3, 'events']], { ended_in_shot: false });
+assert.equal(evidence.transitionBranch(longNoShot), 'progress');
+assert.match(evidence.whyItMatters(longNoShot, 'fan'), /No shot followed/);
+assert.doesNotMatch(evidence.whyItMatters(longNoShot, 'fan'), /42\.2 m/);   // adds context instead of repeating the story
+assert.match(evidence.whyItMatters(longNoShot, 'analyst'), /ends without a shot/);
+const opener = mk('goal', [['shot_distance', 10.6, 'm']], { score: { harbor: 0, vale: 1 } });
+assert.equal(evidence.goalContext(opener).kind, 'opening');
+assert.match(evidence.whyItMatters(opener, 'fan'), /first goal of the match/);
+const leveller = mk('goal', [['shot_distance', 8, 'm']], { score: { harbor: 1, vale: 1 } }, 'harbor');
+assert.equal(evidence.goalContext(leveller).kind, 'equaliser');
+assert.doesNotMatch(evidence.whyItMatters(leveller, 'fan'), /every one is a key moment/);
+// Cards and prose quote the same text for the same quantity.
+const tie = mk('transition', [['forward_progress', 7.25, 'm'], ['elapsed', 3, 's']], { ended_in_shot: true });
+assert.equal(evidence.keyValues(tie, 'fan')[0].value, '7.2');
+assert.match(evidence.whyItMatters(tie, 'fan'), /only 7\.2 m gained/);
+// Generation labels never present a template as AI output.
+assert.equal(evidence.generation(mk('goal', [], {}), 'off'), 'rule');
+assert.equal(evidence.generation(mk('goal', [], {}), 'cosmos'), 'pending');
+assert.equal(evidence.generation({ ...mk('goal', [], {}), insight: { generation_mode: 'fallback', limitations: ['AI narration unavailable (timeout); …'] } }, 'cosmos'), 'fallback');
+
+console.log('Pitch checks passed: both directions, boundary coordinates, empty state, period markers, layers, evidence highlighting, clock labels, metric display rounding and evidence-led explanations.');
