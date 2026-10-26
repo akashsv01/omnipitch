@@ -84,6 +84,16 @@ assert.equal(format.metricText('ppda', 4.5), '4.5');
 assert.equal(format.fixedEven(2.5, 0), '2');
 assert.equal(format.fixedEven(3.5, 0), '4');
 
+// Regression: a first-half sequence inspected during the second half keeps first-half attack directions.
+{
+  const h1 = { ...fixture, event_id: 'evt-h1', sequence: 10, period: 1, attacking_direction: 'negative_x', start: { x: 50, y: 30 }, end: { x: 30, y: 30 } };
+  const h2 = { ...fixture, event_id: 'evt-h2', sequence: 900, period: 2, attacking_direction: 'positive_x', start: { x: 40, y: 30 }, end: { x: 60, y: 30 } };
+  const shown = render({ events: [h1, h2], highlightIds: ['evt-h1'], layers });
+  const label = new RegExp(`${fixture.team_id === 'vale' ? 'Vale' : 'Harbor'} attack`);
+  assert.match(shown, label);
+  assert.match(shown, /← (Harbor|Vale) attack/, 'first-half direction (negative x) is shown, not the second half');
+}
+
 // Regression (walkthrough review): "why it matters" follows the evidence, not the rule name.
 const evidence = await import(moduleUrl(new URL('../src/lib/evidence.ts', import.meta.url)));
 const mk = (rule, metrics, facts, team = 'vale') => ({ rule, team_id: team, metrics: metrics.map(([name, value, unit]) => ({ name, value, unit })), facts,
