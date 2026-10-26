@@ -84,21 +84,28 @@ def main(argv: list[str] | None = None) -> int:
     cycle = 0
     while True:
         cycle += 1
-        try:
-            bridge.run_once()
-            failed = store.expire_exhausted(utcnow())  # Recovery: abandoned last attempts become visibly failed.
-            if failed:
-                log({"stage": "recovery", "failed_jobs": [job["job_id"] for job in failed]})
-            if args.reconcile_every and cycle % args.reconcile_every == 0:
-                bridge.reconcile()
-        except EventhouseError as exc:
-            # Cursor is unchanged, so the next cycle retries the same window.
-            log({"stage": "cycle", "outcome": "error", "code": exc.code, "error": str(exc)[:300]})
-            if args.once:
-                return 1
+        ok = run_cycle(bridge, store, cycle, args.reconcile_every)
         if args.once:
-            return 0
+            return 0 if ok else 1
         time.sleep(args.interval)
+
+
+def run_cycle(bridge, store, cycle: int, reconcile_every: int, log=log) -> bool:
+    """One polling cycle. Any dependency outage (Eventhouse, Cosmos, Web PubSub) is logged and the process keeps
+    running: the cursor only advances after a fully written cycle, so the next cycle retries the same window."""
+    try:
+        bridge.run_once()
+        failed = store.expire_exhausted(utcnow())  # Recovery: abandoned last attempts become visibly failed.
+        if failed:
+            log({"stage": "recovery", "failed_jobs": [job["job_id"] for job in failed]})
+        if reconcile_every and cycle % reconcile_every == 0:
+            bridge.reconcile()
+        return True
+    except Exception as exc:  # Status and type only; messages are trimmed and never include credentials.
+        code = getattr(exc, "code", None) if isinstance(exc, EventhouseError) else getattr(exc, "status_code", None)
+        log({"stage": "cycle", "outcome": "error", "error_type": type(exc).__name__, "code": code,
+             "error": str(exc).splitlines()[0][:300] if str(exc) else ""})
+        return False
 
 
 if __name__ == "__main__":

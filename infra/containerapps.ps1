@@ -1,26 +1,27 @@
-# Deploy the OmniPitch API and UI to Azure Container Apps (UF Azure for Students, West US) on free tiers only.
-# Every step needs the owner's approval before it is run; nothing here creates paid resources:
-#   - Container Apps consumption plan, scale to zero, 0.25 vCPU / 0.5 GiB, max 1 replica (inside the monthly free grant)
-#   - no Log Analytics workspace (logs destination none), no Azure Container Registry (public GHCR images)
+# Deploy the OmniPitch API and UI to Azure Container Apps (consumption plan, scale to zero).
+# Run one step at a time and review each before running it:
+#   - consumption plan, scale to zero, 0.25 vCPU / 0.5 GiB, max 1 replica; logs destination none
 #   - user-assigned managed identity with READ-ONLY Cosmos data access and the Web PubSub role needed to issue tokens
-# The bridge is NOT deployed (run it locally when a demo run is published). No keys or connection strings anywhere.
+# The bridge is not deployed. No keys or connection strings anywhere.
 #
 # Usage (after `az login`, images pushed to GHCR and made public):
-#   pwsh infra/containerapps.ps1 -Owner <github-owner> -Tag <image-tag> -Step <register|env|identity|roles|api|web|all>
+#   pwsh infra/containerapps.ps1 -Owner <registry-owner> -Tag <image-tag> -Subscription <id> -ResourceGroup <rg> -Location <region> `
+#        -Cosmos <account> -WebPubSub <name> -EventhouseQueryUri <uri> -Step <register|env|identity|roles|api|web|all>
 param(
-    [Parameter(Mandatory)] [string]$Owner,
+    [Parameter(Mandatory)] [string]$Owner,              # container registry namespace for the images
     [Parameter(Mandatory)] [string]$Tag,
+    [Parameter(Mandatory)] [string]$Subscription,
+    [Parameter(Mandatory)] [string]$ResourceGroup,
+    [Parameter(Mandatory)] [string]$Location,           # must be a region your subscription policy allows
+    [Parameter(Mandatory)] [string]$Cosmos,             # Cosmos DB account name
+    [Parameter(Mandatory)] [string]$WebPubSub,          # Web PubSub resource name
+    [Parameter(Mandatory)] [string]$EventhouseQueryUri, # Fabric KQL database query URI
     [ValidateSet("register", "env", "identity", "roles", "api", "web", "all")] [string]$Step = "all",
-    [string]$Subscription = "f93796a6-7275-4049-9a7e-ca5f3b8b821a",   # UF Azure for Students
-    [string]$ResourceGroup = "rg-omnipitch-uf",
-    [string]$Location = "westus",                                       # policy allows westus, germanywestcentral, francecentral, norwayeast, denmarkeast
     [string]$Environment = "omnipitch-env",
     [string]$Identity = "omnipitch-api-id",
     [string]$ApiApp = "omnipitch-api",
     [string]$WebApp = "omnipitch-web",
-    [string]$Cosmos = "omnipitch-cosmos-d5e1ec",
-    [string]$WebPubSub = "omnipitch-wps-670966",
-    [string]$EventhouseQueryUri = "https://trd-9b2dfngnucza187zdb.z2.kusto.fabric.microsoft.com"
+    [string]$DefaultRun = ""                            # optional Eventhouse run loaded on a fresh start
 )
 $ErrorActionPreference = "Stop"
 $env:MSYS_NO_PATHCONV = "1"
@@ -67,7 +68,7 @@ if (Run "api") {
         --env-vars OMNIPITCH_BACKEND_MODE=azure "AZURE_CLIENT_ID=$clientId" "EVENTHOUSE_QUERY_URI=$EventhouseQueryUri" `
             EVENTHOUSE_DATABASE=omnipitch EVENTHOUSE_TABLE=OmniPitchEvents OMNIPITCH_INSIGHTS=cosmos `
             "COSMOS_ENDPOINT=https://$Cosmos.documents.azure.com:443/" COSMOS_DATABASE=omnipitch `
-            "WEBPUBSUB_ENDPOINT=https://$WebPubSub.webpubsub.azure.com" WEBPUBSUB_HUB=omnipitch `
+            "WEBPUBSUB_ENDPOINT=https://$WebPubSub.webpubsub.azure.com" WEBPUBSUB_HUB=omnipitch "OMNIPITCH_DEFAULT_RUN=$DefaultRun" `
         --tags project=omnipitch -o none
 }
 
