@@ -496,6 +496,12 @@ Both pieces run on Azure Container Apps (consumption plan, scale to zero, 0.25 v
 - Don't probe `/ready`: it queries Eventhouse, so an Eventhouse hiccup would take the API out of service. Use `/ready` for manual checks.
 - Don't probe the UI's `/health`: it is forwarded to the API, so an API restart would restart the UI too.
 
+**Before a judging window (read-only checks).**
+- Open the site a few minutes early. After scale to zero the API needs up to a minute to start, and the first page may say it can't reach the match API until it does.
+- `/health` returns 200, and `/api/v1/backend` shows `default_run.outcome = loaded`.
+- Leave the replay paused at the start: focus the scrubber and press Home. **Reset** and **New match** replace the preloaded match; to get it back, load the run from **Data quality → Fabric Eventhouse**.
+- The replay is shared by every viewer (one API replica), so avoid driving it while judges are watching.
+
 **Budget alert.** Portal → *Cost Management* → *Budgets* → *Add*: subscription scope, a monthly amount, email alerts at 50 %, 80 % and 100 %. Some subscription offers can't create budgets; if the option is missing, check spending on the subscription's billing page instead.
 
 **Stop everything.**
@@ -526,7 +532,7 @@ Setup is in the [README](../README.md#local-setup).
 
 From the repository root:
 
-- Backend tests: `.venv/Scripts/python.exe -m pytest services/api/tests -q`
+- Backend tests: `.venv/Scripts/python.exe -m pytest services/api/tests -q` (install `services/bridge/requirements.txt` as well; some tests import the Cosmos client)
 - Simulator CLI (PowerShell): `$env:PYTHONPATH = "$PWD/services/simulator"; .venv/Scripts/python.exe -m simulator.generate --seed 7 --run-id demo-run-001 --output data/generated/demo.jsonl`
 - Rebuild the eval set: `.venv/Scripts/python.exe services/agents/fixtures/build_eval_set.py`
 

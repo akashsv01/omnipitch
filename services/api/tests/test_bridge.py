@@ -288,6 +288,8 @@ def full(seeded_full, match) -> list[dict]:
 
 
 def needs_reconciliations(store) -> None:
+    if isinstance(store, SqliteStore):
+        return  # Only the Cosmos store can be missing its container; SQLite needs no Azure SDK.
     from azure.cosmos.exceptions import CosmosResourceNotFoundError
     try:
         store.reconciliations("probe-run")
