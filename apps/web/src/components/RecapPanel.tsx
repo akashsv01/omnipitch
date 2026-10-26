@@ -64,8 +64,8 @@ export function RecapPanel({ replay, audience, onJump, request }: {
   const ai = result?.ai;
   const author = !recap ? null : recap.generation_mode === 'ai' ? { label: 'AI-written, checked', mode: 'ai' }
     : ai?.status === 'pending' ? { label: 'Writing with AI…', mode: 'pending' }
-    : ai?.status === 'fallback' ? { label: 'Template (AI recap rejected)', mode: 'fallback' }
-    : { label: 'Template', mode: 'fallback' };
+    : ai?.status === 'fallback' ? { label: 'Rule-based (AI recap rejected)', mode: 'fallback' }
+    : { label: 'Rule-based', mode: 'fallback' };
 
   const rec = result?.reconciliation;
   const recon = !recap || !rec || rec.status === 'off' || rec.status === 'not_applicable' ? null
@@ -124,7 +124,7 @@ export function RecapPanel({ replay, audience, onJump, request }: {
                     <span className="minute">{km.clock}</span>
                     <span className="rule-tag"><Icon size={12} aria-hidden="true" />{RULE_LABEL[km.rule]}</span>
                     <span className="recap-moment-text">{km.headline}</span>
-                    <span className="author-tag" data-mode={km.generation_mode}>{km.generation_mode === 'ai' ? 'AI' : 'Template'}</span>
+                    <span className="author-tag" data-mode={km.generation_mode}>{km.generation_mode === 'ai' ? 'AI · validated' : 'Rule-based'}</span>
                   </button>
                 </li>;
               })}

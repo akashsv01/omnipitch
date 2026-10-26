@@ -176,7 +176,7 @@ export function calculationRows(moment: Moment): [string, string][] {
   } else if (moment.rule === 'transition') {
     rows = [['Turnover', facts.turnover_type], ['Ended in a shot', facts.ended_in_shot ? 'yes' : 'no']];
   } else if (moment.rule === 'goal') {
-    rows = [['Score after goal', Object.entries(facts.score ?? {}).map(([team, goals]) => `${team} ${goals}`).join(', ')]];
+    rows = [['Score after goal', Object.entries(facts.score ?? {}).map(([team, goals]) => `${TEAM_NAME[team] ?? team} ${goals}`).join(', ')]];
   } else if (moment.rule === 'chance') {
     rows = [['Outcome', facts.outcome]];
   }

@@ -62,11 +62,14 @@ export function Pitch({ events, selected, onSelect, layers = DEFAULT_LAYERS, ros
   const description = focus && focus.start
     ? `${eventLabel(focus)} by ${surname(people.get(focus.player_id ?? ''))} (${focus.team_id}) at (${focus.start.x}, ${focus.start.y})${focus.end ? ` to (${focus.end.x}, ${focus.end.y})` : ''} metres. ${focus.attacking_direction === 'positive_x' ? 'Attacking right' : 'Attacking left'}.`
     : 'No located event yet.';
+  // Attack directions for the period being shown: the highlighted sequence's own period when one is shown
+  // (a first-half moment inspected during the second half must not take second-half directions).
+  const shownPeriod = (highlightIds ? events.find(event => highlightIds.includes(event.event_id))?.period : undefined) ?? focus?.period;
   const directions = useMemo(() => {
     const latest = new Map<string, Event['attacking_direction']>();
-    for (const event of events) if (event.team_id && event.attacking_direction && (!focus || event.period === focus.period)) latest.set(event.team_id, event.attacking_direction);
+    for (const event of events) if (event.team_id && event.attacking_direction && (!shownPeriod || event.period === shownPeriod)) latest.set(event.team_id, event.attacking_direction);
     return latest;
-  }, [events, focus]);
+  }, [events, shownPeriod]);
 
   return <figure className="pitch-figure" style={{ margin: 0 }}>
     <svg viewBox="-4 -4 113 76" role="img" aria-labelledby={`${id}-title ${id}-desc`}>
