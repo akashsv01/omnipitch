@@ -12,7 +12,7 @@ Implemented locally (no cloud credentials needed):
 - **Moment detection**: goal, chance, threat gain, transition and pressing-change rules. Moment IDs are stable, evidence is frozen at detection time, and moments are created conditionally.
 - **Ledger ingestion**: `(run_id, event_id)` deduplication, conflict and invalid diagnostics, and metrics computed only over a gap-free sequence prefix.
 - **Grounded narration groundwork**: Analyst/Coach/Broadcaster prompts, an evidence-packet builder, a code-side output validator, a deterministic fallback narrator and a 34-case evaluation set. **No model endpoint is connected**, so every insight is labelled as a deterministic template.
-- **Web app**: a broadcast-style match room with an animated 2D pitch (ball travel, shot ripples, goal celebration, recent-play trail, plus threat-grid, event-density and pass-network layers), a ticking scoreboard and momentum strip, a key-moments feed with fan/analyst wording and favourite-player priority, an evidence drawer, and analysis tabs (team comparison, PPDA chart, players, shot map, data quality with a live duplicate-delivery test). Reduced-motion and keyboard support are included.
+- **Web app**: a landing page (`/`) with an illustrative 3D pitch, leading into the match room (`/match`): a broadcast-style match room with an animated 2D pitch (ball travel, shot ripples, goal celebration, recent-play trail, plus threat-grid, event-density and pass-network layers), a ticking scoreboard and momentum strip, a moment spotlight with distinct Fan and Analyst compositions and favourite-player priority, an evidence drawer with a lazy-loaded 3D view of the source sequence, and analysis tabs (team comparison, PPDA chart, players, shot map, data quality with a live duplicate-delivery test). Reduced-motion and keyboard support are included.
 
 **Cloud status (2026-10-15).**
 
@@ -47,7 +47,7 @@ npm run dev
 
 Open [localhost:5173](http://localhost:5173) and the [API docs](http://localhost:8000/docs). If Windows reports `EACCES` on 5173 (a reserved port range), run `npm run dev -- --port 5212` and add `http://localhost:5212` to `CORS_ORIGINS`. The API stores runs in `data/generated/omnipitch.sqlite3` (gitignored); set `OMNIPITCH_DB_PATH` to change the location, and delete the file to start fresh. Run the API with one worker.
 
-To try it, press **Play** (or Space). The default seed-7 match plays at 20×. Moments appear in the right column. **Show evidence** opens the calculation, source events and limitations. Switch between **Fan view** and **Analyst view** at the top. Use the shuffle button in the control dock to generate another seed or scenario, or to load a JSONL file. Click a moment tick on the scrubber, or **Replay from here**, to jump.
+To try it, choose Fan or Analyst on the landing page and select **Enter match room** (or open `/match` directly). Press **Start replay** (or Space). Moments appear in the right column. **Why this matters** (Fan) or **Inspect evidence** (Analyst) opens the source sequence, values, calculation and limitations, with a 2D/3D switch. Switch between **Fan view** and **Analyst view** at the top at any time; the replay is unaffected. Use the shuffle button beside the filmstrip to generate another seed or scenario, or to load a JSONL file. Click a goal pin on the filmstrip, or **Replay moment**, to jump.
 
 ### Azure mode (optional)
 

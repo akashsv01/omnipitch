@@ -404,10 +404,26 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
 - [ ] Fresh-clone setup, release tag, final smoke tests, judge runbook, public repo documentation, access/health/budget checks and submission verification (Tanmayee).
 - [ ] Cross-browser demo, storyboard, screenshots, a video under two minutes, link checks and the final submission review (Akash).
 - [ ] Delete the Event Hubs namespace after the freeze, unless a new demo run is needed (Akash).
+- [ ] Landing page, match-room overhaul, distinct Fan/Analyst compositions and lazy 3D replay: implemented locally on branch `ui-matchdesk` (2026-10-25), not merged or deployed. It conflicts with the Phase 5 scope freeze, so merging needs Tanmayee's agreement.
+  - 2026-10-25, local, headless Chromium (Playwright) against the local API, dev and production builds. PASS: typecheck; `test:contracts`; `test:pitch` (including a new display-rounding regression); `test:push`; production build; `test:replay:browser` (now entering at `/match`).
+  - PASS (browser): landing and direct `/match`; refresh on both routes; Back/Forward; logo home link; entering before the hero 3D loads; audience choice carried from the landing page; Fan/Analyst switching keeps run, sequence, score, clock and the inspected moment (checked at 1440 and 390 px).
+  - PASS (browser): play/pause, speed and seek; inspect and return; evidence open and close, Escape and focus restore; 2D/3D switching ×6 leaves one canvas, and none after closing; no WebGL draw calls at idle or while hidden; WebGL-unavailable fallback; reduced motion skips the view transition; keyboard seek and audience switch; goal ribbon once and not after a seek; full-time state; simulated disconnect and Retry.
+  - PASS (layout): no horizontal overflow and the filmstrip fully on screen in both audiences at 1440×900, 1366×768, 768×1024, 390×844 and 360×800.
+  - Production build: three.js lives only in a lazy chunk (120 KB gzip). The landing route loads 61 KB of shared JS plus a 3.5 KB landing chunk; the match room adds 122 KB. Hero entrance, evidence 3D and 20× playback ran at 60 fps; the route transition had one 117 ms frame while the match room mounts.
+  - UNVERIFIED: Safari, Firefox and real touch devices for the new UI; a forced WebGL context loss; a screen-reader pass.
+  - Final-quality pass (2026-10-25, same branch, local only):
+    - Template explanations now follow the evidence. Transitions branch on the trigger that fired (long advance, quick shot after a regain, or both); goal headlines follow the verified score before and after (opening goal, equaliser, lead, extending the lead, pulling one back). "Why it matters" is built from each moment's own facts.
+    - Regressions: `services/api/tests/test_explanations.py` (10 tests) and evidence checks in `check-pitch.mjs`.
+    - Copy pass: "Match pitch"; "Watching replay" / "Paused at mm:ss" / "Inspecting sequence at 25'"; one "Return to replay" action; "Forward progression" and "Sequence time"; "Incomplete pass"; "Angled view". PPDA cards lead with "Insufficient events" when the sample gate fails. The recap reads "Match so far" before it is final.
+    - Generation labels show the actual state: rule-based, AI validated, AI pending, or fallback after an AI failure. The evidence drawer has a "How this insight was produced" stage list.
+    - Layout: analysis sits under the filmstrip; the moments column scrolls as one area. The landing page gets the tactical-ink motif, a single pitch entrance (the ghosting was the static SVG cross-fading under the 3D slab), "Resume match" for returning visitors, and a snapshot prefetch, so entry shows real data rather than a skeleton.
+    - PASS (2026-10-25): Python 177 passed / 19 skipped; frontend typecheck, contracts, pitch, push, build and `test:replay:browser`.
+    - PASS (browser, production build): mode switches ×6 keep run, sequence, status and the inspected moment, with no extra polling; 2D/3D selection is identical after a camera change; local evidence playback leaves the shared replay unchanged; canvases are 1 while 3D is open and 0 after closing or route round trips; no future moments; the recap cites only revealed moments; no horizontal overflow at five sizes; filmstrip on screen in both audiences at 1440×900 and 1366×768.
+    - Note: moments are frozen when first detected, so runs created before this change keep their old template text; new runs use the new wording.
 
 ## Stretch
 
 - [ ] Export reusable synthetic datasets with provenance and schema version (was the repo's Phase 5).
 - [ ] Basic producer selection and recap tools (was the repo's Phase 5; the guide allows a producer queue only if the core is stable).
 
-- [ ] Simple 3D replay after the 2D path is reliable.
+- [x] Simple 3D replay after the 2D path is reliable: evidence-drawer 3D view on branch `ui-matchdesk` (2026-10-25), not merged.

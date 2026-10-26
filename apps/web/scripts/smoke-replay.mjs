@@ -102,10 +102,10 @@ try {
   await send('Runtime.enable');
   await send('Page.enable');
   await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
-  await send('Page.navigate', { url: web });
+  await send('Page.navigate', { url: `${web}/match` });
   // Raw event counts live in the collapsed diagnostics; the replay position is checked through the API.
   const revealed = async n => (await state()).state.latest_event_sequence === n;
-  await until(async () => (await text()).includes('Live pitch') && (await text()).includes('Key moments'), 'initial paused run');
+  await until(async () => (await text()).includes('Match pitch') && (await text()).includes('Key moments'), 'initial paused run');
   const initial = await state();
 
   // Upload an out-of-order JSONL file through the real file picker.
@@ -125,7 +125,7 @@ try {
   await post('/api/v1/replay/control', { run_id: loaded.state.run_id, action: 'speed', speed: 1 });
   await until(async () => (await text()).includes('Uploaded file') && (await state()).replay.speed === 1, 'speed applied');
   await click('[aria-label="Play replay"]');
-  await until(async () => await revealed(1) && (await text()).includes('Replaying'), 'first event arrival');
+  await until(async () => await revealed(1) && (await text()).includes('Watching replay'), 'first event arrival');
   await click('[aria-label="Pause replay"]');
   await until(async () => (await state()).state.replay_status === 'paused', 'pause confirmation');
   await sleep(2200);
@@ -145,10 +145,10 @@ try {
   await until(async () => (await state()).replay.source === 'simulator', 'seeded match generated');
   const seeded = await state();
   await post('/api/v1/replay/control', { run_id: seeded.state.run_id, action: 'seek', elapsed_ms: 1_800_000 });
-  await until(async () => (await text()).includes('Show evidence'), 'moments rendered');
+  await until(async () => (await text()).includes('Why this matters'), 'moments rendered (fan)');
   await clickText('Analyst view');
   await until(async () => (await text()).includes('illustrative threat added by completed passes'), 'analyst wording');
-  await clickText('Show evidence');
+  await clickText('Inspect evidence');
   await until(async () => (await text()).includes('Metrics behind it'), 'evidence drawer');
   await evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
   await until(async () => !(await text()).includes('Metrics behind it'), 'drawer closed');

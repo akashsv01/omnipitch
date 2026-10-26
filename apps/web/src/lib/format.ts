@@ -31,7 +31,7 @@ export const RULE_LABEL: Record<Rule, string> = {
 
 export function eventLabel(event: Event): string {
   switch (event.type) {
-    case 'pass': return event.outcome === 'completed' ? 'Pass' : 'Pass lost';
+    case 'pass': return event.outcome === 'completed' ? 'Pass' : 'Incomplete pass';
     case 'shot': return { goal: 'Goal', saved: 'Shot saved', off_target: 'Shot wide', blocked: 'Shot blocked' }[event.outcome as 'goal'] ?? 'Shot';
     case 'tackle': return event.outcome === 'won' ? 'Tackle won' : 'Tackle missed';
     case 'challenge': return event.outcome === 'won' ? 'Duel won' : 'Duel lost';
@@ -53,12 +53,36 @@ export function fmt(value: number | null | undefined, digits = 1): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(digits);
 }
 
+/** Fixed-point text with Python's tie rule: an exact half (7.25 at one decimal) rounds to the even digit, as
+ * Python's `f"{v:.1f}"` does. `toFixed` rounds exact ties up instead (7.3); everything else already agrees. */
+export function fixedEven(value: number, digits: number): string {
+  // toFixed(100) is the exact decimal expansion of the stored double, so only true ties match.
+  const exact = Math.abs(value).toFixed(100);
+  const dot = exact.indexOf('.');
+  if (!/^50*$/.test(exact.slice(dot + 1 + digits))) return value.toFixed(digits);
+  const kept = exact.slice(0, dot + 1 + digits).replace(/\.$/, '');
+  const last = Number(kept[kept.length - 1]);
+  const text = last % 2 === 0 ? kept : (Math.abs(value) + .5 * 10 ** -digits).toFixed(digits);
+  return value < 0 && Number(text) !== 0 ? `-${text}` : text;
+}
+
+/** The one display rule for a moment metric quoted in its story. It mirrors the backend template formatter
+ * (services/agents/agents/narrate.py `_fmt` and the `:g` metrics), so the number in a sentence and the
+ * number beside it are always the same text:
+ * - distances, times and counts: shortest form at or above 10 or when whole, else one decimal (ties to even);
+ * - threat values and PPDA: the stored value as is (already rounded by the metric code). */
+export function metricText(name: string, value: number): string {
+  if (name === 'threat_delta' || name === 'ppda' || name === 'previous_ppda') return String(value);
+  if (Math.abs(value) >= 10 || Number.isInteger(value)) return String(value);
+  return fixedEven(value, 1).replace(/\.0$/, '');
+}
+
 export function momentInvolves(moment: Moment, favoriteTeam: string | null, favoritePlayer: string | null) {
   return (favoritePlayer && moment.player_id === favoritePlayer) || (favoriteTeam && moment.team_id === favoriteTeam);
 }
 
 export const METRIC_LABEL: Record<string, string> = {
   shot_distance: 'Shot distance', possession_actions: 'Possession actions', threat_delta: 'Threat change',
-  forward_progress: 'Forward progress', pass_distance: 'Pass length', elapsed: 'Elapsed', actions: 'Actions',
+  forward_progress: 'Forward progression', pass_distance: 'Pass length', elapsed: 'Sequence time', actions: 'Actions',
   ppda: 'PPDA', previous_ppda: 'Previous PPDA', opponent_passes: 'Opponent passes', defensive_actions: 'Defensive actions',
 };

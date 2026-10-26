@@ -4,7 +4,7 @@ import { clockLabel, fmt, runningClock, TEAM_META } from '../lib/format';
 import { DUR, EASE_OUT } from '../lib/motion';
 import { Crest } from './Crest';
 
-/** A score digit that rolls once when the value changes (never on first render). */
+/** A score digit that rolls once when the authoritative score changes (never on first render). */
 function Digit({ value }: { value: number }) {
   return <span className="digit">
     <AnimatePresence mode="popLayout" initial={false}>
@@ -23,46 +23,40 @@ export function replayState(state: MatchState, replay: ReplayInfo, clockMs: numb
   return replay.clock_period === 1 && clockMs >= 45 * 60000 ? 'half' : 'paused';
 }
 
-const STATE_LABEL: Record<ReplayState, string> = {
-  pre: 'Pre-match', playing: 'Replaying', paused: 'Paused', half: 'Half-time', finished: 'Full-time',
+export const STATE_LABEL: Record<ReplayState, string> = {
+  pre: 'Ready to start', playing: 'Watching replay', paused: 'Paused', half: 'Half-time', finished: 'Full-time',
 };
 
-/** Compact broadcast scorebug: identities, score, clock and period, and the replay's own state.
- * Connection state is shown separately in the top bar so "paused" is never confused with "offline". */
-export function Scorebug({ state, replay, clockMs, goalKey }: {
-  state: MatchState; replay: ReplayInfo; clockMs: number; goalKey: string | null;
+/** Compact match identity and score. Replay state lives here; backend connection lives in the nav;
+ * inspecting a past moment is its own state, so it is never confused with "paused". */
+export function ScoreStrip({ state, replay, clockMs, inspecting }: {
+  state: MatchState; replay: ReplayInfo; clockMs: number; inspecting: string | null;
 }) {
   const period = replay.clock_period;
   const status = replayState(state, replay, clockMs);
-  const periodLabel = state.latest_event_sequence === 0 ? 'Kick-off 0:00' : period === 1 ? 'First half' : 'Second half';
   const home = TEAM_META[state.home_team.id], away = TEAM_META[state.away_team.id];
-  return <section className="scorebug" aria-label="Scorebug">
-    <AnimatePresence>
-      {goalKey && <motion.div key={goalKey} className="goal-flash" initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={{ duration: 1.2, ease: 'easeOut' }} />}
-    </AnimatePresence>
-    <span className="bug-stripe" style={{ background: 'var(--harbor)' }} />
-    <div className="bug-team">
-      <Crest team={state.home_team.id} />
-      <span className="bug-name">{state.home_team.name}</span>
-      <span className="bug-short" aria-hidden="true">{home?.short}</span>
+  const periodLabel = status === 'pre' ? 'Kick-off' : status === 'half' ? 'Half-time' : status === 'finished' ? 'Full-time' : period === 1 ? 'First half' : 'Second half';
+  return <section className="strip" aria-label="Score">
+    <div className="strip-match">
+      <div className="strip-team">
+        <Crest key={`${state.run_id}-h`} team={state.home_team.id} tilt />
+        <span className="name">{state.home_team.name}</span><span className="code" aria-hidden="true">{home?.short}</span>
+      </div>
+      <div className="strip-score" role="status" aria-label={`${state.home_team.name} ${state.score.home}, ${state.away_team.name} ${state.score.away}`}>
+        <Digit value={state.score.home} /><span className="sep" aria-hidden="true">–</span><Digit value={state.score.away} />
+      </div>
+      <div className="strip-team away">
+        <Crest key={`${state.run_id}-a`} team={state.away_team.id} tilt />
+        <span className="name">{state.away_team.name}</span><span className="code" aria-hidden="true">{away?.short}</span>
+      </div>
     </div>
-    <div className="bug-score" role="status" aria-label={`${state.home_team.name} ${state.score.home}, ${state.away_team.name} ${state.score.away}`}>
-      <Digit value={state.score.home} /><span className="sep" aria-hidden="true">–</span><Digit value={state.score.away} />
-    </div>
-    <div className="bug-team away">
-      <Crest team={state.away_team.id} />
-      <span className="bug-name">{state.away_team.name}</span>
-      <span className="bug-short" aria-hidden="true">{away?.short}</span>
-    </div>
-    <span className="bug-stripe" style={{ background: 'var(--vale)' }} />
-    <div className="bug-clock">
+    <div className="strip-clock">
       <b aria-label={`Match clock ${clockLabel(period, clockMs)}`}>{runningClock(period, clockMs)}</b>
-      <span className="long">{status === 'half' ? 'Half-time' : status === 'finished' ? 'Full-time' : periodLabel}</span>
-      <span className="short">{status === 'half' ? 'HT' : status === 'finished' ? 'FT' : state.latest_event_sequence === 0 ? 'Pre-match' : `${period}H · ${STATE_LABEL[status]}`}</span>
+      <span className="long">{periodLabel}</span>
+      <span className="short">{status === 'pre' ? 'Ready' : status === 'half' ? 'HT' : status === 'finished' ? 'FT' : `${period}H · ${STATE_LABEL[status]}`}</span>
     </div>
-    <div className="bug-state" data-state={status} title="Replay state (connection is shown in the top bar)">
-      <i aria-hidden="true" /><span>{STATE_LABEL[status]}</span>
-      <span className="sr-only">Replay {STATE_LABEL[status].toLowerCase()}</span>
+    <div className="strip-state" data-state={inspecting ? 'inspecting' : status}>
+      <i aria-hidden="true" />{inspecting ? `Inspecting sequence at ${inspecting}` : status === 'paused' ? `Paused at ${runningClock(period, clockMs)}` : STATE_LABEL[status]}
     </div>
   </section>;
 }
@@ -82,27 +76,6 @@ export function momentumSlots(buckets: MomentumBucket[]): { values: MomentumSlot
   });
   const totals = values.reduce((sum, v) => ({ harbor: sum.harbor + v.harbor, vale: sum.vale + v.vale }), { harbor: 0, vale: 0 });
   return { values, max: Math.max(.4, ...values.map(v => Math.max(v.harbor, v.vale))), totals };
-}
-
-/** Diverging bars drawn behind the scrubber: Harbor above the line, Vale below. Positions follow the replay
- * timeline (first half up to the half-time marker, second half after it). Static SVG: no per-frame animation. */
-export function MomentumTrack({ buckets, halfFraction }: { buckets: MomentumBucket[]; halfFraction: number }) {
-  const { values, max, totals } = momentumSlots(buckets);
-  const width = 1000, mid = 15, scale = 13;
-  const slotX = (index: number) => index < 10 ? (index / 10) * halfFraction * width : (halfFraction + ((index - 10) / 10) * (1 - halfFraction)) * width;
-  const slotW = (index: number) => (index < 10 ? halfFraction : 1 - halfFraction) * width / 10;
-  return <svg className="scrub-momentum" viewBox={`0 0 ${width} 30`} preserveAspectRatio="none" aria-hidden="true"
-    data-totals={`${fmt(totals.harbor, 2)}|${fmt(totals.vale, 2)}`}>
-    <line x1="0" x2={width} y1={mid} y2={mid} stroke="var(--hairline-strong)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-    {values.map((value, index) => {
-      const x = slotX(index) + 2, w = Math.max(1, slotW(index) - 4);
-      const h = (value.harbor / max) * scale, v = (value.vale / max) * scale;
-      return <g key={index}>
-        {h > 0 && <rect x={x} y={mid - h} width={w} height={h} rx="1.5" fill="var(--harbor)" opacity=".85" />}
-        {v > 0 && <rect x={x} y={mid + 1} width={w} height={v} rx="1.5" fill="var(--vale)" opacity=".85" />}
-      </g>;
-    })}
-  </svg>;
 }
 
 export function momentumSummary(buckets: MomentumBucket[]) {

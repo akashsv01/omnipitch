@@ -18,6 +18,8 @@ interface PitchProps {
   highlightIds?: string[];
   /** Evidence step currently selected in the drawer: drawn emphasised, the rest of the sequence dimmed. */
   emphasisId?: string;
+  /** Sequence mode: number the highlighted actions in order and reveal them one after another. */
+  numbered?: boolean;
   animate?: boolean;
   /** Replay speed: ball travel shortens as speed rises and stops at 20x so the drawing never lags the replay. */
   speed?: number;
@@ -31,7 +33,7 @@ const isBallWin = (event: Event) => event.type === 'interception' || BALL_WIN.ha
 
 /** Fixed 105 x 68 m frame, one viewBox unit per metre; x right, y down. Never rotated at halftime. */
 export function Pitch({ events, selected, onSelect, layers = DEFAULT_LAYERS, roster = [], players = [], network,
-  highlightIds, emphasisId, animate = true, speed = 1, compact = false }: PitchProps) {
+  highlightIds, emphasisId, numbered = false, animate = true, speed = 1, compact = false }: PitchProps) {
   const id = useId();
   const people = useMemo(() => playerIndex(roster), [roster]);
   const focus = selected ?? [...events].reverse().find(located);
@@ -44,6 +46,7 @@ export function Pitch({ events, selected, onSelect, layers = DEFAULT_LAYERS, ros
     return recent.filter(event => event.possession_id === focus.possession_id || event.sequence >= focus.sequence - 3);
   }, [events, focus, layers.trail, highlightIds]);
 
+  const badges = useMemo(() => numbered ? badgeSpots(trail) : [], [numbered, trail]);
   const density = useMemo(() => {
     if (!layers.density) return null;
     const cells = Array.from({ length: 12 }, () => new Array<number>(16).fill(0));
@@ -127,10 +130,19 @@ export function Pitch({ events, selected, onSelect, layers = DEFAULT_LAYERS, ros
         direction={directions.get(network.team) ?? (network.team === 'harbor' ? 'positive_x' : 'negative_x')} />}
 
       <g>
-        {trail.map((event, index) => <EventMark key={`${event.run_id}:${event.event_id}`} event={event} arrowId={`${id}-arrow`}
-          opacity={highlightIds ? (emphasisId && emphasisId !== event.event_id ? .35 : 1) : .18 + .52 * (index + 1) / trail.length}
-          weight={highlightIds ? (emphasisId === event.event_id ? 1.6 : 1) : .7 + .3 * (index + 1) / trail.length}
-          onSelect={onSelect} focus={emphasisId === event.event_id} />)}
+        {trail.map((event, index) => {
+          const mark = <EventMark key={`${event.run_id}:${event.event_id}`} event={event} arrowId={`${id}-arrow`}
+            opacity={highlightIds ? (emphasisId && emphasisId !== event.event_id ? .35 : 1) : .18 + .52 * (index + 1) / trail.length}
+            weight={highlightIds ? (emphasisId === event.event_id ? 1.6 : 1) : .7 + .3 * (index + 1) / trail.length}
+            onSelect={onSelect} focus={emphasisId === event.event_id} />;
+          if (!numbered) return mark;
+          // Ordered reveal: each step fades in after the one before it (once, on mount).
+          return <g key={`${event.run_id}:${event.event_id}`} className="seq-step"
+            style={animate ? { animation: `step-in .24s cubic-bezier(.23,1,.32,1) ${Math.min(index, 12) * .09}s both` } : undefined}>
+            {mark}
+            <StepBadge at={badges[index]} team={event.team_id} n={index + 1} dim={!!emphasisId && emphasisId !== event.event_id} />
+          </g>;
+        })}
       </g>
       {focus && focus.start && !highlightIds && <g>
         {/* Keyed by event: a new event, seek or run change unmounts the old path and ball, cancelling their animation. */}
@@ -141,6 +153,26 @@ export function Pitch({ events, selected, onSelect, layers = DEFAULT_LAYERS, ros
       </g>}
     </svg>
   </figure>;
+}
+
+/** Step badge positions beside each action's recorded start point. Consecutive actions often share a point
+ * (a ball win and the pass that follows), so each badge takes the first corner that clears earlier badges. */
+function badgeSpots(events: Event[]) {
+  const placed: { x: number; y: number }[] = [];
+  const corners = [[-1.9, -1.9], [1.9, -1.9], [-1.9, 1.9], [1.9, 1.9], [0, -3.4], [0, 3.4]];
+  for (const event of events) {
+    if (!event.start) { placed.push({ x: -10, y: -10 }); continue; }
+    const options = corners.map(([dx, dy]) => ({ x: Math.min(103.4, Math.max(1.6, event.start!.x + dx)), y: Math.min(66.4, Math.max(1.6, event.start!.y + dy)) }));
+    placed.push(options.find(spot => placed.every(other => Math.hypot(other.x - spot.x, other.y - spot.y) > 3.1)) ?? options[0]);
+  }
+  return placed;
+}
+
+function StepBadge({ at, team, n, dim }: { at: { x: number; y: number }; team: string | null; n: number; dim: boolean }) {
+  return <g aria-hidden="true" opacity={dim ? .45 : 1} pointerEvents="none">
+    <circle cx={at.x} cy={at.y} r="1.45" fill="rgba(9,18,17,.92)" stroke={teamTone(team)} strokeWidth=".22" />
+    <text x={at.x} y={at.y + .62} textAnchor="middle" fontSize="1.75" fill="var(--text)" style={{ fontFamily: 'var(--display)', fontWeight: 800 }}>{n}</text>
+  </g>;
 }
 
 const distance = (event: Event) => event.start && event.end ? Math.hypot(event.end.x - event.start.x, event.end.y - event.start.y) : 0;
@@ -263,7 +295,7 @@ export function PitchLegend({ compact = false }: { compact?: boolean }) {
   return <span className="legend">
     <span>{swatch(<line x1="1" y1="6" x2="15" y2="6" stroke="var(--harbor)" strokeWidth="2" />)}Harbor</span>
     <span>{swatch(<line x1="1" y1="6" x2="15" y2="6" stroke="var(--vale)" strokeWidth="2" />)}Vale</span>
-    <span>{swatch(<line x1="1" y1="6" x2="15" y2="6" stroke="var(--text-2)" strokeWidth="2" strokeDasharray="3 2" />)}Pass lost</span>
+    <span>{swatch(<line x1="1" y1="6" x2="15" y2="6" stroke="var(--text-2)" strokeWidth="2" strokeDasharray="3 2" />)}Incomplete pass</span>
     <span>{swatch(<><line x1="1" y1="6" x2="12" y2="6" stroke="var(--flood)" strokeWidth="2" /><circle cx="14" cy="6" r="3" fill="var(--flood)" /></>)}Shot / goal</span>
     {!compact && <span>{swatch(<path d="M9 1 L14 6 L9 11 L4 6 Z" fill="var(--text-2)" />)}Ball won</span>}
     {!compact && <span>{swatch(<rect x="6" y="2" width="6" height="8" rx="1" fill="var(--danger)" />)}Foul</span>}

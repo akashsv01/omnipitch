@@ -4,6 +4,21 @@ import { OFF_STATUS, PushClient, type PushSignal, type PushStatus, type SocketLi
 import type { ReplaySnapshot, Scenario, Speed } from '../types/contracts';
 
 export type Connection = 'connecting' | 'online' | 'offline';
+
+// The landing page asks for the current snapshot ahead of entry, so the match room can paint real data on
+// arrival instead of a long skeleton. It is read-only, used once, and discarded after 15 s.
+let primed: { at: number; snapshot: Promise<ReplaySnapshot> } | null = null;
+export function prefetchReplay() {
+  if (primed && performance.now() - primed.at < 15000) return;
+  const snapshot = fetchReplay(undefined, 0);
+  snapshot.catch(() => { primed = null; });
+  primed = { at: performance.now(), snapshot };
+}
+function takePrimed() {
+  const value = primed && performance.now() - primed.at < 15000 ? primed.snapshot : null;
+  primed = null;
+  return value;
+}
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unknown request error';
 
 /**
@@ -57,7 +72,8 @@ export function useReplay() {
           const known = latest.current;
           const full = needFull.current;
           needFull.current = false;
-          const next = await fetchReplay(known?.state.run_id, full ? 0 : known?.state.latest_event_sequence ?? 0);
+          const warm = known ? null : takePrimed();
+          const next = await (warm ?? fetchReplay(known?.state.run_id, full ? 0 : known?.state.latest_event_sequence ?? 0));
           if (active && current === generation.current) accept(next);
         } catch (error) {
           if (active && current === generation.current) {

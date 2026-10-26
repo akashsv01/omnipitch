@@ -134,48 +134,42 @@ Environment: `CORS_ORIGINS` (explicit localhost origins only; default `http://lo
 
 ## Frontend design system
 
-The direction is a broadcast studio with analytical precision. The pitch is the stage; chrome is quiet and grouped by alignment and hairlines rather than identical rounded cards. (Redesigned 2026-10-25.)
+Direction: "OmniPitch — football, seen differently". A warm, editorial landing page leads into a dark, focused match room built around a precise tactical pitch. (Reworked 2026-10-25 on branch `ui-matchdesk`; not merged or deployed.)
 
-- **Tokens** (in `style.css :root`; older names are aliases):
-  - Surfaces: background `#091211`, surface `#10201e`, raised `#172b28`.
-  - Text: `#f3f3ea`, secondary `#afbdb7`, tertiary `#839a93` (at least 4.96:1 on every surface).
-  - Colour meaning: Harbor coral `#ff806a` and Vale ice `#7dd8e7` always encode team; amber `#f2cc62` is the single action accent (shots, goals, focus, active states). Colour is never the only signal: symbols, labels and line styles carry the same meaning.
-- **Type:**
-  - Archivo, condensed through its width axis, for the score, clock, moment headlines and section titles only, never for small interface copy.
-  - IBM Plex Sans for interface and body text, with tabular figures. The `font` shorthand resets the numeric variant, so numeric displays re-assert `tabular-nums`.
-  - IBM Plex Mono for event IDs only.
-- **Layout (desktop):**
-  - A compact scorebug shows team identities, score, clock and period, and the replay state. Connection state sits in the top bar, separately.
-  - The pitch frame is sized from the remaining viewport height (`100dvh − 280px` of chrome), so the whole pitch and the replay bar fit at 1440×900 and 1366×768.
-  - The replay bar sits in reserved space under the pitch and never overlays it. Its scrubber doubles as the full-match momentum track, with a playhead.
-  - The moment rail: one featured insight (story, compact key values from the moment's own metrics, and separate "Show evidence" and "Replay from" actions) plus compact rows. While the reader is scrolled, hovering or focused in the rail, new moments wait behind an "N new moments" button.
-  - Analysis sits below the stage.
-  - Raw event counts, run IDs and backend details live in the footer's "Data source and diagnostics" disclosure.
-- **Layout (responsive):**
-  - The rail stacks below 980 px.
-  - Below 760 px: a compact scorebug (short codes, with the state in the clock line), a full-width pitch with the selected action written under it, and a fixed, thumb-sized replay bar with the page padded for it and safe-area insets. The evidence drawer becomes a full-screen sheet.
-  - Verified with no horizontal overflow at 1440, 1366, 768, 390 and 360 px.
-- **Pitch graphics:** recorded start and end points are joined by lines.
-  - Completed passes carry arrowheads; lost passes are dashed and end in a cross.
-  - Shots are amber, with a different end symbol per outcome (goal, saved or blocked, wide).
-  - Ball wins are filled diamonds and losses hollow; fouls are small red marks.
-  - Trails fade with recency and never join unrelated possessions. Attack-direction labels sit in the margin.
-  - One player label per focus action, placed away from its own line (hidden on phones in favour of the text line).
-  - The moving ball is illustrative interpolation between two recorded points of the same event and is labelled as such. No player positions, formations or tracking are drawn.
-- **Motion** (`motion` 12, plus CSS):
-  - Tokens are in `lib/motion.ts` and `--ease-*` / `--dur-*` (press 140 ms, switch 200 ms, enter 240 ms, drawer 300 ms; Emil Kowalski's ease-out, ease-in-out and drawer curves; no overshoot on data or positions).
-  - Ball travel and the pass draw are keyed by event, so a new event, seek, reset or run change cancels the old animation. They shorten at 5–10× and stop at 20× and above, so drawing never lags the authoritative replay.
-  - The goal ring and scorebug flash play once per goal event.
-  - No looping decoration (the old status pulse and live blink were removed).
-  - Reduced motion (OS setting or the in-app preference) swaps the drawer slide for a fade and turns off travel and draw.
-- **Performance:** the 8 Hz clock interpolation only re-renders the scorebug and the replay bar. The stage, rail and analysis are memoised with stable callbacks. Measured in the production build (headless Chromium, desktop): 60 fps (p95 frame 16.9 ms) and no long tasks at 5× and 20×.
-- **Accessibility:**
-  - Skip link to `main`, an `h1`, landmarks, SVG `title`/`desc` per pitch state.
-  - Labelled controls; a keyboard slider (←/→, Shift for 5 minutes, Home/End); Space to play or pause; arrow-key tabs.
-  - The evidence drawer traps focus, closes on Escape and restores focus. PPDA chart points are focusable, with a visible tooltip line.
-  - Live regions are limited to banners and recap status, so rapid event updates are not announced.
-- **Evidence drawer order:** what happened (current audience, with the other a click away); why it matters (the rule's definition); key calculated values; the numbered source sequence (selecting a step emphasises it on the drawer pitch, with "Replay this sequence"); calculation and rule version; limitations and provenance (IDs in a disclosure).
-- **Preferences** (audience, favourite team and player, layers, motion) live in `localStorage`. Favourites reorder moments within a recency band; they never change facts.
+- **Routes** (History API, no router dependency; `lib/route.ts`):
+  - `/` is the landing page and `/match` the match room. Each is its own lazy chunk; the landing page prefetches the match room when the browser is idle.
+  - Production nginx already serves `index.html` for unknown paths, so both survive a refresh. Back, Forward and the logo link work; returning visitors see the landing page settled, with no repeated entrance.
+  - Entering the match room only reads replay state. It never resets, starts or creates a run.
+- **Transition:** the View Transitions API morphs the hero pitch into the match-stage pitch (`view-transition-name: pitch`) while the page crossfades from ivory to forest, with the logo as the anchor (`brand`).
+  - The hero copy steps out first (160 ms); the destination chunk is awaited for at most 700 ms, after which the match room's own loading skeleton shows.
+  - Reduced motion, or a browser without the API, navigates at once.
+- **Brand:** the original pitch-and-arrow `BrandMark` (from commit 3ada323), with the OmniPitch wordmark, top left on every route. It uses fixed colours, plus a hairline edge for dark surfaces. On phones the wordmark yields to the audience switch; the mark and its accessible name stay.
+- **Tokens:**
+  - Match room (`style.css :root`): background `#091211`, surface `#10201e`, raised `#172b28`, text `#f3f3ea` / `#afbdb7` / `#8aa29b`.
+  - Landing (`landing.css`, landing chunk only): ivory `#f3efe5`, ink `#14201f`, cobalt `#3155e7` (5.1:1 on ivory), pale blue `#dce8f1`.
+  - Colour meaning: Harbor coral `#ff806a` and Vale cyan `#7dd8e7` always encode team; amber `#f2cc62` marks shots, goals and the active action. Cobalt and pale blue are brand-only and never encode teams or outcomes. The suggested warm orange was left out because it is too close to Harbor coral.
+- **Type:** Big Shoulders Display for scores, minutes and headlines; IBM Plex Sans for interface text, with tabular figures; IBM Plex Mono for IDs.
+- **Match room layout:**
+  - A compact score strip carries the replay state: ready, replaying, paused, half-time, full-time, or "Inspecting 26'". Connection state lives in the nav.
+  - The pitch frame is sized from the remaining height, so the whole pitch and the filmstrip fit without overlap at 1440×900 and 1366×768.
+  - The filmstrip sits in reserved space under the pitch (a fixed thumb bar on phones). It shows a match-time scale, the playhead, a static momentum band, goal pins, moment ticks, the inspected sequence's range with an explicit "Back to" action, a seek preview and keyboard seeking.
+  - The moments column is a spotlight plus a compact history. New moments never replace a picked moment; a "newer moments" button offers them instead.
+  - Analysis sits below the stage. Run IDs, the API URL and raw counts are in the footer disclosure.
+- **Fan and Analyst** share one state (run, replay position, score, clock, selected moment and evidence) and differ in composition:
+  - **Fan:** spacious spotlight with "What happened?" and "Why does it matter?", at most two plain values, "Why this matters" and "Replay moment". Advanced layers sit under "Explore tactics"; the legend is compact; fewer filters; tabs are Recap, Match stats, Players and Shot map. In the evidence drawer, numbers and calculation are disclosures.
+  - **Analyst:** "Moment inspector" with aligned metric rows (value, unit), threat before/after, trigger and thresholds, source events and versions. Layer chips are always visible. A selected-event inspector under the pitch shows coordinates, length and forward distance, and attack direction. The timeline has dense rows (minute, rule, team, key value, author); all six analysis tabs show. The evidence drawer has every section open, with a shown/stored value table.
+  - Each audience remembers its own pitch layers (`layers`, `analystLayers`).
+- **Display rounding:** one documented rule, `metricText` in `lib/format.ts`, mirrors the backend template formatter (`narrate.py _fmt`): ties to even at one decimal under 10, the shortest form at 10 and above, and threat and PPDA as stored. A story's number and the number beside it are therefore the same text. (It fixed a 7.2 m vs 7.3 m mismatch on `forward_progress = 7.25`; regression in `check-pitch.mjs`.)
+- **Pitch graphics:** recorded start and end points joined by lines; arrowheads for completed passes; dashed lines ending in a cross for losses; amber shots with outcome symbols; diamonds for ball wins. Trails fade and never join possessions. The moving ball is labelled illustrative.
+  - Sequence mode dims the history, numbers the steps (badges avoid each other) and reveals them in order.
+  - The goal ribbon appears once per validated goal during forward playback, never after a seek or load, and shows the authoritative score.
+- **3D:** plain `three`, in a single shared lazy chunk, used in two places, never at the same time:
+  - The landing hero: an illustrative slab, clearly labelled, that settles and then stops, with Replay and Pause controls.
+  - The evidence drawer's "2D / 3D" view of the selected moment's own source events: ribbons on the ground plane, a fixed full-pitch camera plus an overhead camera, and a local replay that never touches the shared run.
+  - Both render on demand, cap the pixel ratio at 1.5, pause when hidden or off screen, dispose everything on unmount, fall back to 2D or SVG without WebGL, and use a canvas-gradient contact shadow (no shadow maps, models or post-processing).
+- **Motion:** tokens in `lib/motion.ts` and `--dur-*` (press 140, switch 200, enter 240, drawer 300 ms; Emil Kowalski curves). Ball travel shortens with speed and stops at 20×; animations are keyed by event, so a seek or run change cancels them. Reduced motion collapses animation, skips the view transition and shows the 3D scenes settled.
+- **Accessibility:** skip links, landmarks, labelled controls, a keyboard slider, Space to play or pause, arrow-key tabs and radio groups. The evidence drawer traps focus, closes on Escape and restores focus. Crest tilt only applies with a fine pointer and without reduced motion.
+- **Preferences** (audience, favourites, per-audience layers, motion) live in `localStorage` and never change facts.
 
 ## Azure mode (Phase 2 cloud path)
 
@@ -597,6 +591,7 @@ The [archived decision log](archive/DECISIONS.md) preserves original rationale a
 | D014 | SQLite (stdlib) stands in for Eventhouse and Cosmos locally (2026-10-14): idempotent ledger, diagnostics, conditional moment creation and persisted replay position. The Python analytics adapter is the selected fallback while Fabric access is unproven. |
 | D015 | Metric and rule versions (`metrics-v1`, rules `v1`, `illustrative-threat-v1`) are stored with every moment. Thresholds are tuned on the seed-7 fixture and documented as defaults. |
 | D016 | Until a model is connected, every insight is a validated deterministic template labelled `fallback`; prompts, validator and eval set are ready for Phase 3. |
+| D020 | Frontend routes `/` (landing) and `/match` (match room) use the History API without a router dependency; the landing-to-match transition uses the View Transitions API with an immediate fallback. `three` (pinned 0.170.0) is the only 3D dependency, loaded lazily in one shared chunk; no React Three Fiber, models or post-processing (2026-10-25, branch `ui-matchdesk`). |
 | D018 | Azure mode (2026-10-15) is explicit (`OMNIPITCH_BACKEND_MODE`), identity-only (Azure Identity; no connection strings in config) and fails loudly; local generate/upload are refused in azure mode. Python `metrics-v1` stays the calculator over Eventhouse rows, with KQL parity queries as an independent check. |
 | D019 | Phase 2 cloud resources live in the Azure for Students subscription, `rg-omnipitch-dev`, East US (allowed-region policy: centralus, westus2, mexicocentral, eastus2, eastus). UMD disabled Fabric trials, so Fabric runs in a teammate's UF tenant: Eventstream reads Event Hubs cross-tenant via a listen-only SAS key, and per-service tenant settings pin tokens. |
 | D017 | Frontend motion uses `motion` 12.23.12 and icons use `lucide-react` 0.544.0; both are needed for the requested motion-rich UI. |
