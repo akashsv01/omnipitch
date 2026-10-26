@@ -670,3 +670,9 @@ main#match { animation: room-in var(--dur-enter) var(--ease-out) both; }
 .desk-stage::before { inset: 24px 0 40px; background: radial-gradient(64% 56% at 50% 46%, rgba(242, 204, 98, .045), rgba(125, 216, 231, .02) 45%, transparent 74%); }
 @media (min-width: 1001px) { .desk-spot { height: calc(100dvh - var(--nav-h) - var(--strip-h) - 34px); } }
 .stage-mode { flex-wrap: wrap; row-gap: 2px; }
+.lang-toggle button { padding: 4px 9px; font-size: 12px; letter-spacing: .04em; }
+.qa .said { display: inline; }
+.en-only { display: block; margin-top: 4px; font-size: 12px; color: var(--text-3); }
+@media (max-width: 480px) { .lang-toggle { display: none; } }
+/* The story text inside a Q&A paragraph is body copy, not a question label. */
+.qa span.said { display: inline; margin: 0; font: inherit; letter-spacing: normal; text-transform: none; color: inherit; }

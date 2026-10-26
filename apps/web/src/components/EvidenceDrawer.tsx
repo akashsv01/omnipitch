@@ -9,6 +9,7 @@ import { DUR, EASE_DRAWER, EASE_OUT, INDICATOR } from '../lib/motion';
 import { Pitch, PitchLegend } from './Pitch';
 import { RULE_ICON } from './MomentFeed';
 import type { CameraMode } from './Tactical3D';
+import { UI, localStory, useLanguage, whyEs } from '../lib/i18n';
 
 // three.js lives in its own chunk and is fetched only when someone opens the 3D view.
 const Tactical3D = lazy(() => import('./Tactical3D'));
@@ -94,8 +95,10 @@ export function EvidenceDrawer({ moment, events, roster, audience, aiMode, onClo
   }, [localPlaying, located.length, reduced]);
   useEffect(() => { if (view === '3d' && !webglAvailable()) { setNoGl('3D needs WebGL, which this browser does not provide.'); } }, [view]);
   const Icon = RULE_ICON[moment.rule];
-  const primary = fan ? moment.insight.casual_text : moment.insight.analyst_text;
-  const secondary = fan ? moment.insight.analyst_text : moment.insight.casual_text;
+  const language = useLanguage();
+  const story = localStory(moment, roster, language);
+  const primary = fan ? story.casual : story.analyst;
+  const secondary = fan ? story.analyst : story.casual;
   const rows = metricRows(moment);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -136,15 +139,16 @@ export function EvidenceDrawer({ moment, events, roster, audience, aiMode, onClo
             <span className="rule-tag"><Icon size={13} aria-hidden="true" />{RULE_LABEL[moment.rule]}</span>
             <span className="mode-badge" data-mode={gen}>{GENERATION_LABEL[gen]}</span>
           </div>
-          <h2 id="evidence-title">{moment.insight.headline}</h2>
+          <h2 id="evidence-title" lang={language}>{story.headline}</h2>
         </div>
         <button ref={closeRef} type="button" className="icon-button" onClick={onClose} aria-label="Close evidence"><X size={18} /></button>
       </div>
       <div className="drawer-body">
         <section className="drawer-section" aria-labelledby="ev-what">
           <h3 id="ev-what"><span className="step">1</span>{fan ? 'What happened, and why it matters' : 'Claim and explanation'}</h3>
-          <p className="lead">{primary}</p>
-          <p className="why"><b>Why it matters. </b>{whyItMatters(moment, audience)}</p>
+          <p className="lead" lang={story.englishOnly ? 'en' : language}>{primary}</p>
+          {story.englishOnly && <p className="hint">{UI[language].aiEnglish}</p>}
+          <p className="why" lang={language}><b>{UI[language].whyPrefix}</b>{language === 'es' ? whyEs(moment, audience) : whyItMatters(moment, audience)}</p>
           <button type="button" className="text-button quiet" aria-expanded={other} onClick={() => setOther(value => !value)} style={{ justifySelf: 'start' }}>
             {other ? 'Hide' : 'Show'} the {fan ? 'analyst' : 'fan'} explanation
           </button>

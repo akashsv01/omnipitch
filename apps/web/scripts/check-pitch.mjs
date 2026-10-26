@@ -112,4 +112,18 @@ assert.equal(evidence.generation(mk('goal', [], {}), 'off'), 'rule');
 assert.equal(evidence.generation(mk('goal', [], {}), 'cosmos'), 'pending');
 assert.equal(evidence.generation({ ...mk('goal', [], {}), insight: { generation_mode: 'fallback', limitations: ['AI narration unavailable (timeout); …'] } }, 'cosmos'), 'fallback');
 
+// Spanish rule-based stories follow the same branches and numbers; AI text is never machine-translated.
+const i18n = await import(moduleUrl(new URL('../src/lib/i18n.ts', import.meta.url)));
+const roster = [{ player_id: 'p1', name: 'Dario Wren' }];
+const es = moment => ({ ...moment, player_id: 'p1', period: 1, match_time_ms: 24 * 60000, insight: { headline: 'H', casual_text: 'C', analyst_text: 'A', generation_mode: 'fallback', limitations: [] } });
+const shotEs = i18n.storyEs(es(shortShot), roster);
+assert.match(shotEs.casual, /disparan 6,5 segundos después/);
+assert.doesNotMatch(shotEs.casual, /avanzan/);
+assert.match(i18n.storyEs(es(longNoShot), roster).casual, /42,2 m en 4,8 segundos\. La jugada no termina en disparo/);
+assert.equal(i18n.storyEs(es(opener), roster).headline, 'Vale Owls abren el marcador');
+assert.match(i18n.whyEs(es(leveller), 'fan'), /igualado 1–1/);
+const aiMoment = { ...es(opener), insight: { headline: 'AI headline', casual_text: 'AI text', analyst_text: 'AI analyst', generation_mode: 'ai', limitations: [] } };
+assert.deepEqual([i18n.localStory(aiMoment, roster, 'es').casual, i18n.localStory(aiMoment, roster, 'es').englishOnly], ['AI text', true]);
+assert.equal(i18n.localStory(es(opener), roster, 'en').headline, 'H');
+
 console.log('Pitch checks passed: both directions, boundary coordinates, empty state, period markers, layers, evidence highlighting, clock labels, metric display rounding and evidence-led explanations.');
