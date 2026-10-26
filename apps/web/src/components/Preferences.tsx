@@ -24,6 +24,12 @@ export function Preferences({ prefs, update, roster, onClose }: {
         {players.map(player => <option key={player.player_id} value={player.player_id}>{player.shirt} {player.name} ({player.position})</option>)}
       </select>
     </label>
+    <label className="field">Explanation language
+      <select value={prefs.language} onChange={event => update({ language: event.target.value as Prefs['language'] })}>
+        <option value="en">English</option>
+        <option value="es" lang="es">Español (rule-based explanations)</option>
+      </select>
+    </label>
     <label className="field">Motion
       <select value={prefs.motion} onChange={event => update({ motion: event.target.value as MotionPref })}>
         <option value="system">Follow system setting</option>

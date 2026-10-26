@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 
 export type Audience = 'fan' | 'analyst';
 export type MotionPref = 'system' | 'reduced' | 'full';
+export type Language = 'en' | 'es';
 export interface Prefs {
   audience: Audience;
+  /** Language of the moment explanations (rule-based stories); AI text stays in English. */
+  language: Language;
   favoriteTeam: string | null;
   favoritePlayer: string | null;
   motion: MotionPref;
@@ -15,7 +18,7 @@ export interface Prefs {
 
 const KEY = 'omnipitch.prefs.v1';
 export const DEFAULT_PREFS: Prefs = {
-  audience: 'fan', favoriteTeam: null, favoritePlayer: null, motion: 'system',
+  audience: 'fan', language: 'en', favoriteTeam: null, favoritePlayer: null, motion: 'system',
   layers: { trail: true, threat: false, density: false, network: false },
   analystLayers: { trail: true, threat: true, density: false, network: false },
 };

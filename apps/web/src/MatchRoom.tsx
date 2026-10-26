@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Database, RefreshCw, SlidersHorizontal, WifiOff, X } from 'lucide-react';
 import { AnalysisTabs, type TabRequest } from './components/AnalysisTabs';
 import { Brand } from './components/Crest';
+import { LanguageContext } from './lib/i18n';
 import { Filmstrip, type FilmRange } from './components/ControlDock';
 import { EvidenceDrawer } from './components/EvidenceDrawer';
 import { EventhousePanel } from './components/EventhousePanel';
@@ -147,11 +148,12 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
   const disabled = live.busy || live.connection === 'offline';
   const inspecting = inspect ? `${clockLabel(inspect.period, inspect.match_time_ms)}` : null;
 
-  return <div className="shell" data-audience={prefs.audience}>
+  return <LanguageContext.Provider value={prefs.language}><div className="shell" data-audience={prefs.audience}>
     <a className="skip-link" href="#match">Skip to the match</a>
     <header className="nav">
       <Brand onNavigate={onHome} tagline="Match room" />
       <AudienceToggle value={prefs.audience} onChange={audience => updatePrefs({ audience })} />
+      <LanguageToggle value={prefs.language} onChange={language => updatePrefs({ language })} />
       <span className="nav-sep" aria-hidden="true" />
       {replay && <SourceBadge replay={replay} />}
       <span className="nav-status" data-state={live.connection} role="status" title="Connection to the match API (separate from the replay state)">
@@ -249,7 +251,7 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
           audience={prefs.audience} aiMode={replay.insights.status === 'off' ? 'off' : replay.insights.mode} onClose={() => setEvidence(undefined)} onReplay={moment => { setEvidence(undefined); jumpTo(moment); }} />}
       </AnimatePresence>
     </>}
-  </div>;
+  </div></LanguageContext.Provider>;
 }
 
 type Snapshot = NonNullable<ReturnType<typeof useReplay>['replay']>;
@@ -268,6 +270,16 @@ function SourceBadge({ replay }: { replay: Snapshot }) {
   return <span className="nav-status nav-source" title={`${sourceLabel(replay)}${detail ? ` · ${detail}` : ''}`} data-state={mode === 'azure' && source !== 'eventhouse' ? 'offline' : undefined}>
     <Database size={14} aria-hidden="true" />{label}
   </span>;
+}
+
+/** Language of the moment explanations. Interface chrome stays in English; AI-written text is English only. */
+function LanguageToggle({ value, onChange }: { value: 'en' | 'es'; onChange: (value: 'en' | 'es') => void }) {
+  return <div className="segmented small lang-toggle" role="group" aria-label="Explanation language / Idioma de las explicaciones">
+    {(['en', 'es'] as const).map(code => <button key={code} type="button" aria-pressed={value === code} lang={code}
+      aria-label={code === 'en' ? 'English explanations' : 'Explicaciones en español'} onClick={() => onChange(code)}>
+      {value === code && <motion.span layoutId="lang-thumb" className="thumb" transition={INDICATOR} />}{code.toUpperCase()}
+    </button>)}
+  </div>;
 }
 
 function AudienceToggle({ value, onChange }: { value: Audience; onChange: (value: Audience) => void }) {

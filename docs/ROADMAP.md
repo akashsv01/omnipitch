@@ -401,7 +401,7 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
   - **Reading:** detection and publication take seconds. End-to-end time is dominated by narration queueing behind the model rate limit, not by per-call latency. Ingest → detect includes about one extra cycle, while the previous run was still inside the bridge's 2-minute re-check window.
   - Cost per day is tracked outside the repository.
 - [x] Freeze contracts and scope (joint; recorded 2026-10-25 and agreed through review of this change). From here on, bug fixes only.
-- [ ] Bilingual text: only if time allows after the freeze; the guide makes a second language optional once the MVP gates pass.
+- [x] Bilingual text (the freeze's one stated exception), 2026-10-26: Spanish versions of the rule-based stories, "why it matters" and key labels, built in the frontend from the same moment facts (`apps/web/src/lib/i18n.ts`), with an EN/ES switch and a Preferences setting. No schema or backend change. AI-written text stays in English and is labelled so. Checked by `test:pitch` and in the browser.
 
 **Repository hygiene (Tanmayee, 2026-10-25):** subscription and tenant IDs, resource names, deployed URLs, university names and cost figures were removed from the docs, README and infra scripts before the repository goes public. The infra scripts now take every environment-specific name as a required parameter. Earlier commits in git history still contain some of these identifiers; none is a key, password or connection string.
 
@@ -426,7 +426,7 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
 - [ ] Release tag and submission verification (Tanmayee).
 - [ ] Cross-browser demo, storyboard, screenshots, a video under two minutes, link checks and the final submission review (Akash).
 - [ ] Delete the Event Hubs namespace after the freeze, unless a new demo run is needed (Akash).
-- [ ] Landing page, match-room overhaul, distinct Fan/Analyst compositions and lazy 3D replay: implemented locally on branch `ui-matchdesk` (2026-10-25), not merged or deployed. It conflicts with the Phase 5 scope freeze, so merging needs Tanmayee's agreement.
+- [ ] Landing page, match-room overhaul, distinct Fan/Analyst compositions and lazy 3D replay: merged to `main` in PR #25 (2026-10-26) at Akash's direction. Redeploying the web and API images is pending; Tanmayee runs it in her subscription. After the redeploy, re-run the live smoke and cross-browser checks against the new UI.
   - 2026-10-25, local, headless Chromium (Playwright) against the local API, dev and production builds. PASS: typecheck; `test:contracts`; `test:pitch` (including a new display-rounding regression); `test:push`; production build; `test:replay:browser` (now entering at `/match`).
   - PASS (browser): landing and direct `/match`; refresh on both routes; Back/Forward; logo home link; entering before the hero 3D loads; audience choice carried from the landing page; Fan/Analyst switching keeps run, sequence, score, clock and the inspected moment (checked at 1440 and 390 px).
   - PASS (browser): play/pause, speed and seek; inspect and return; evidence open and close, Escape and focus restore; 2D/3D switching ×6 leaves one canvas, and none after closing; no WebGL draw calls at idle or while hidden; WebGL-unavailable fallback; reduced motion skips the view transition; keyboard seek and audience switch; goal ribbon once and not after a seek; full-time state; simulated disconnect and Retry.

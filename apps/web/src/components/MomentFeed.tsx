@@ -8,6 +8,10 @@ import { GENERATION_LABEL, GENERATION_SHORT, calculationRows, generation, keyVal
 // The insight source mode, for honest per-card generation labels without threading a prop through every row.
 const AiMode = createContext('off');
 import { Crest } from './Crest';
+import { UI, localStory, useLanguage, whyEs } from '../lib/i18n';
+
+// The roster, for player names in the Spanish stories, without threading it through every row.
+const RosterCtx = createContext<Player[]>([]);
 
 export const RULE_ICON: Record<Rule, typeof Goal> = {
   goal: Goal, chance: Crosshair, threat_gain: ArrowUpRight, transition: Repeat2, pressing_change: Radar,
@@ -26,6 +30,7 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
   onEvidence: (moment: Moment) => void; onJump: (moment: Moment) => void; onRecap: () => void;
 }) {
   const fan = audience === 'fan';
+  const language = useLanguage();
   const [filter, setFilter] = useState<'all' | Rule>('all');
   const runId = moments[0]?.run_id;
 
@@ -78,11 +83,11 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
   const Spot = fan ? FanSpotlight : AnalystInspector;
   const Row = fan ? FanRow : AnalystRow;
 
-  return <AiMode.Provider value={aiMode}><aside className="desk-spot" data-audience={audience} aria-labelledby="moments-title">
+  return <AiMode.Provider value={aiMode}><RosterCtx.Provider value={roster}><aside className="desk-spot" data-audience={audience} aria-labelledby="moments-title">
     {/* Remounted per audience so only this supporting panel animates on a mode change; its state lives above. */}
     <div key={audience} className="mode-swap">
     <div className="spot-head">
-      <h2 id="moments-title">{fan ? 'Key moments' : 'Moment inspector'}</h2>
+      <h2 id="moments-title">{fan ? UI[language].keyMoments : 'Moment inspector'}</h2>
       <p>{shown.length ? `${shown.length} detected so far` : 'Detected from the events'}{favoriteName ? `, ${favoriteName} first` : ''}
         {shown.length > 0 && <> · <button type="button" className="text-button inline" onClick={onRecap}>Match recap</button></>}</p>
     </div>
@@ -124,7 +129,7 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
       </div>
     </div>
     </div>
-  </aside></AiMode.Provider>;
+  </aside></RosterCtx.Provider></AiMode.Provider>;
 });
 
 export function AuthorTag({ moment }: { moment: Moment }) {
@@ -160,20 +165,22 @@ function StatusLine({ moment }: { moment: Moment }) {
 /** Fan: one takeaway. What happened, why it matters, at most two plain values, two clear actions. */
 function FanSpotlight({ moment, favorite, fresh, pinned, onEvidence, onJump, onInspect }: SpotProps) {
   const values = keyValues(moment, 'fan');
+  const language = useLanguage(), t = UI[language], lang = language;
+  const story = localStory(moment, useContext(RosterCtx), language);
   return <article className={`spotlight fan${fresh ? ' moment-enter' : ''}`} data-rule={moment.rule} style={{ ['--tone' as string]: teamTone(moment.team_id) }}
     aria-labelledby={`spot-${moment.moment_id}`}>
     <SpotMeta moment={moment} favorite={favorite} />
-    <h3 id={`spot-${moment.moment_id}`}>{moment.insight.headline}</h3>
-    <div className="qa">
-      <p><span>What happened?</span>{moment.insight.casual_text}</p>
-      <p><span>Why does it matter?</span>{whyItMatters(moment, 'fan')}</p>
+    <h3 id={`spot-${moment.moment_id}`} lang={lang}>{story.headline}</h3>
+    <div className="qa" lang={lang}>
+      <p><span>{t.whatHappened}</span><span className="said" lang={story.englishOnly ? 'en' : lang}>{story.casual}</span>{story.englishOnly && <small className="en-only">{t.aiEnglish}</small>}</p>
+      <p><span>{t.whyMatters}</span>{language === 'es' ? whyEs(moment, 'fan') : whyItMatters(moment, 'fan')}</p>
     </div>
     {values.length > 0 && <dl className="key-values">
-      {values.map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}{item.unit && <small>{item.unit}</small>}</dd></div>)}
+      {values.map(item => <div key={item.label}><dt>{t[item.label] ?? item.label}</dt><dd>{language === 'es' ? item.value.replace('.', ',') : item.value}{item.unit && <small>{item.unit}</small>}</dd></div>)}
     </dl>}
     <div className="spot-actions">
-      <button type="button" className="button primary" onClick={() => onEvidence(moment)}><FileSearch size={15} aria-hidden="true" />Why this matters</button>
-      <button type="button" className="button ghost" onClick={() => onJump(moment)}><RotateCcw size={14} aria-hidden="true" />Replay moment</button>
+      <button type="button" className="button primary" onClick={() => onEvidence(moment)}><FileSearch size={15} aria-hidden="true" />{t.whyBtn}</button>
+      <button type="button" className="button ghost" onClick={() => onJump(moment)}><RotateCcw size={14} aria-hidden="true" />{t.replay}</button>
       <button type="button" className="text-button quiet" aria-pressed={pinned} onClick={onInspect}><Eye size={14} aria-hidden="true" />{pinned ? 'Return to replay' : 'Show sequence on pitch'}</button>
     </div>
     <StatusLine moment={moment} />
@@ -182,18 +189,20 @@ function FanSpotlight({ moment, favorite, fresh, pinned, onEvidence, onJump, onI
 
 /** Analyst: an inspector. Aligned metric rows with units, the calculation and trigger, the source events. */
 function AnalystInspector({ moment, favorite, fresh, pinned, onEvidence, onJump, onInspect }: SpotProps) {
+  const language = useLanguage();
+  const story = localStory(moment, useContext(RosterCtx), language);
   const rows = metricRows(moment);
   const calc = calculationRows(moment).filter(([term]) => term !== 'Trigger' && term !== 'Rule version');
   return <article className={`spotlight analyst${fresh ? ' moment-enter' : ''}`} data-rule={moment.rule} style={{ ['--tone' as string]: teamTone(moment.team_id) }}
     aria-labelledby={`spot-${moment.moment_id}`}>
     <SpotMeta moment={moment} favorite={favorite} />
-    <h3 id={`spot-${moment.moment_id}`}>{moment.insight.headline}</h3>
-    <p className="story">{moment.insight.analyst_text}</p>
+    <h3 id={`spot-${moment.moment_id}`} lang={language}>{story.headline}</h3>
+    <p className="story" lang={story.englishOnly ? 'en' : language}>{story.analyst}{story.englishOnly && <small className="en-only"> {UI[language].aiEnglish}</small>}</p>
     <table className="inspect-table" aria-label="Metrics">
       <tbody>
         {rows.map(row => <tr key={row.name}><th scope="row">{row.label}</th><td className="num">{row.shown}</td><td className="unit">{row.unit}</td></tr>)}
         {calc.map(([term, value]) => <tr key={term}><th scope="row">{term}</th><td colSpan={2}>{value}</td></tr>)}
-        <tr><th scope="row">Why flagged</th><td colSpan={2}>{whyItMatters(moment, 'analyst')}</td></tr>
+        <tr><th scope="row">Why flagged</th><td colSpan={2} lang={language}>{language === 'es' ? whyEs(moment, 'analyst') : whyItMatters(moment, 'analyst')}</td></tr>
         <tr><th scope="row">Source events</th><td colSpan={2} className="mono">{moment.evidence_ids.length} · {moment.evidence_ids[0]}{moment.evidence_ids.length > 1 ? ` … ${moment.evidence_ids[moment.evidence_ids.length - 1]}` : ''}</td></tr>
         <tr><th scope="row">Versions</th><td colSpan={2}>{moment.rule_version} · {moment.metric_version}</td></tr>
       </tbody>
@@ -210,11 +219,12 @@ function AnalystInspector({ moment, favorite, fresh, pinned, onEvidence, onJump,
 interface RowProps { moment: Moment; favorite: boolean; chosen: boolean; onChoose: () => void }
 
 function FanRow({ moment, favorite, chosen, onChoose }: RowProps) {
+  const language = useLanguage(), roster = useContext(RosterCtx);
   const Icon = RULE_ICON[moment.rule];
   return <button type="button" className="moment-row" aria-pressed={chosen} onClick={onChoose}
     style={{ ['--tone' as string]: teamTone(moment.team_id) }} data-rule={moment.rule}>
     <span className="minute">{clockLabel(moment.period, moment.match_time_ms)}</span>
-    <span className="title">{moment.insight.headline}</span>
+    <span className="title" lang={language}>{localStory(moment, roster, language).headline}</span>
     <AuthorTag moment={moment} />
     <span className="sub"><Icon size={12} aria-hidden="true" />{RULE_LABEL[moment.rule]}
       {favorite && <Star size={11} fill="var(--amber)" color="var(--amber)" aria-label="Involves your favourite" />}</span>

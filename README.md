@@ -8,7 +8,7 @@ Phases 1–5 are complete, and the scope is frozen for submission (bug fixes onl
 
 simulator → Azure Event Hubs → Fabric Eventstream → Eventhouse (KQL) → bridge worker → Cosmos DB (moments, narration jobs, period reconciliations) → narration worker (`gpt-4.1-mini`, Entra ID) → API → Web PubSub push → browser.
 
-- **Grounded AI narration**: each moment gets exactly one insight. The model's text is checked in code against the moment's evidence; anything that fails, or any job that hits the model's rate limit, keeps a labelled deterministic template. Every moment shows **AI** or **Template**.
+- **Grounded AI narration**: each moment gets exactly one insight. The model's text is checked in code against the moment's evidence; anything that fails, or any job that hits the model's rate limit, keeps a labelled deterministic template. Every moment shows how its text was produced: **AI · validated**, **Rule-based**, or a labelled fallback.
 - **Recaps**: half-time and full-time recaps built from verified moments, marked **Reconciled** once the bridge has checked that period.
 - **Live push**: Web PubSub tells the browser when a new snapshot is ready; the snapshot API stays the source of truth.
 - **Deployment**: the API and UI run on Azure Container Apps with a managed identity (no keys), scale to zero and preload a full demo match.
@@ -22,20 +22,31 @@ Everything below also runs locally without cloud credentials:
 - **Moment detection**: goal, chance, threat gain, transition and pressing-change rules. Moment IDs are stable, evidence is frozen at detection time, and moments are created conditionally.
 - **Ledger ingestion**: `(run_id, event_id)` deduplication, conflict and invalid diagnostics, and metrics computed only over a gap-free sequence prefix.
 - **Grounded narration groundwork**: Analyst/Coach/Broadcaster prompts, an evidence-packet builder, a code-side output validator, a deterministic fallback narrator and a 34-case evaluation set. Locally, without the cloud workers, every insight is a deterministic template.
-- **Web app**: a landing page (`/`) with an illustrative 3D pitch, leading into the match room (`/match`): a broadcast-style match room with an animated 2D pitch (ball travel, shot ripples, goal celebration, recent-play trail, plus threat-grid, event-density and pass-network layers), a ticking scoreboard and momentum strip, a moment spotlight with distinct Fan and Analyst compositions and favourite-player priority, an evidence drawer with a lazy-loaded 3D view of the source sequence, and analysis tabs (team comparison, PPDA chart, players, shot map, data quality with a live duplicate-delivery test). Reduced-motion and keyboard support are included.
+- **Web app**: a landing page (`/`) with an illustrative 3D pitch, leading into the match room (`/match`): a broadcast-style match room with an animated 2D pitch (ball travel, shot ripples, goal celebration, recent-play trail, plus threat-grid, event-density and pass-network layers), a ticking scoreboard and momentum strip, a moment spotlight with distinct Fan and Analyst compositions and favourite-player priority, an evidence drawer with a lazy-loaded 3D view of the source sequence, rule-based explanations in English or Spanish, and analysis tabs (team comparison, PPDA chart, players, shot map, data quality with a live duplicate-delivery test). Reduced-motion and keyboard support are included.
 
 ## Try the live demo
 
 The demo address is in the submission form.
 
 1. Open it. The first load after a quiet period can take up to a minute while the app starts; if the page says it can't reach the match API, wait a few seconds and press **Try again**.
-2. Press **Play** (or Space). The preloaded match replays at 20×; the scrubber shows where moments are.
-3. Watch **Key moments**: each card is labelled **AI** or **Template**. The first AI-narrated moments appear around 25'; drag the scrubber or click a moment tick to jump.
-4. Press **Show evidence** on any moment: the calculation, the source events and the limitations behind the text.
-5. Switch **Fan view** / **Analyst view** at the top: the same facts, worded for each audience.
-6. Open **Match analysis → Recap** for the half-time or full-time recap (marked **Reconciled**), and **Data quality** for the live-push link and the count of AI-written and checked insights.
+2. Choose **Fan** or **Analyst** and select **Enter match room** (or open `/match` directly). Press **Start replay** (or Space); the filmstrip under the pitch shows where goals and moments are.
+3. Watch **Key moments**: each one says how its text was produced (**AI · validated** or **Rule-based**). The first AI-narrated moments appear around 25'; click a goal pin or a moment to jump or inspect it.
+4. Press **Why this matters** (Fan) or **Inspect evidence** (Analyst): the explanation, the numbered source sequence (2D, or 3D on demand), the values, the trigger and the limitations.
+5. Switch **Fan view** / **Analyst view** at the top: the same facts and replay position, presented for each audience. **EN / ES** switches the rule-based explanations to Spanish (AI-written text stays in English).
+6. Select **Match recap** (or **Match analysis → Recap**) for the half-time or full-time recap (marked **Reconciled** when final), and **Data quality** for the live-push link and the count of AI-written and checked insights.
 
 The replay is shared by everyone viewing the site, so another viewer's play, pause or seek moves yours too. All teams, players and events are synthetic.
+
+## Known limitations
+
+Recorded against the challenge brief; none is hidden in the UI.
+
+- **No player tracking:** the synthetic data has event locations only, so there is no player speed or distance, no off-ball movement and no formations.
+- **Not built:** pass-difficulty ratings, ball or shot speed, auto-eventing from video, explicit pressure or possession-change event types, and a broadcast-overlay output.
+- **Personalisation:** a favourite team or player reorders and highlights moments; there is no mode that follows one player through the match.
+- **Language:** rule-based explanations are available in English and Spanish. AI-written text and the rest of the interface are English only.
+- **AI latency:** a moment is detected within seconds, but its AI text arrives minutes later (p50 about 5.5 min), limited by the model's tokens-per-minute quota. Until then, the rule-based text is shown and labelled. AI recap rewriting is off in the deployment.
+- **One shared replay:** everyone viewing the site sees the same replay state.
 
 ## Local setup
 
