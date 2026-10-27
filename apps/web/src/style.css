@@ -61,7 +61,7 @@
   --strip-h: 64px;
   --film-h: 104px;
   --spot-w: 384px;
-  --stage-chrome: 448px;        /* nav + strip + stage header + legend + control bar + gaps at desktop */
+  --stage-chrome: 470px;        /* nav + strip + stage header + legend + control bar + gaps at desktop */
   color-scheme: dark;
 }
 
@@ -611,7 +611,7 @@ footer.foot dd { margin: 0; overflow-wrap: anywhere; }
 .spotlight.fan .key-values dd { font-size: 26px; }
 
 /* Analyst inspector: aligned rows, not paragraphs. */
-.shell[data-audience="analyst"] { --spot-w: 432px; --stage-chrome: 550px; /* + the layer row and the event inspector row */ }
+.shell[data-audience="analyst"] { --spot-w: 432px; --stage-chrome: 572px; /* + the layer row and the event inspector row */ }
 .shell[data-audience="analyst"] .desk { column-gap: var(--s5); }
 .spotlight.analyst { gap: 10px; padding: var(--s3) var(--s3) var(--s3) calc(var(--s3) + 4px); background: var(--surface); }
 .spotlight.analyst .spot-minute { font-size: 24px; }
@@ -845,22 +845,27 @@ th .num small, th small { font-weight: 400; color: var(--text-3); }
   .stage-head .commentary { display: block; margin-left: auto; }
   .stage-head .commentary-menu { bottom: auto; top: calc(100% + 8px); right: 0; }
 }
-/* The story so far: one grounded sentence between the score and the room, so the reading order is score, story, moments, analysis. */
-.story-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px var(--s4); padding: 10px 0; border-bottom: 1px solid var(--line); }
-.story-line > p:first-child { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; margin: 0; font-size: 15px; line-height: 1.45; color: var(--text); }
-.story-line > p:first-child svg { flex: none; align-self: center; color: var(--amber); }
-.story-line > p:first-child b { flex: none; font-weight: 600; color: var(--amber); }
-.story-line > .text-button { flex: none; font-size: 14px; }
-.story-intro { flex-basis: 100%; display: flex; align-items: center; gap: 10px; margin: 0; padding: 2px 4px 2px 12px; border-radius: var(--r2); background: var(--amber-soft); border: 1px solid rgba(235, 203, 112, .3); font-size: 13.5px; color: var(--text-2); }
-.story-intro span { flex: 1; min-width: 0; }
-.story-intro .icon-button { width: 28px; height: 28px; flex: none; }
 .film-pin { cursor: pointer; }
 .film-pin[data-rule="goal"] { z-index: 2; }  /* a goal is never hidden under a nearby chance */
+/* Now bar: where the match is, the story so far, and the one next step. The first thing read after the score. */
+.now-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px var(--s5); padding: 12px 0; border-bottom: 1px solid var(--line); }
+.now-text { flex: 1; min-width: 0; margin: 0; font-size: 15.5px; line-height: 1.45; color: var(--text-2); text-wrap: pretty; }
+.now-text b { color: var(--text); font-weight: 700; }
+.now-actions { display: flex; align-items: center; gap: var(--s4); flex: none; }
+.now-actions .button { min-height: 38px; }
+.now-intro { flex-basis: 100%; display: flex; align-items: center; gap: 10px; margin: 0; padding: 2px 4px 2px 12px; border-radius: var(--r2); background: var(--amber-soft); border: 1px solid rgba(235, 203, 112, .3); font-size: 13.5px; color: var(--text-2); }
+.now-intro span { flex: 1; min-width: 0; }
+.now-intro .icon-button { width: 28px; height: 28px; flex: none; }
+.key-band { flex-basis: 100%; font-size: 12.5px; color: var(--text-3); }
+/* Trust panel: the counts as a row of big numbers, then the method. */
+.trust-stats { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.trust-stats div { flex-direction: column-reverse; align-items: flex-start; gap: 4px; padding: 10px 12px; border-radius: var(--r2); background: var(--inset); }
+.trust-stats dd { font-size: 26px; }
+.trust-stats dt { font-size: 12.5px; line-height: 1.35; }
 @media (max-width: 760px) {
-  .story-line > p:first-child { font-size: 14px; flex-wrap: wrap; row-gap: 2px; }
-  .story-line > p:first-child { flex-basis: 100%; }
-  .story-line > p:first-child span { flex-basis: 100%; }
+  .now-bar { padding: 10px 0; }
+  .now-text { flex-basis: 100%; font-size: 14.5px; }
+  .now-actions { width: 100%; justify-content: space-between; }
 }
-/* The one-time intro takes a row: the pitch gives up that height so the transport stays on screen. */
-.shell:has(.story-intro) { --stage-chrome: 488px; }
-.shell[data-audience="analyst"]:has(.story-intro) { --stage-chrome: 590px; }
+.shell:has(.now-intro) { --stage-chrome: 506px; }
+.shell[data-audience="analyst"]:has(.now-intro) { --stage-chrome: 608px; }

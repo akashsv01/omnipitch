@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import { t } from '../lib/i18n';
 import { useTr } from '../lib/i18n';
 import { AnimatePresence, motion } from 'motion/react';
-import { Flame, GitFork, Grid3x3, Play, Route, SlidersHorizontal, X } from 'lucide-react';
+import { CircleHelp, Flame, GitFork, Grid3x3, Play, Route, SlidersHorizontal } from 'lucide-react';
 import type { Event, Moment, ReplaySnapshot } from '../types/contracts';
 import type { Audience, Prefs } from '../lib/prefs';
 import { RULE_LABEL, clockLabel, eventLabel, metricText, playerIndex, teamTone } from '../lib/format';
@@ -30,10 +30,10 @@ const sameLayers = (a: Layers, b: Layers) => a.trail === b.trail && a.threat ===
 
 /** The pitch as the stage. Two modes: following the newest event, or inspecting one moment's source sequence
  * (numbered steps on a quieter pitch). Pre-match shows the fixture and an explicit start. */
-export const MatchStage = memo(function MatchStage({ replay, selected, onSelect, prefs, updatePrefs, goal, animate, audience, inspect, onStopInspect, onStart, startDisabled, commentary, subtitle }: {
+export const MatchStage = memo(function MatchStage({ replay, selected, onSelect, prefs, updatePrefs, goal, animate, audience, inspect, onStart, startDisabled, commentary, subtitle }: {
   replay: ReplaySnapshot; selected?: Event; onSelect: (event: Event | undefined) => void; prefs: Prefs;
   updatePrefs: (patch: Partial<Prefs>) => void; goal: Event | null; animate: boolean; audience: Audience;
-  inspect: Moment | null; onStopInspect: () => void; onStart: () => void; startDisabled: boolean;
+  inspect: Moment | null; /** Returning to the replay lives in the Now bar and the moment card. */ onStopInspect?: () => void; onStart: () => void; startDisabled: boolean;
   /** Live commentary controls, in the header row so they cost no height above the pitch. */
   commentary?: React.ReactNode;
   /** The spoken line as a subtitle over the bottom of the pitch (below it on phones). */
@@ -49,6 +49,8 @@ export const MatchStage = memo(function MatchStage({ replay, selected, onSelect,
   const layerKey = fan ? 'layers' : 'analystLayers';
   const layers = prefs[layerKey];
   const [tactics, setTactics] = useState(false);
+  // Fans get the pitch without footnotes; what the lines and colours mean opens on demand.
+  const [keyOpen, setKeyOpen] = useState(false);
   const preset = PRESETS.find(p => sameLayers(p.layers, layers))?.id ?? 'custom';
   const [combine, setCombine] = useState(false);
   const combining = combine || preset === 'custom';
@@ -79,11 +81,12 @@ export const MatchStage = memo(function MatchStage({ replay, selected, onSelect,
       <h2 id="pitch-title">{tr('Match pitch')}</h2>
       {inspect
         ? <span className="stage-mode" data-mode="inspecting" role="status">
-            {tr('Inspecting')} <b>{clockLabel(inspect.period, inspect.match_time_ms)} {RULE_LABEL[inspect.rule].toLowerCase()}</b>
-            <button type="button" className="text-button" onClick={onStopInspect}><X size={14} aria-hidden="true" />{tr('Return to replay')}</button>
+            {tr('Inspecting')} <b>{clockLabel(inspect.period, inspect.match_time_ms)} {tr(RULE_LABEL[inspect.rule]).toLowerCase()}</b>
           </span>
-        : <span className="stage-mode">{selected ? tr('Showing a selected event') : pre ? tr('Waiting for kick-off') : tr('Following replay')}</span>}
+        : <span className="stage-mode">{selected ? tr('Showing a selected event') : pre ? tr('Waiting for kick-off') : tr('The latest passes, as they happen')}</span>}
       {commentary}
+      {fan && !inspect && <button type="button" className="chip" aria-expanded={keyOpen} aria-controls="pitch-key" onClick={() => setKeyOpen(open => !open)}>
+        <CircleHelp size={14} aria-hidden="true" />{tr('Key')}</button>}
       {fan
         ? <div className="tactics">
             <button type="button" className="chip" aria-expanded={tactics} aria-controls="tactics-panel" onClick={() => setTactics(open => !open)}>
@@ -118,11 +121,12 @@ export const MatchStage = memo(function MatchStage({ replay, selected, onSelect,
       </AnimatePresence>
       {focus && !inspect && !pre && !goal && <Annotation event={focus} name={people.get(focus.player_id ?? '')?.name} pinned={!!selected} onClear={() => onSelect(undefined)} />}
     </div>
-    <div className="stage-foot">
+    {(!fan || inspect || keyOpen) && <div className="stage-foot" id="pitch-key">
       {inspect ? <span>{caption}</span>
         : <LayerKey layers={layers} attackingTeam={focus?.team_id ?? 'harbor'} networkTeam={networkTeam} onTeam={setTeamPick} />}
       <PitchLegend compact={fan} />
-    </div>
+      {fan && !inspect && <span className="key-band">{tr('The band shows who moved the ball into danger, Harbor above and Vale below. It is not a win probability.')}</span>}
+    </div>}
     {!fan && focus && !pre && <EventInspector event={inspect ? undefined : focus} moment={inspect} events={replay.events} name={people.get(focus.player_id ?? '')?.name} />}
   </section>;
 });

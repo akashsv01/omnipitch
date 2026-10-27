@@ -223,10 +223,9 @@ function StatusLine({ moment }: { moment: Moment }) {
   </p>;
 }
 
-/** Fan: one takeaway. What happened, why it matters, at most two plain values, two clear actions. */
+/** Fan: one takeaway. What happened, why it matters and one main action; the numbers live in the evidence. */
 function FanSpotlight({ moment, favorite, fresh, pinned, nowClock, onEvidence, onJump, onInspect }: SpotProps) {
   const tr = useTr();
-  const values = keyValues(moment, 'fan');
   const language = useLanguage(), t = UI[language], lang = language;
   const story = localStory(moment, useContext(RosterCtx), language);
   return <article className={`spotlight fan${fresh ? ' moment-enter' : ''}`} data-rule={moment.rule} style={{ ['--tone' as string]: teamTone(moment.team_id) }}
@@ -237,13 +236,10 @@ function FanSpotlight({ moment, favorite, fresh, pinned, nowClock, onEvidence, o
       <p><span>{t.whatHappened}</span><span className="said" lang={story.englishOnly ? 'en' : lang}>{story.casual}</span>{story.englishOnly && <small className="en-only">{t.aiEnglish}</small>}</p>
       <p><span>{t.whyMatters}</span>{language === 'es' ? whyEs(moment, 'fan') : whyItMatters(moment, 'fan')}</p>
     </div>
-    {values.length > 0 && <dl className="key-values">
-      {values.map(item => <div key={item.label}><dt>{t[item.label] ?? item.label}</dt><dd>{language === 'es' ? item.value.replace('.', ',') : item.value}{item.unit && <small>{tr(item.unit)}</small>}</dd></div>)}
-    </dl>}
     <div className="spot-actions">
       <button type="button" className="button primary" onClick={() => onEvidence(moment)}><FileSearch size={15} aria-hidden="true" />{t.whyBtn}</button>
       <button type="button" className="button ghost" onClick={() => onJump(moment)}><RotateCcw size={14} aria-hidden="true" />{t.jump}</button>
-      <button type="button" className="text-button quiet" aria-pressed={pinned} onClick={onInspect}><Eye size={14} aria-hidden="true" />{pinned ? tr('Return to replay') : tr('Show sequence on pitch')}</button>
+      <button type="button" className="text-button quiet" aria-pressed={pinned} onClick={onInspect}><Eye size={14} aria-hidden="true" />{pinned ? tr('Return to replay') : tr('Show on pitch')}</button>
     </div>
     <StatusLine moment={moment} />
   </article>;

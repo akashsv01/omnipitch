@@ -2,7 +2,7 @@ import { memo, useMemo, useRef, useState } from 'react';
 import { t } from '../lib/i18n';
 import { useTr } from '../lib/i18n';
 import { AnimatePresence, motion } from 'motion/react';
-import { CornerDownRight, Dices, FileUp, Pause, Play, RotateCcw, Shuffle } from 'lucide-react';
+import { Dices, FileUp, Pause, Play, RotateCcw, Shuffle } from 'lucide-react';
 import type { Moment, ReplaySnapshot, Scenario, Speed } from '../types/contracts';
 import type { Audience } from '../lib/prefs';
 import { RULE_LABEL, clockLabel, runningClock, teamTone } from '../lib/format';
@@ -22,9 +22,9 @@ export interface FilmRange { from: number; to: number; label: string }
 
 /** Match filmstrip: a match-time scale with a playhead, the momentum band, moment markers, the inspected
  * sequence range and the replay controls. Reserved space below the stage; a fixed thumb bar on phones. */
-export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, onReturn, onPlay, onPause, onRestart, onReset, onSpeed, onSeek, onGenerate, onLoad, actions, onChoose }: {
+export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, onPlay, onPause, onRestart, onReset, onSpeed, onSeek, onGenerate, onLoad, actions, onChoose }: {
   replay: ReplaySnapshot; elapsed: number; busy: boolean; disabled: boolean; audience: Audience;
-  range: FilmRange | null; onReturn: () => void;
+  range: FilmRange | null; /** Returning to the replay lives in the Now bar and the moment card. */ onReturn?: () => void;
   /** A marker on the timeline opens its moment: the explanation, its sequence on the pitch and its range here. */
   onChoose: (moment: Moment) => void;
   onPlay: () => void; onPause: () => void; onReset: () => void; onSpeed: (speed: Speed) => void; onSeek: (ms: number) => void;
@@ -51,12 +51,9 @@ export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, on
     <div className="film-main">
       <div className="film-top">
         <span><b>{now}</b> · {finished ? 'FT' : playing ? `${tr('Watching replay')} · ${info.speed}×` : state.latest_event_sequence ? tr('Paused') : tr('Kick-off')}</span>
-        {range && <button type="button" className="text-button back" onClick={onReturn}>
-          <CornerDownRight size={14} aria-hidden="true" />{tr('Return to replay')}
-        </button>}
       </div>
       <Track replay={replay} elapsed={elapsed} disabled={disabled} onSeek={onSeek} range={range} onChoose={onChoose} />
-      <p className="film-note" id="momentum-note">{audience === 'analyst'
+      <p className={audience === 'fan' ? 'film-note sr-only' : 'film-note'} id="momentum-note">{audience === 'analyst'
         ? <>{tr('Band: illustrative threat added by completed passes per 5 minutes (Harbor above, Vale below). Not a probability.')} {momentumSummary(replay.analysis.momentum)}.</>
         : <>{tr('The band shows who moved the ball into danger, Harbor above and Vale below. It is not a win probability.')}</>}</p>
     </div>
