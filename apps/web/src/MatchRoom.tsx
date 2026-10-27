@@ -4,8 +4,7 @@ import { RefreshCw, SlidersHorizontal, WifiOff, X } from 'lucide-react';
 import { AnalysisTabs, type TabRequest } from './components/AnalysisTabs';
 import { Brand } from './components/Crest';
 import { TrustBar } from './components/TrustBar';
-import { StoryLine } from './components/StoryLine';
-import { catchUp, readJoin, storeDismissed, type JoinPoint } from './components/CatchUp';
+import { NowBar } from './components/NowBar';
 import { LanguageContext, setUiLanguage, t, useTr } from './lib/i18n';
 import { Filmstrip, type FilmRange } from './components/ControlDock';
 import { EvidenceDrawer } from './components/EvidenceDrawer';
@@ -22,6 +21,9 @@ import { useInterpolatedElapsed, useReplay } from './lib/useReplay';
 import type { Event, Moment, RecapScope } from './types/contracts';
 
 export { prefetchReplay } from './lib/useReplay';
+
+// The Now bar carries the score and goals a late joiner missed, so the separate catch-up strip is off.
+const noop = () => {};
 
 /** The match room (/match). Entering it never resets or starts a shared run: it only reads the replay state. */
 export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
@@ -58,17 +60,6 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
     } catch { return; }
     requestAnimationFrame(() => document.getElementById('match')?.focus({ preventScroll: true }));
   }, [replay]);
-  // A shared replay can be mid-match when this viewer arrives: remember where, once per run, for the catch-up card.
-  const [join, setJoin] = useState<JoinPoint & { dismissed: boolean } | null>(null);
-  useEffect(() => {
-    if (replay && join?.run !== replay.state.run_id) setJoin(readJoin(replay.state.run_id, replay.state.latest_event_sequence));
-  }, [replay, join?.run]);
-  const missedSoFar = useMemo(() => replay && !join?.dismissed ? catchUp(join, replay.state, replay.events, replay.moments) : null,
-    [replay, join]);
-  const dismissCatchUp = useCallback(() => setJoin(current => {
-    if (current) storeDismissed(current);
-    return current && { ...current, dismissed: true };
-  }), []);
 
   // A backwards seek can remove the inspected moment; fall back to following live.
   useEffect(() => { if (inspectId && replay && !inspect) setInspectId(undefined); }, [inspectId, inspect, replay]);
@@ -202,7 +193,8 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
       <p className="sr-only" aria-live="polite">{modeNote}</p>
       <h1 className="sr-only">{t('OmniPitch match room:')} {replay.state.home_team.name} {t('against')} {replay.state.away_team.name}</h1>
       <ScoreStrip state={replay.state} replay={replay.replay} clockMs={clockMs} inspecting={inspecting} badge={<TrustBar replay={replay} />} />
-      <StoryLine replay={replay} language={prefs.language} onRecap={openRecapNow} />
+      <NowBar replay={replay} clockMs={clockMs} language={prefs.language} inspect={inspect} disabled={disabled}
+        onPlay={live.play} onRestart={restart} onStopInspect={stopInspect} onRecap={openRecapNow} />
       <div className="banner-stack" aria-live="polite">
       <AnimatePresence initial={false}>
         {live.connection === 'offline' && <motion.div key="offline" className="alert" role="alert" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
@@ -239,7 +231,7 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
           focusMetric={prefs.focusMetric} analysis={replay.analysis} events={replay.events}
           roster={replay.replay.roster} chosenId={inspectId} onChoose={chooseMoment} onEvidence={setEvidence} onJump={jumpTo} aiMode={replay.insights.status === 'off' ? 'off' : replay.insights.mode} onRecap={openRecapNow}
           nowClock={replay.state.latest_event_sequence ? clockLabel(replay.replay.clock_period, replay.replay.clock_ms) : null}
-          catchUp={missedSoFar} state={replay.state} onDismissCatchUp={dismissCatchUp} />
+          catchUp={null} state={replay.state} onDismissCatchUp={noop} />
         <div className="desk-analysis">
         <AnalysisTabs replay={replay} audience={prefs.audience} favoritePlayer={prefs.favoritePlayer}
           busy={live.busy} onJumpMoment={jumpToMoment} tabRequest={tabRequest}

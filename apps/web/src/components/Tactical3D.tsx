@@ -12,7 +12,7 @@ import type { Event } from '../types/contracts';
  * paused while the tab is hidden or the view is off screen, and fully disposed on unmount. */
 export type CameraMode = 'broadcast' | 'overhead';
 
-const TONE: Record<string, string> = { harbor: '#ff806a', vale: '#7dd8e7', shot: '#ebcb70' };
+const TONE: Record<string, string> = { harbor: '#d29a8c', vale: '#9bbcc2', shot: '#cdbb92' };
 const toWorld = (x: number, y: number, lift = 0) => new Vector3(x - 52.5, lift, y - 34);
 
 export default function Tactical3D({ steps, active, camera, reduced, onFallback }: {
@@ -47,7 +47,7 @@ export default function Tactical3D({ steps, active, camera, reduced, onFallback 
 
     // A shallow slab (105 x 68 m field, 4 m margin) with simple lighting and a cheap contact shadow:
     // a tiny radial-gradient texture under the slab instead of a shadow map.
-    scene.add(new HemisphereLight('#f3f1e9', '#14202c', 1.5));
+    scene.add(new HemisphereLight('#e9e7df', '#14202c', 1.5));
     const sun = new DirectionalLight('#ffffff', 1);
     sun.position.set(-30, 90, 50);
     scene.add(sun);
@@ -61,13 +61,13 @@ export default function Tactical3D({ steps, active, camera, reduced, onFallback 
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = -5;
     scene.add(shadow);
-    const side = keep(new MeshLambertMaterial({ color: '#0f3228' }));
-    const top = keep(new MeshLambertMaterial({ color: '#123b2f' }));
+    const side = keep(new MeshLambertMaterial({ color: '#152822' }));
+    const top = keep(new MeshLambertMaterial({ color: '#1a302a' }));
     const slab = new Mesh(keep(new BoxGeometry(113, 2, 76)), [side, side, top, side, side, side]);
     slab.position.y = -1;
     scene.add(slab);
     for (let i = 0; i < 12; i += 2) {
-      const stripe = new Mesh(keep(new PlaneGeometry(8.75, 68)), keep(new MeshLambertMaterial({ color: '#144232' })));
+      const stripe = new Mesh(keep(new PlaneGeometry(8.75, 68)), keep(new MeshLambertMaterial({ color: '#1c342e' })));
       stripe.rotation.x = -Math.PI / 2;
       stripe.position.set(i * 8.75 + 4.375 - 52.5, .005, 0);
       scene.add(stripe);
@@ -111,7 +111,7 @@ export default function Tactical3D({ steps, active, camera, reduced, onFallback 
     });
     const ball = new Mesh(keep(new SphereGeometry(.7, 20, 14)), keep(new MeshBasicMaterial({ color: '#fbfbf4' })));
     scene.add(ball);
-    const halo = new Mesh(keep(new RingGeometry(1.5, 2.1, 32)), keep(new MeshBasicMaterial({ color: '#f3f1e9', transparent: true, opacity: .85, depthWrite: false })));
+    const halo = new Mesh(keep(new RingGeometry(1.5, 2.1, 32)), keep(new MeshBasicMaterial({ color: '#e9e7df', transparent: true, opacity: .85, depthWrite: false })));
     halo.rotation.x = -Math.PI / 2;
     scene.add(halo);
 

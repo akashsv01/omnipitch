@@ -42,7 +42,7 @@ export const AnalysisTabs = memo(function AnalysisTabs({ replay, audience, favor
   return <section className="analysis" aria-labelledby="analysis-title">
     <div className="section-head">
       <h2 id="analysis-title">{tr(audience === 'fan' ? 'The match so far' : 'Match analysis')}</h2>
-      <p>{tr(audience === 'fan' ? 'Based on everything up to the current replay time' : 'Every measure uses only the actions recorded up to the current replay time')}</p>
+      {audience === 'analyst' && <p>{tr('Every measure uses only the actions recorded up to the current replay time')}</p>}
     </div>
     <div className="tabs" role="tablist" aria-label={tr('Analysis views')}>
       {tabs.map(item => <button key={item.id} id={`tab-${item.id}`} role="tab" type="button" className="tab" aria-selected={tab === item.id}

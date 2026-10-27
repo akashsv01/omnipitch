@@ -87,8 +87,8 @@ export function Pitch({ events, selected, onSelect, layers = DEFAULT_LAYERS, ros
           <path d="M 0 1 L 9 5 L 0 9 L 2 5 z" fill={`var(--${tone})`} />
         </marker>)}
         <radialGradient id={`${id}-glow`}>
-          <stop offset="0%" stopColor="#ebcb70" stopOpacity=".75" />
-          <stop offset="100%" stopColor="#ebcb70" stopOpacity="0" />
+          <stop offset="0%" stopColor="#cdbb92" stopOpacity=".75" />
+          <stop offset="100%" stopColor="#cdbb92" stopOpacity="0" />
         </radialGradient>
         <radialGradient id={`${id}-light`} cx="50%" cy="40%" r="70%">
           <stop offset="0" stopColor="#ffffff" stopOpacity=".05" />
