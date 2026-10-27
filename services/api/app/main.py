@@ -232,11 +232,11 @@ def speech_moment(request: SpeechRequest) -> Response:
     return _audio_response(text, request.language)
 
 
-def _audio_response(text: str, language: str, rate: str | None = None) -> Response:
+def _audio_response(text: str, language: str) -> Response:
     """MP3 of accepted text, with the caption that was spoken (percent-encoded) for the transcript."""
     from urllib.parse import quote
     try:
-        audio, key = speech().audio(speakable(text, language), language, rate)
+        audio, key = speech().audio(speakable(text, language), language)
     except SpeechError as exc:
         raise HTTPException(exc.status, detail={"code": exc.code, "message": exc.message}) from exc
     return Response(audio, media_type="audio/mpeg", headers={"X-Narration-Key": key[:16], "X-Caption": quote(text),
@@ -244,8 +244,6 @@ def _audio_response(text: str, language: str, rate: str | None = None) -> Respon
 
 
 COMMENTARY_RULES = {"transition": 50, "pressing_change": 45, "threat_gain": 30}
-# Live lines are read a little faster, as a commentator would; recaps and moment explanations keep the voice's pace.
-LIVE_RATE = "+12%"
 
 
 _playout = None
@@ -276,7 +274,7 @@ def broadcast(audience: Literal["fan", "analyst"] = "fan", language: Literal["en
 @app.get("/api/v1/commentary/lines")
 def commentary_lines(run_id: str = Query(..., min_length=1, max_length=200), after: int = Query(0, ge=0),
                      audience: Literal["fan", "analyst"] = "fan", language: Literal["en", "es"] = Query("en", alias="lang"),
-                     player_id: str | None = Query(None, max_length=60)) -> dict:
+                     player_id: str | None = Query(None, max_length=60), brief: bool = False) -> dict:
     """Commentary candidates for events and moments revealed after `after`, newest last, each with a priority.
     Only the replay's current run and revealed position are used, so nothing ahead of the replay can be said."""
     replay = store()
@@ -301,7 +299,7 @@ def commentary_lines(run_id: str = Query(..., min_length=1, max_length=200), aft
             lines.append({"ref": f"moment:{moment['moment_id']}", "kind": moment["rule"], "priority": COMMENTARY_RULES[moment["rule"]]
                           + (10 if moment["insight"].get("generation_status") == "ai_accepted" else 0),
                           "sequence": moment["source_sequence"], "period": moment["period"], "match_time_ms": moment["match_time_ms"],
-                          "clock": clock_of(moment), "text": moment_line(moment, audience, language)})
+                          "clock": clock_of(moment), "text": moment_line(moment, audience, language, brief)})
     lines.sort(key=lambda line: line["sequence"])
     _warm(lines, language)
     return {"run_id": run_id, "through": len(events), "lines": lines, "stale": False}
@@ -327,7 +325,7 @@ def _warm(lines: list[dict], language: str) -> None:
 
 def _safe_audio(text: str, language: str) -> None:
     try:
-        speech().audio(text, language, LIVE_RATE)
+        speech().audio(text, language)
     except Exception:  # noqa: BLE001  (warming is best effort; the real request reports errors)
         pass
 
@@ -337,6 +335,7 @@ class CommentaryAudio(WireModel):
     ref: str = Field(min_length=3, max_length=240)
     audience: Literal["fan", "analyst"]
     language: Literal["en", "es"]
+    brief: bool = False
 
 
 @app.post("/api/v1/commentary/audio")
@@ -355,12 +354,12 @@ def commentary_audio(request: CommentaryAudio) -> Response:
             line = (f"{players.get(event.get('player_id') or '', '')} {'recupera el balón.' if request.language == 'es' else 'wins the ball.'}", 45)
         if not line:
             raise HTTPException(404, detail={"code": "line_not_available", "message": "Nothing to say for that action yet."})
-        return _audio_response(line[0], request.language, LIVE_RATE)
+        return _audio_response(line[0], request.language)
     if kind == "moment":
         moment = next((m for m in moments if m["moment_id"] == ref), None)
         if moment is None:
             raise HTTPException(404, detail={"code": "line_not_available", "message": "That moment is not revealed yet."})
-        return _audio_response(moment_line(moment, request.audience, request.language), request.language, LIVE_RATE)
+        return _audio_response(moment_line(moment, request.audience, request.language, request.brief), request.language)
     if kind == "recap" and ref in ("first_half", "full_time"):
         period = 1 if ref == "first_half" else 2
         end = next((e for e in events if e["type"] == "period_end" and e["period"] == period), None)

@@ -99,11 +99,14 @@ def test_wording_varies_but_is_stable_per_event(monkeypatch):
     assert any(l["kind"] == "foul" and "falta" in l["text"].lower() for l in es)
 
 
-def test_live_lines_are_spoken_faster_than_recaps(monkeypatch):
-    client, store, synth = setup(monkeypatch, 200)
-    first = lines(client, store)["lines"][0]
-    client.post("/api/v1/commentary/audio", json={"run_id": store.state.run_id, "ref": first["ref"], "audience": "fan", "language": "en"})
-    assert "<prosody rate='+12%'>" in synth.spoken[-1]
-    seek_to_sequence(store, first_period_end(store))
-    client.post("/api/v1/commentary/audio", json={"run_id": store.state.run_id, "ref": "recap:first_half", "audience": "fan", "language": "en"})
-    assert "prosody" not in synth.spoken[-1]
+def test_brief_moment_lines_keep_only_the_headline(monkeypatch):
+    # Fast replays read a moment's headline only, so the line ends before the match has moved on.
+    client, store, _ = setup(monkeypatch, 600)
+    full = {l["ref"]: l["text"] for l in lines(client, store)["lines"] if l["ref"].startswith("moment:")}
+    brief = {l["ref"]: l["text"] for l in lines(client, store, brief="true")["lines"] if l["ref"].startswith("moment:")}
+    assert full and full.keys() == brief.keys()
+    for ref, text in brief.items():
+        assert full[ref].startswith(text) and len(text) < len(full[ref]) and text.count(". ") == 0
+    ref = next(iter(brief))
+    response = client.post("/api/v1/commentary/audio", json={"run_id": store.state.run_id, "ref": ref, "audience": "fan", "language": "en", "brief": True})
+    assert response.status_code == 200 and unquote(response.headers["x-caption"]) == brief[ref]

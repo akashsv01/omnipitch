@@ -63,19 +63,17 @@ class SpeechService:
         return {"configured": self.synthesize is not None, "reason": self.reason,
                 "voices": self.voices if self.synthesize else {}, "format": OUTPUT_FORMAT}
 
-    def audio(self, text: str, language: str, rate: str | None = None) -> tuple[bytes, str]:
-        """MP3 for text; `rate` (for example "+12%") speeds live commentary up, recaps keep the voice's own pace."""
+    def audio(self, text: str, language: str) -> tuple[bytes, str]:
         if self.synthesize is None:
             raise SpeechError("speech_not_configured", self.reason or "Azure Speech is not configured.", 503)
         voice = self.voices[language]
-        key = hashlib.sha256(f"{voice}|{language}|{OUTPUT_FORMAT}|{rate or ''}|{text}".encode()).hexdigest()
+        key = hashlib.sha256(f"{voice}|{language}|{OUTPUT_FORMAT}|{text}".encode()).hexdigest()
         with self.lock:
             if key in self.cache:
                 self.cache.move_to_end(key)
                 return self.cache[key], key
-        body = escape(text) if not rate else f"<prosody rate='{escape(rate)}'>{escape(text)}</prosody>"
         ssml = (f"<speak version='1.0' xml:lang='{'es-ES' if language == 'es' else 'en-GB'}'>"
-                f"<voice name='{voice}'>{body}</voice></speak>")
+                f"<voice name='{voice}'>{escape(text)}</voice></speak>")
         try:
             audio = self.synthesize(ssml, OUTPUT_FORMAT)
         except SpeechError:
