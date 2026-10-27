@@ -172,7 +172,7 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
   const firstAudience = useRef(prefs.audience);
   useEffect(() => {
     if (prefs.audience === firstAudience.current && !modeNote) return;
-    setModeNote(prefs.audience === 'fan' ? 'Fan view: story-led moments.' : 'Analyst view: metrics, sources and layers.');
+    setModeNote(t(prefs.audience === 'fan' ? 'Fan view: story-led moments.' : 'Analyst view: metrics, sources and layers.'));
   }, [prefs.audience]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const disabled = live.busy || live.connection === 'offline';

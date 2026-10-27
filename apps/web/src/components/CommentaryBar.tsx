@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown, Mic, Pause, Play, RotateCcw, SkipForward, Volume2, VolumeX } from 'lucide-react';
 import type { useCommentary } from '../lib/useCommentary';
 import type { Language } from '../lib/prefs';
@@ -50,13 +50,27 @@ export function CommentaryBar({ c, language }: { c: ReturnType<typeof useComment
   </section>;
 }
 
+/** A subtitle stays a moment after its line ends, then fades, so an old line never sits over newer play. */
+const LINGER_MS = 2500;
+
 /** The line being spoken, in full, as a subtitle on the pitch (below it on phones). Keyed per line so each new line
- * fades in; screen readers hear it once through the live region. */
+ * fades in; it fades out shortly after the voice finishes (or, without audio, after the time it takes to read it).
+ * Screen readers hear it once through the live region. */
 export function CommentarySubtitle({ c, language }: { c: ReturnType<typeof useCommentary>; language: Language }) {
   const t = T[language];
-  if (!c.enabled || !c.caption) return null;
-  const { caption } = c;
-  return <div className="commentary-subtitle" aria-live="polite" lang={language}>
+  const caption = c.caption;
+  const key = caption ? `${caption.clock}|${caption.text}` : '';
+  const speaking = c.voice.state === 'playing' || c.voice.state === 'loading';
+  const [faded, setFaded] = useState(false);
+  useEffect(() => { setFaded(false); }, [key]);
+  useEffect(() => {
+    if (!key || speaking || c.paused) return;
+    const delay = c.unavailable ? Math.min(6000, 1500 + key.length * 45) : LINGER_MS;
+    const timer = setTimeout(() => setFaded(true), delay);
+    return () => clearTimeout(timer);
+  }, [key, speaking, c.paused, c.unavailable]);
+  if (!c.enabled || !caption) return null;
+  return <div className="commentary-subtitle" aria-live="polite" lang={language} data-faded={faded || undefined}>
     <p key={`${caption.clock}|${caption.text}`} data-kind={caption.kind}>
       <b>{caption.kind === 'recap' ? t.recap : caption.clock}</b><span>{caption.text}</span>
     </p>

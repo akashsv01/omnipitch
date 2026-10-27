@@ -301,6 +301,6 @@ function AnalystRow({ moment, related, favorite, chosen, onChoose }: RowProps) {
     <span className="minute">{clockLabel(moment.period, moment.match_time_ms)}</span>
     <span className="rule">{tr(RULE_LABEL[moment.rule])}{related.length ? ` +${related.length}` : ''}{favorite ? ' ★' : ''}</span>
     <span className="team">{moment.team_id ? TEAM_META[moment.team_id]?.short : '–'}</span>
-    <span className="val num">{lead ? `${tr(lead.label)} ${num(lead.value)}${lead.unit ? ` ${tr(lead.unit)}` : ''}` : '–'}</span>
+    <span className="val num">{lead ? `${tr(lead.label)} ${num(lead.value)}${lead.unit && lead.unit.length <= 3 ? ` ${tr(lead.unit)}` : ''}` : '–'}</span>
   </button>;
 }
