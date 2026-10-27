@@ -176,7 +176,8 @@ def test_publisher_dry_run_validates_and_reports(tmp_path, monkeypatch):
 def _fresh_default(monkeypatch, reader, run="gate-run", restored=False):
     monkeypatch.setattr(main, "SETTINGS", azure_settings())
     monkeypatch.setattr(main, "_reader", reader)
-    monkeypatch.setattr(main, "_default_state", {"checked": False, "run": None, "outcome": "not_configured", "error": None})
+    monkeypatch.setattr(main, "_default_state", {"checked": False, "run": None, "outcome": "not_configured", "error": None, "reloads": 0})
+    monkeypatch.setattr(main, "_last_heal", {"at": None})
     monkeypatch.setenv("OMNIPITCH_DEFAULT_RUN", run)
     store = ReplayStore(db=Database(":memory:"), backend_mode="azure")
     store.restored = restored
@@ -202,10 +203,77 @@ def test_default_run_loads_once_on_a_fresh_start(monkeypatch):
 def test_default_run_never_replaces_a_restored_replay_and_reports_failures(monkeypatch):
     events = simulate_match(7, "standard", run_id="gate-run")[:50]
     store, client = _fresh_default(monkeypatch, FakeReader(events), restored=True)
+    # The start-up load keeps a restored replay; a restored local match is not a cloud run, though, so the self-check
+    # replaces it with the default run within the next request or two.
     assert client.get("/api/v1/replay").json()["replay"]["source"] != "eventhouse"
-    assert client.get("/api/v1/backend").json()["default_run"]["outcome"] == "kept_restored_run"
+    assert client.get("/api/v1/backend").json()["default_run"]["outcome"] == "reloaded"
+    assert client.get("/api/v1/replay").json()["replay"]["source"] == "eventhouse"
     store, client = _fresh_default(monkeypatch, FakeReader(events, error=EventhouseError("eventhouse_unavailable", "down")))
     snap = client.get("/api/v1/replay")
     assert snap.status_code == 200 and snap.json()["replay"]["source"] != "eventhouse"  # Keeps serving; no substitute data.
     default = client.get("/api/v1/backend").json()["default_run"]
     assert default["outcome"] == "failed" and "down" in default["error"]
+
+
+def test_shared_replay_cannot_be_replaced_or_written_on_the_deployment(azure, monkeypatch):
+    # One replay is shared by every visitor: in azure mode it can be watched and steered, never replaced or written.
+    monkeypatch.delenv("OMNIPITCH_ALLOW_REPLAY_CHANGES", raising=False)
+    _, _, _, client = azure
+    run = client.post("/api/v1/replay/eventhouse", json={"run_id": client.get("/api/v1/replay").json()["state"]["run_id"],
+                                                         "source_run_id": RUN}).json()["state"]["run_id"]
+    refused = client.post("/api/v1/replay/control", json={"run_id": run, "action": "reset"})
+    assert refused.status_code == 403 and refused.json()["detail"]["code"] == "replay_changes_disabled"
+    assert client.post(f"/api/v1/runs/{run}/ingest", content="{}").status_code == 403
+    assert client.post("/api/v1/replay/generate", json={"run_id": run, "seed": 1, "scenario": "quiet"}).status_code == 409
+    assert client.post(f"/api/v1/replay/load?run_id={run}", content="{}").status_code == 409
+    # Watching still works: play, pause, speed and seek, and the Eventhouse run is still the one on screen.
+    for action in ({"action": "play"}, {"action": "pause"}, {"action": "speed", "speed": 5}, {"action": "seek", "elapsed_ms": 60_000}):
+        assert client.post("/api/v1/replay/control", json={"run_id": run, **action}).status_code == 200
+    snapshot = client.get("/api/v1/replay").json()
+    assert snapshot["state"]["run_id"] == RUN and snapshot["replay"]["source"] == "eventhouse"
+
+
+def test_an_operator_can_allow_replay_changes(azure, monkeypatch):
+    monkeypatch.setenv("OMNIPITCH_ALLOW_REPLAY_CHANGES", "1")
+    _, _, _, client = azure
+    run = client.post("/api/v1/replay/eventhouse", json={"run_id": client.get("/api/v1/replay").json()["state"]["run_id"],
+                                                         "source_run_id": RUN}).json()["state"]["run_id"]
+    reset = client.post("/api/v1/replay/control", json={"run_id": run, "action": "reset"})
+    assert reset.status_code == 200 and reset.json()["replay"]["source"] == "eventhouse"  # Reset keeps the cloud source.
+    assert client.post(f"/api/v1/runs/{reset.json()['state']['run_id']}/ingest", content="").status_code == 200
+
+
+def test_self_check_restores_the_default_run_at_most_once_a_minute(monkeypatch):
+    events = simulate_match(7, "standard", run_id="gate-run")[:120]
+    store, client = _fresh_default(monkeypatch, FakeReader(events))
+    monkeypatch.delenv("OMNIPITCH_ALLOW_REPLAY_CHANGES", raising=False)
+    clock = [1000.0]
+    monkeypatch.setattr(main, "_now", lambda: clock[0])
+    assert client.get("/api/v1/replay").json()["replay"]["source"] == "eventhouse"  # Loaded on the fresh start.
+    # Whatever puts a local match on screen, the next request brings the default run back.
+    store.generate(store.state.run_id, 7, "standard")
+    snap = client.get("/api/v1/replay").json()
+    assert snap["replay"]["source"] == "eventhouse" and snap["replay"]["source_run_id"] == "gate-run"
+    assert main._default_state["outcome"] == "reloaded" and main._default_state["reloads"] == 1
+    # At most once a minute.
+    store.generate(store.state.run_id, 7, "standard")
+    clock[0] += 30
+    assert client.get("/api/v1/replay").json()["replay"]["source"] == "simulator"
+    clock[0] += 31
+    assert client.get("/api/v1/replay").json()["replay"]["source"] == "eventhouse"
+    assert main._default_state["reloads"] == 2
+    # An Eventhouse run someone chose is left alone.
+    calls = []
+    main._reader.events = lambda run_id: calls.append(run_id) or events
+    clock[0] += 120
+    client.get("/api/v1/replay")
+    assert calls == []
+
+
+def test_self_check_waits_while_an_operator_allows_changes(monkeypatch):
+    events = simulate_match(7, "standard", run_id="gate-run")[:120]
+    store, client = _fresh_default(monkeypatch, FakeReader(events))
+    client.get("/api/v1/replay")
+    monkeypatch.setenv("OMNIPITCH_ALLOW_REPLAY_CHANGES", "1")
+    store.generate(store.state.run_id, 7, "standard")
+    assert client.get("/api/v1/replay").json()["replay"]["source"] == "simulator"

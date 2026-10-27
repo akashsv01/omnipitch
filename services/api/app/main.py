@@ -1,6 +1,7 @@
 """OmniPitch API with explicit localhost CORS and an explicit local/azure backend mode."""
 import os
 from threading import Lock
+import time
 from urllib.parse import urlparse
 
 from typing import Literal
@@ -45,13 +46,19 @@ app.add_middleware(CORSMiddleware, allow_origins=cors_origins(), allow_credentia
 
 
 _default_lock = Lock()
-_default_state = {"checked": False, "run": None, "outcome": "not_configured", "error": None}
+_default_state = {"checked": False, "run": None, "outcome": "not_configured", "error": None, "reloads": 0}
+_heal_lock = Lock()
+_last_heal = {"at": None}
+HEAL_INTERVAL_S = 60.0
+_now = time.monotonic
 
 
 def store():
     replay = replay_module.get_replay_store()
     if not _default_state["checked"]:
         load_default_run(replay)
+    else:
+        heal_default_run(replay)
     return replay
 
 
@@ -73,15 +80,42 @@ def load_default_run(replay) -> None:
         if replay.restored or replay.meta.get("source_run_id"):
             _default_state["outcome"] = "kept_restored_run"  # Never replace a replay someone is already watching.
             return
-        try:
-            reader = eventhouse()
-            summary = reader.run_summary(run)
-            detail = (f"Eventhouse {SETTINGS.eventhouse_database}.{SETTINGS.eventhouse_table}: {summary['raw_rows']} rows, "
-                      f"{summary['unique_events']} unique events (default run)")
-            replay.load_eventhouse(replay.state.run_id, run, reader.events(run), detail)
-            _default_state["outcome"] = "loaded"
-        except Exception as exc:  # EventhouseError, HTTPException or a replay error: report, keep serving.
-            _default_state.update(outcome="failed", error=f"{type(exc).__name__}: {str(getattr(exc, 'detail', exc))[:200]}")
+        _load_default(replay, run, "loaded")
+
+
+def _load_default(replay, run: str, outcome: str) -> None:
+    try:
+        reader = eventhouse()
+        summary = reader.run_summary(run)
+        detail = (f"Eventhouse {SETTINGS.eventhouse_database}.{SETTINGS.eventhouse_table}: {summary['raw_rows']} rows, "
+                  f"{summary['unique_events']} unique events (default run)")
+        replay.load_eventhouse(replay.state.run_id, run, reader.events(run), detail)
+        _default_state.update(outcome=outcome, error=None)
+    except Exception as exc:  # EventhouseError, HTTPException or a replay error: report, keep serving.
+        _default_state.update(outcome="failed", error=f"{type(exc).__name__}: {str(getattr(exc, 'detail', exc))[:200]}")
+
+
+def heal_default_run(replay) -> None:
+    """Self-check for the shared judge replay: in azure mode with a default run configured, the replay must be an
+    Eventhouse run. If it ever is not (a failed start-up load, or anything else that left a local match on screen),
+    the default run is loaded again, at most once a minute and never while an operator allows replay changes."""
+    run = _default_state["run"]
+    if not run or not SETTINGS.azure or replay.meta.get("source") == "eventhouse":
+        return
+    if os.getenv("OMNIPITCH_ALLOW_REPLAY_CHANGES", "").strip() == "1":
+        return
+    if not _heal_lock.acquire(blocking=False):
+        return  # Another request is already reloading it.
+    try:
+        now = _now()
+        if _last_heal["at"] is not None and now - _last_heal["at"] < HEAL_INTERVAL_S:
+            return
+        _last_heal["at"] = now
+        _load_default(replay, run, "reloaded")
+        if _default_state["outcome"] == "reloaded":
+            _default_state["reloads"] = _default_state.get("reloads", 0) + 1
+    finally:
+        _heal_lock.release()
 
 
 _reader: EventhouseReader | None = None
@@ -108,6 +142,15 @@ def http_error(exc: EventhouseError) -> HTTPException:
 def local_only(action: str) -> None:
     if SETTINGS.azure:
         raise HTTPException(409, detail={"code": "azure_mode", "message": f"{action} is local-only. In azure mode, load a run from Eventhouse."})
+
+
+def guard_replay_change(action: str) -> None:
+    """The deployed site has one shared replay that every visitor watches. In azure mode, actions that replace it or
+    write into its ledger are refused unless OMNIPITCH_ALLOW_REPLAY_CHANGES=1 (for an operator); play, pause, seek, speed
+    and reloading an Eventhouse run keep working."""
+    if SETTINGS.azure and os.getenv("OMNIPITCH_ALLOW_REPLAY_CHANGES", "").strip() != "1":
+        raise HTTPException(403, detail={"code": "replay_changes_disabled",
+                                         "message": f"{action} is turned off on this deployment, so the shared match stays in place."})
 
 
 async def read_body(request: Request) -> str:
@@ -393,6 +436,8 @@ def replay_recap(scope: str = Query("first_half", pattern="^(first_half|full_tim
 
 @app.post("/api/v1/replay/control", response_model=ReplaySnapshot)
 def control_replay(command: ReplayControl) -> ReplaySnapshot:
+    if command.action == "reset":
+        guard_replay_change("Resetting the replay")
     return store().control(command.action, command.run_id, command.speed, command.elapsed_ms)
 
 
@@ -445,6 +490,7 @@ def run_moments(run_id: str) -> dict:
 
 @app.post("/api/v1/runs/{run_id}/ingest", response_model=IngestResult)
 async def ingest(request: Request, run_id: str) -> IngestResult:
+    guard_replay_change("Ingesting events")
     return IngestResult.model_validate(store().ingest(run_id, await read_body(request)), strict=False)
 
 
