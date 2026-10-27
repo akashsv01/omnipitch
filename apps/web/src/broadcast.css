@@ -1,0 +1,62 @@
+/* Broadcast output: the same midnight tokens and type as the match room, no dashboard controls.
+   ?clean=1 makes the page transparent so the lower third and score bug can be keyed over video. */
+html[data-clean="true"], html[data-clean="true"] body { background: transparent !important; background-image: none !important; }
+.bc { min-height: 100dvh; color: var(--text); }
+.bc-wait { padding: 40px; color: var(--text-2); }
+
+.bc-program { position: relative; width: 100%; aspect-ratio: 16 / 9; max-height: 100dvh; margin: 0 auto; overflow: hidden; background: var(--bg);
+  display: grid; grid-template-rows: auto 1fr; }
+.bc-program[data-clean] { background: transparent; }
+.bc-overlay .bc-program { width: min(100vw, calc(100dvh * 16 / 9)); }
+.bc-bug { position: absolute; left: 3%; top: 4%; z-index: 2; display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px 6px 8px; border-radius: 10px;
+  background: rgba(11, 16, 24, .88); border: 1px solid var(--line-2); font: 800 clamp(14px, 1.6vw, 22px)/1 var(--display); letter-spacing: .04em; }
+.bc-bug .brand-mark { width: 26px; height: 26px; }
+.bc-bug b { font-size: 1.25em; color: var(--text); }
+.bc-bug i { font-style: normal; color: var(--text-3); }
+.bc-bug em { font-style: normal; margin-left: 6px; padding-left: 10px; border-left: 1px solid var(--line-2); color: var(--text-2); font-variant-numeric: tabular-nums; }
+/* The pitch fills the frame above the lower third; heights are from the 16:9 frame, not the width. */
+.bc-pitch { position: absolute; left: 50%; top: 12%; height: 58%; aspect-ratio: 113 / 76; transform: translateX(-50%); border-radius: 10px; overflow: hidden; }
+.bc-pitch .pitch-figure, .bc-pitch svg { width: 100%; height: 100%; display: block; }
+
+.bc-third { position: absolute; left: 3%; right: 3%; bottom: 5%; z-index: 2; display: flex; justify-content: flex-start; }
+.bc-cue { width: min(860px, 100%); display: grid; gap: 6px; padding: 14px 20px 14px 18px; border-radius: 12px; background: rgba(11, 16, 24, .94);
+  border: 1px solid var(--line-2); border-left: 5px solid var(--tone); box-shadow: 0 24px 50px -24px rgba(0, 0, 0, .9); }
+.bc-cue-head { display: flex; align-items: baseline; gap: 14px; }
+.bc-minute { font: 800 clamp(20px, 2.4vw, 34px)/1 var(--display); color: var(--tone); font-variant-numeric: tabular-nums; }
+.bc-cue h2 { font: 900 clamp(22px, 2.8vw, 40px)/1 var(--display); text-transform: uppercase; letter-spacing: .01em; text-wrap: balance; }
+.bc-cue p { font-size: clamp(14px, 1.35vw, 19px); line-height: 1.45; color: var(--text); max-width: 70ch; }
+.bc-cue footer { display: flex; align-items: baseline; gap: 6px 18px; flex-wrap: wrap; font-size: clamp(12px, 1.05vw, 15px); color: var(--text-2); }
+.bc-cue footer b { color: var(--text); font-variant-numeric: tabular-nums; }
+.bc-cue footer small { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); }
+.bc-synthetic { position: absolute; right: 3%; top: 4.5%; z-index: 2; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+
+.bc-desk { max-width: 1560px; margin: 0 auto; padding: 16px 24px 32px; display: grid; gap: 16px; }
+.bc-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bc-head h1 { font: 900 30px/1 var(--display); text-transform: uppercase; }
+.bc-head nav { display: flex; gap: 6px; flex-wrap: wrap; }
+.bc-head nav a { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--text-2); text-decoration: none; font-size: 13.5px; }
+.bc-head nav a[aria-current] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.bc-head nav button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line-2);
+  background: transparent; color: var(--text-2); font-size: 13.5px; }
+.bc-head nav button[aria-pressed="true"] { background: var(--amber); color: var(--amber-ink); border-color: var(--amber); }
+.bc-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 20px; align-items: start; }
+.bc-monitor { border-radius: 12px; overflow: hidden; border: 1px solid var(--line-2); }
+.bc-side { display: grid; gap: 12px; }
+.bc-side h2 { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.bc-facts { margin: 0; display: grid; gap: 6px; font-size: 13.5px; }
+.bc-facts div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px; }
+.bc-facts dt { color: var(--text-3); }
+.bc-facts dd { margin: 0; }
+.bc-queue, .bc-log { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+.bc-queue li, .bc-log li { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 8px; padding: 6px 8px; border-radius: 8px; background: var(--surface); align-items: baseline; }
+.bc-queue b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-log b { font-weight: 500; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-queue small, .bc-log small { color: var(--text-3); }
+.bc-json summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
+.bc-json pre { margin: 8px 0 0; max-height: 320px; overflow: auto; padding: 10px; border-radius: 8px; background: var(--inset); font: 11.5px/1.45 var(--mono); color: var(--text-2); }
+@media (max-width: 900px) { .bc-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .bc-cue { padding: 10px 12px; }
+  .bc-pitch { top: 14%; height: 52%; }
+  .bc-cue footer small { margin-left: 0; }
+}

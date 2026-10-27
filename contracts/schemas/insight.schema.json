@@ -107,6 +107,77 @@
         "type": "string",
         "minLength": 1
       }
+    },
+    "generation_status": {
+      "description": "How this text was produced. ai_accepted: model output that passed validation. rule_based: template by design (AI narration off). pending: template while AI narration is on but has not run. skipped: AI not attempted because of budget or configuration. rejected: model output failed validation. provider_failure: the model service failed or timed out. fixture: hand-authored.",
+      "enum": [
+        "ai_accepted",
+        "rule_based",
+        "pending",
+        "skipped",
+        "rejected",
+        "provider_failure",
+        "fixture",
+        null
+      ]
+    },
+    "generation_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 300
+    },
+    "translations": {
+      "description": "Other-language versions of this insight. es: the server's Spanish, either a validated AI translation (generation_status ai_accepted) or the rule-based Spanish story.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "es": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "headline",
+            "casual_text",
+            "analyst_text",
+            "generation_status"
+          ],
+          "properties": {
+            "headline": {
+              "type": "string",
+              "minLength": 1
+            },
+            "casual_text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "analyst_text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "generation_status": {
+              "enum": [
+                "ai_accepted",
+                "rule_based",
+                "pending",
+                "skipped",
+                "rejected",
+                "provider_failure",
+                "fixture"
+              ]
+            },
+            "generation_reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
     }
   }
 }

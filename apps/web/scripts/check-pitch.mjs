@@ -77,7 +77,7 @@ assert.equal(format.metricText('forward_progress', 7.25), '7.2');
 assert.equal(format.metricText('forward_progress', 7.35), '7.3');   // 7.35 is stored just below the tie
 assert.equal(format.metricText('elapsed', 4.8), '4.8');
 assert.equal(format.metricText('elapsed', 3), '3');
-assert.equal(format.metricText('pass_distance', 27.05), '27.05');
+assert.equal(format.metricText('pass_distance', 27.05), '27.1');   // one decimal everywhere, like the template
 assert.equal(format.metricText('forward_progress', 0.05), '0.1');    // 0.05 is stored just above the tie; Python agrees
 assert.equal(format.metricText('threat_delta', 0.211), '0.211');
 assert.equal(format.metricText('ppda', 4.5), '4.5');
@@ -120,7 +120,11 @@ assert.match(evidence.whyItMatters(tie, 'fan'), /only 7\.2 m gained/);
 // Generation labels never present a template as AI output.
 assert.equal(evidence.generation(mk('goal', [], {}), 'off'), 'rule');
 assert.equal(evidence.generation(mk('goal', [], {}), 'cosmos'), 'pending');
-assert.equal(evidence.generation({ ...mk('goal', [], {}), insight: { generation_mode: 'fallback', limitations: ['AI narration unavailable (timeout); …'] } }, 'cosmos'), 'fallback');
+assert.equal(evidence.generation({ ...mk('goal', [], {}), insight: { generation_mode: 'fallback', limitations: ['AI narration unavailable (timeout); …'] } }, 'cosmos'), 'failure');
+// An explicit status wins, and an intentional skip is never labelled an AI failure.
+const withStatus = status => ({ ...mk('goal', [], {}), insight: { generation_mode: 'fallback', generation_status: status, limitations: [] } });
+assert.deepEqual(['skipped', 'rejected', 'provider_failure', 'pending'].map(s => evidence.generation(withStatus(s), 'cosmos')), ['skipped', 'rejected', 'failure', 'pending']);
+assert.doesNotMatch(evidence.GENERATION_LABEL.skipped, /fail|error/i);
 
 // Spanish rule-based stories follow the same branches and numbers; AI text is never machine-translated.
 const i18n = await import(moduleUrl(new URL('../src/lib/i18n.ts', import.meta.url)));
@@ -136,4 +140,26 @@ const aiMoment = { ...es(opener), insight: { headline: 'AI headline', casual_tex
 assert.deepEqual([i18n.localStory(aiMoment, roster, 'es').casual, i18n.localStory(aiMoment, roster, 'es').englishOnly], ['AI text', true]);
 assert.equal(i18n.localStory(es(opener), roster, 'en').headline, 'H');
 
-console.log('Pitch checks passed: both directions, boundary coordinates, empty state, period markers, layers, evidence highlighting, clock labels, metric display rounding and evidence-led explanations.');
+// Geometry: metres first, distinct measures, both attacking directions, provider percentages converted first.
+{
+  const geo = await import(moduleUrl(new URL('../src/lib/geometry.ts', import.meta.url)));
+  const a = { x: 36, y: 47 }, b = { x: 60, y: 28 };
+  assert.equal(format.metricText('pass_distance', geo.passLength(a, b)), '30.6');
+  assert.equal(geo.forwardGain(a, b, 'positive_x'), 24);
+  assert.equal(geo.forwardGain(a, b, 'negative_x'), -24);             // the same pass by the other team goes backwards
+  assert.equal(format.metricText('pass_distance', geo.passLength(geo.fromPercent(a), geo.fromPercent(b))), '28.3');
+  // A goal-ward pass by a team attacking −x shortens its own goal distance; mirrored, the same numbers.
+  const left = geo.goalDistanceReduction({ x: 60, y: 34 }, { x: 30, y: 34 }, 'negative_x');
+  assert.equal(left, geo.goalDistanceReduction({ x: 45, y: 34 }, { x: 75, y: 34 }, 'positive_x'));
+  assert.equal(left, 30);
+  const hero = await import(moduleUrl(new URL('../src/lib/heroSequence.ts', import.meta.url)));
+  assert.match(hero.HERO_STEPS[1].story, /24 m upfield/);
+  assert.deepEqual(hero.stepDetail(1).rows.slice(1, 3).map(r => r.value), ['30.6 m', '+24 m']);
+  // Pass difficulty indicator: the same fixtures and scores as test_geometry.py.
+  assert.equal(geo.passDifficulty(a, b, 'positive_x').score, 62);
+  assert.equal(geo.passDifficulty({ x: 40, y: 30 }, { x: 41, y: 36 }, 'positive_x').band, 'routine');
+  assert.equal(geo.passDifficulty({ x: 60, y: 34 }, { x: 95, y: 30 }, 'positive_x').score, 83);
+  assert.equal(geo.passDifficulty({ x: 45, y: 34 }, { x: 10, y: 38 }, 'negative_x').score, 83);
+}
+
+console.log('Pitch checks passed: both directions, boundary coordinates, empty state, period markers, layers, evidence highlighting, clock labels, metric display rounding, evidence-led explanations and shared geometry.');

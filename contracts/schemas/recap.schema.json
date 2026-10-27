@@ -256,6 +256,169 @@
     "recap_version": {
       "type": "string",
       "minLength": 1
+    },
+    "language": {
+      "enum": [
+        "en",
+        "es"
+      ],
+      "description": "Language of the recap text. Names, scores and units are not translated."
+    },
+    "stats": {
+      "description": "Team numbers at the recap's cutoff, for comparable rows.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "home",
+        "away"
+      ],
+      "properties": {
+        "home": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "goals",
+            "shots",
+            "shots_on_target",
+            "box_entries",
+            "final_third_entries",
+            "progression_m",
+            "completion_pct",
+            "pass_share_pct",
+            "turnovers_won"
+          ],
+          "properties": {
+            "goals": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "shots": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "shots_on_target": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "box_entries": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "final_third_entries": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "progression_m": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "completion_pct": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "pass_share_pct": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "turnovers_won": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        "away": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "goals",
+            "shots",
+            "shots_on_target",
+            "box_entries",
+            "final_third_entries",
+            "progression_m",
+            "completion_pct",
+            "pass_share_pct",
+            "turnovers_won"
+          ],
+          "properties": {
+            "goals": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "shots": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "shots_on_target": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "box_entries": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "final_third_entries": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "progression_m": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "completion_pct": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "pass_share_pct": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "turnovers_won": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        }
+      }
     }
   }
 }

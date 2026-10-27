@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { controlReplay, fetchReplay, generateReplay, loadFromEventhouse, loadReplay, mergeSnapshot, negotiatePush, validatePush } from './api';
+import { controlReplay, fetchReplay, generateReplay, loadFromEventhouse, loadReplay, mergeSnapshot, negotiatePush, publicMessage, validatePush } from './api';
 import { OFF_STATUS, PushClient, type PushSignal, type PushStatus, type SocketLike } from './push';
 import type { ReplaySnapshot, Scenario, Speed } from '../types/contracts';
 
@@ -8,18 +8,18 @@ export type Connection = 'connecting' | 'online' | 'offline';
 // The landing page asks for the current snapshot ahead of entry, so the match room can paint real data on
 // arrival instead of a long skeleton. It is read-only, used once, and discarded after 15 s.
 let primed: { at: number; snapshot: Promise<ReplaySnapshot> } | null = null;
-export function prefetchReplay() {
-  if (primed && performance.now() - primed.at < 15000) return;
+export function prefetchReplay(): Promise<ReplaySnapshot> {
+  if (primed && performance.now() - primed.at < 15000) return primed.snapshot;
   const snapshot = fetchReplay(undefined, 0);
   snapshot.catch(() => { primed = null; });
   primed = { at: performance.now(), snapshot };
+  return snapshot;
 }
 function takePrimed() {
   const value = primed && performance.now() - primed.at < 15000 ? primed.snapshot : null;
   primed = null;
   return value;
 }
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unknown request error';
 
 /**
  * Polls the atomic replay snapshot, asking only for events after the last known sequence.
@@ -78,7 +78,7 @@ export function useReplay() {
         } catch (error) {
           if (active && current === generation.current) {
             setConnection('offline');
-            setConnectionError(errorMessage(error));
+            setConnectionError(publicMessage(error, 'match'));
           }
         }
       }
@@ -122,7 +122,7 @@ export function useReplay() {
       latest.current = undefined; // Control responses are full snapshots.
       accept(next);
     } catch (error) {
-      setActionError(errorMessage(error));
+      setActionError(publicMessage(error, 'action'));
     } finally {
       acting.current = false;
       setBusy(false);

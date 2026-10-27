@@ -123,7 +123,7 @@ try {
   assert.notEqual(loaded.state.run_id, initial.state.run_id);
   assert.equal(loaded.replay.source, 'upload');
   await post('/api/v1/replay/control', { run_id: loaded.state.run_id, action: 'speed', speed: 1 });
-  await until(async () => (await text()).includes('Uploaded file') && (await state()).replay.speed === 1, 'speed applied');
+  await until(async () => (await state()).replay.source === 'upload' && (await state()).replay.speed === 1, 'speed applied');
   await click('[aria-label="Play replay"]');
   await until(async () => await revealed(1) && (await text()).includes('Watching replay'), 'first event arrival');
   await click('[aria-label="Pause replay"]');
@@ -152,7 +152,9 @@ try {
   await until(async () => (await text()).includes('Metrics behind it'), 'evidence drawer');
   await evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
   await until(async () => !(await text()).includes('Metrics behind it'), 'drawer closed');
-  await click('[aria-label="Reset run (new run ID)"]');
+  await click('[aria-label="New match"]');
+  await until(async () => (await text()).includes('Start a new match'), 'setup popover');
+  await click('[aria-label="Restart the match from kick-off"]');
   await until(async () => (await state()).state.run_id !== seeded.state.run_id, 'reset identity');
   assert.deepEqual(runtimeErrors, []);
   const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });

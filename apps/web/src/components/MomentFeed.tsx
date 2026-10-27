@@ -1,15 +1,16 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, Crosshair, Eye, FileSearch, Goal, Radar, Repeat2, RotateCcw, ShieldCheck, Sparkles, Star } from 'lucide-react';
-import type { MatchState, Moment, Player, Rule } from '../types/contracts';
+import type { Analysis, Event, MatchState, Moment, Player, Rule } from '../types/contracts';
+import type { Audience, FocusMetric } from '../lib/prefs';
 import { CatchUpCard, type CatchUpData } from './CatchUp';
-import type { Audience } from '../lib/prefs';
+import { FocusPanel } from './FocusPanel';
 import { RULE_LABEL, TEAM_META, clockLabel, momentInvolves, teamTone } from '../lib/format';
-import { GENERATION_LABEL, GENERATION_SHORT, calculationRows, generation, keyValues, metricRows, whyItMatters } from '../lib/evidence';
+import { GENERATION_LABEL, GENERATION_SHORT, generation, keyValues, metricRows, whyItMatters } from '../lib/evidence';
 
 // The insight source mode, for honest per-card generation labels without threading a prop through every row.
 const AiMode = createContext('off');
 import { Crest } from './Crest';
-import { UI, localStory, useLanguage, whyEs } from '../lib/i18n';
+import { UI, localStory, num, useLanguage, useTr, whyEs } from '../lib/i18n';
 
 // The roster, for player names in the Spanish stories, without threading it through every row.
 const RosterCtx = createContext<Player[]>([]);
@@ -25,15 +26,42 @@ const FILTERS: { id: 'all' | Rule; label: string; fan?: boolean }[] = [
 /** Moment spotlight above a compact history. The reader decides what is in the spotlight: a newly detected
  * moment never replaces one they picked; it waits behind an indicator. Fans get a story-led spotlight;
  * analysts get an inspector with aligned values, the trigger and the source events. Same moments either way. */
-export const MomentFeed = memo(function MomentFeed({ moments, audience, favoriteTeam, favoritePlayer, roster, chosenId, onChoose, onEvidence, onJump, aiMode, onRecap, catchUp, state, onDismissCatchUp }: {
+const countLabel = (count: number, language: string) => language === 'es'
+  ? `${count} ${count === 1 ? 'momento' : 'momentos'}` : `${count} ${count === 1 ? 'moment' : 'moments'}`;
+
+const WEIGHT: Record<Rule, number> = { goal: 5, chance: 4, transition: 3, threat_gain: 2, pressing_change: 1 };
+/** Groups detections from one attacking move (same team and half, within a few seconds and actions) into one
+ * episode, led by its most important moment, so the list reads as moves rather than repeated alerts. Pressing
+ * windows are never grouped: they describe a spell, not a move. */
+export function episodes(list: Moment[]): { lead: Moment; related: Moment[] }[] {
+  const out: { lead: Moment; related: Moment[]; members: Moment[] }[] = [];
+  for (const moment of list) {
+    const group = moment.rule === 'pressing_change' ? undefined : out.find(g => g.members.some(m => m.rule !== 'pressing_change'
+      && m.team_id === moment.team_id && m.period === moment.period && Math.abs(m.source_sequence - moment.source_sequence) <= 12
+      && Math.abs(m.match_time_ms - moment.match_time_ms) <= 20000));
+    if (group) group.members.push(moment); else out.push({ lead: moment, related: [], members: [moment] });
+  }
+  return out.map(g => {
+    const lead = [...g.members].sort((a, b) => WEIGHT[b.rule] - WEIGHT[a.rule] || b.source_sequence - a.source_sequence)[0];
+    return { lead, related: g.members.filter(m => m !== lead) };
+  });
+}
+
+export const MomentFeed = memo(function MomentFeed({ moments, audience, favoriteTeam, favoritePlayer, focusMetric, analysis, events, roster, chosenId, onChoose, onEvidence, onJump, aiMode, onRecap, nowClock, catchUp, state, onDismissCatchUp }: {
   moments: Moment[]; audience: Audience; favoriteTeam: string | null; favoritePlayer: string | null; roster: Player[]; aiMode: string;
+  focusMetric: FocusMetric | null; analysis: Analysis; events: Event[];
   chosenId: string | undefined; onChoose: (moment: Moment | undefined) => void;
   onEvidence: (moment: Moment) => void; onJump: (moment: Moment) => void; onRecap: () => void;
+  /** The replay's current minute (the action the pitch follows), to set the spotlight in time. */
+  nowClock: string | null;
   catchUp: CatchUpData | null; state: MatchState; onDismissCatchUp: () => void;
 }) {
+  const tr = useTr();
   const fan = audience === 'fan';
   const language = useLanguage();
-  const [filter, setFilter] = useState<'all' | Rule>('all');
+  // 'focus' = moments involving the favourite player or club; a rule list comes from a followed metric's sources.
+  const [filter, setFilter] = useState<'all' | 'focus' | Rule | Rule[]>('all');
+  const hasFocus = !!(favoriteTeam || favoritePlayer);
   const runId = moments[0]?.run_id;
 
   // Moments the reader has been shown. While they are reading (scrolled, hovering or focused in the list),
@@ -63,17 +91,17 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
     if ([...accepted].some(id => !present.has(id))) setAccepted(previous => new Set([...previous].filter(id => present.has(id))));
   }, [moments]); // eslint-disable-line react-hooks/exhaustive-deps
   // A fan-hidden filter must not strand a fan with an empty list.
-  useEffect(() => { if (fan && !FILTERS.find(f => f.id === filter)?.fan) setFilter('all'); }, [fan, filter]);
+  useEffect(() => { if (fan && typeof filter === 'string' && filter !== 'focus' && !FILTERS.find(f => f.id === filter)?.fan) setFilter('all'); }, [fan, filter]);
+  useEffect(() => { if (filter === 'focus' && !hasFocus) setFilter('all'); }, [filter, hasFocus]);
 
   const shown = useMemo(() => moments.filter(m => accepted.has(m.moment_id)), [moments, accepted]);
   const ordered = useMemo(() => {
-    const visible = shown.filter(moment => filter === 'all' || moment.rule === filter);
-    // Favourites change priority, never the facts: favourite moments float above others of the same recency band.
-    return [...visible].sort((a, b) => {
-      const fa = momentInvolves(a, favoriteTeam, favoritePlayer) ? 1 : 0;
-      const fb = momentInvolves(b, favoriteTeam, favoritePlayer) ? 1 : 0;
-      return Math.floor(b.source_sequence / 120) - Math.floor(a.source_sequence / 120) || fb - fa || b.source_sequence - a.source_sequence || b.priority - a.priority;
-    });
+    const visible = shown.filter(moment => filter === 'all' ? true : filter === 'focus' ? !!(favoritePlayer ? momentInvolves(moment, null, favoritePlayer) : momentInvolves(moment, favoriteTeam, null))
+      : Array.isArray(filter) ? filter.includes(moment.rule) : moment.rule === filter);
+    // Always match order, newest first, by the match time the moment describes (a pressing window is stamped
+    // with its start, though it is detected when the window closes). Focus is a filter and a star, never a reordering.
+    return [...visible].sort((a, b) => b.period - a.period || b.match_time_ms - a.match_time_ms
+      || b.source_sequence - a.source_sequence || b.priority - a.priority);
   }, [shown, filter, favoriteTeam, favoritePlayer]);
   const counts = useMemo(() => shown.reduce<Record<string, number>>((all, m) => ({ ...all, [m.rule]: (all[m.rule] ?? 0) + 1 }), {}), [shown]);
   const favoriteName = roster.find(player => player.player_id === favoritePlayer)?.name;
@@ -82,6 +110,7 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
   // Newer than the moment the reader picked: offered, never forced.
   const newer = chosen ? shown.filter(m => m.source_sequence > chosen.source_sequence).length : 0;
   const rest = ordered.filter(m => m !== featured).slice(0, fan ? 40 : 60);
+  const grouped = useMemo(() => episodes(rest), [rest]);
   const Spot = fan ? FanSpotlight : AnalystInspector;
   const Row = fan ? FanRow : AnalystRow;
 
@@ -89,28 +118,38 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
     {/* Remounted per audience so only this supporting panel animates on a mode change; its state lives above. */}
     <div key={audience} className="mode-swap">
     <div className="spot-head">
-      <h2 id="moments-title">{fan ? UI[language].keyMoments : 'Moment inspector'}</h2>
-      <p>{shown.length ? `${shown.length} detected so far` : 'Detected from the events'}{favoriteName ? `, ${favoriteName} first` : ''}
-        {shown.length > 0 && <> · <button type="button" className="text-button inline" onClick={onRecap}>Match recap</button></>}</p>
+      <h2 id="moments-title">{UI[language].keyMoments}</h2>
+      {/* Counts only revealed moments of this run; not live-announced, so updates never interrupt a screen reader. */}
+      <span className="count-badge">{filter === 'all' || !shown.length ? countLabel(shown.length, language)
+        : `${ordered.length} ${language === 'es' ? 'de' : 'of'} ${countLabel(shown.length, language)}`}</span>
+      {shown.length > 0 && <button type="button" className="button ghost small" onClick={onRecap}>{UI[language].recap}</button>}
     </div>
     {catchUp && <CatchUpCard data={catchUp} state={state} roster={roster} onChoose={onChoose} onDismiss={onDismissCatchUp} />}
     {featured
-      ? <Spot key={featured.moment_id} moment={featured} fresh={fresh.has(featured.moment_id)} pinned={!!chosen}
+      ? <Spot key={featured.moment_id} moment={featured} fresh={fresh.has(featured.moment_id)} pinned={!!chosen} nowClock={nowClock}
           favorite={!!momentInvolves(featured, favoriteTeam, favoritePlayer)} onEvidence={onEvidence} onJump={onJump}
           onInspect={() => onChoose(chosen ? undefined : featured)} />
       : <div className="spotlight" style={{ ['--tone' as string]: 'var(--line-2)' }}>
-          <div className="empty"><Sparkles size={22} aria-hidden="true" /><strong>No moments yet</strong>
-            <span>Press play. Moments appear when the events support them; a quiet spell stays quiet.</span></div>
+          <div className="empty"><Sparkles size={22} aria-hidden="true" /><strong>{tr('No moments yet')}</strong>
+            <span>{tr('Press play. Moments appear when the events support them; a quiet spell stays quiet.')}</span></div>
         </div>}
     {newer > 0 && <div className="newer" style={{ background: 'none', paddingTop: 10 }}>
       <button type="button" onClick={() => onChoose(undefined)}>Show latest ({newer} newer moment{newer === 1 ? '' : 's'})</button>
     </div>}
+    <FocusPanel analysis={analysis} events={events} moments={shown} roster={roster} audience={audience}
+      team={favoriteTeam} player={favoritePlayer} metric={focusMetric} onJump={onJump}
+      onFilter={next => { setFilter(next); body.current?.scrollTo({ top: 0 }); }} />
     <div className="history">
-      <div className="history-head"><h3>{fan ? 'Earlier in the match' : 'Timeline'}</h3>{!fan && <span className="hint">min · rule · team · key value · author</span>}</div>
-      <div className="filter-row" role="group" aria-label="Filter moments">
+      <div className="history-head"><h3>{fan ? tr('Earlier in the match') : tr('Timeline')}</h3>{!fan && <span className="hint">{tr('min · rule · team · key value · author')}</span>}</div>
+      <div className="filter-row" role="group" aria-label={tr('Filter moments')}>
         {FILTERS.filter(item => !fan || item.fan).map(item => <button key={item.id} type="button" className="chip" aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}>
-          {item.label}{item.id !== 'all' && counts[item.id] ? <span className="count num">{counts[item.id]}</span> : null}
+          {tr(item.label)}{item.id !== 'all' && counts[item.id] ? <span className="count num">{counts[item.id]}</span> : null}
         </button>)}
+        {hasFocus && <button type="button" className="chip" aria-pressed={filter === 'focus'} onClick={() => setFilter('focus')}>
+          <Star size={12} aria-hidden="true" />{favoriteName ? favoriteName.split(' ').slice(-1)[0] : TEAM_META[favoriteTeam ?? '']?.short ?? 'Focus'}
+        </button>}
+        {Array.isArray(filter) && <button type="button" className="chip" aria-pressed="true" onClick={() => setFilter('all')}>
+          {filter.map(rule => tr(RULE_LABEL[rule])).join(' + ')} ×</button>}
       </div>
       <div className="history-body" ref={body}
         onScroll={event => { reading.current.scrolled = event.currentTarget.scrollTop > 6; if (!reading.current.scrolled && !reading.current.pointer && !reading.current.focus && pending.length) acceptAll(false); }}
@@ -122,11 +161,14 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
           <button type="button" onClick={() => acceptAll(true)}>{pending.length} new moment{pending.length === 1 ? '' : 's'}: show</button>
         </div>}
         {rest.length === 0
-          ? <p className="quiet-note">{shown.length && filter !== 'all' && !ordered.length ? 'Nothing of this type yet. Try another filter.' : 'Earlier moments collect here.'}</p>
-          : <ol className={fan ? 'moment-list' : 'moment-list dense'} aria-label="Earlier moments">
-            {rest.map(moment => <li key={moment.moment_id} className={fresh.has(moment.moment_id) ? 'moment-enter' : undefined}>
-              <Row moment={moment} favorite={!!momentInvolves(moment, favoriteTeam, favoritePlayer)}
-                chosen={moment.moment_id === chosenId} onChoose={() => onChoose(moment.moment_id === chosenId ? undefined : moment)} />
+          ? <p className="quiet-note">{filter !== 'all' && shown.length > 0
+              ? `No ${typeof filter === 'string' ? filter === 'focus' ? 'moments for your focus' : FILTERS.find(f => f.id === filter)?.label.toLowerCase() : 'source moments'} yet. ${shown.length} other ${shown.length === 1 ? 'moment is' : 'moments are'} under All.`
+              : shown.length > 1 ? 'Earlier moments collect here.' : 'Earlier moments will collect here as the replay runs.'}</p>
+          : <ol className={fan ? 'moment-list' : 'moment-list dense'} aria-label={tr('Earlier moments')}>
+            {grouped.map(({ lead: moment, related }) => <li key={moment.moment_id} className={fresh.has(moment.moment_id) ? 'moment-enter' : undefined}>
+              <Row moment={moment} related={related} favorite={[moment, ...related].some(m => momentInvolves(m, favoriteTeam, favoritePlayer))}
+                chosen={moment.moment_id === chosenId || related.some(m => m.moment_id === chosenId)}
+                onChoose={() => onChoose(moment.moment_id === chosenId ? undefined : moment)} />
             </li>)}
           </ol>}
       </div>
@@ -135,43 +177,60 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
   </aside></RosterCtx.Provider></AiMode.Provider>;
 });
 
+const RULE_ES: Record<Rule, string> = { goal: 'Gol', chance: 'Ocasión', threat_gain: 'Amenaza', transition: 'Transición', pressing_change: 'Presión' };
+const ruleName = (rule: Rule, language: string) => language === 'es' ? RULE_ES[rule] : RULE_LABEL[rule];
+
 export function AuthorTag({ moment }: { moment: Moment }) {
+  const tr = useTr();
   const gen = generation(moment, useContext(AiMode));
-  return <span className="author-tag" data-mode={gen} title={GENERATION_LABEL[gen]}>
-    {gen === 'ai' && <Sparkles size={11} aria-hidden="true" />}{GENERATION_SHORT[gen]}
+  return <span className="author-tag" data-mode={gen} title={tr(GENERATION_LABEL[gen])}>
+    {gen === 'ai' && <Sparkles size={11} aria-hidden="true" />}{tr(GENERATION_SHORT[gen])}
   </span>;
 }
 
 interface SpotProps {
-  moment: Moment; favorite: boolean; fresh: boolean; pinned: boolean;
+  moment: Moment; favorite: boolean; fresh: boolean; pinned: boolean; nowClock: string | null;
   onEvidence: (m: Moment) => void; onJump: (m: Moment) => void; onInspect: () => void;
 }
 
+/** Says which moment this is relative to the replay: the latest detected one, or one the reader picked. */
+function SpotContext({ moment, pinned, nowClock }: { moment: Moment; pinned: boolean; nowClock: string | null }) {
+  const tr = useTr();
+  const at = clockLabel(moment.period, moment.match_time_ms);
+  return <p className="spot-context" data-pinned={pinned || undefined}>
+    {pinned ? tr('Selected moment') : tr('Latest moment')}{nowClock && nowClock !== at ? <> · {tr('replay is at')} <b>{nowClock}</b></> : null}
+  </p>;
+}
+
 function SpotMeta({ moment, favorite }: { moment: Moment; favorite: boolean }) {
+  const tr = useTr();
   const Icon = RULE_ICON[moment.rule];
   const team = moment.team_id ? TEAM_META[moment.team_id] : undefined;
   return <div className="spot-meta">
     <span className="spot-minute">{clockLabel(moment.period, moment.match_time_ms)}</span>
     {team && moment.team_id && <span className="spot-team" style={{ color: team.tone }}><Crest team={moment.team_id} />{team.name}</span>}
-    <span className="spot-kind"><Icon size={14} aria-hidden="true" />{RULE_LABEL[moment.rule]}</span>
+    <span className="spot-kind"><Icon size={14} aria-hidden="true" />{tr(RULE_LABEL[moment.rule])}</span>
     {favorite && <Star size={13} fill="var(--amber)" color="var(--amber)" aria-label="Involves your favourite" />}
   </div>;
 }
 
 function StatusLine({ moment }: { moment: Moment }) {
+  const tr = useTr();
   const gen = generation(moment, useContext(AiMode));
   return <p className="status-line" data-mode={gen}>
-    {gen === 'ai' ? <ShieldCheck size={13} aria-hidden="true" /> : null}{GENERATION_LABEL[gen]}
+    {gen === 'ai' ? <ShieldCheck size={13} aria-hidden="true" /> : null}{tr(GENERATION_LABEL[gen])}
   </p>;
 }
 
 /** Fan: one takeaway. What happened, why it matters, at most two plain values, two clear actions. */
-function FanSpotlight({ moment, favorite, fresh, pinned, onEvidence, onJump, onInspect }: SpotProps) {
+function FanSpotlight({ moment, favorite, fresh, pinned, nowClock, onEvidence, onJump, onInspect }: SpotProps) {
+  const tr = useTr();
   const values = keyValues(moment, 'fan');
   const language = useLanguage(), t = UI[language], lang = language;
   const story = localStory(moment, useContext(RosterCtx), language);
   return <article className={`spotlight fan${fresh ? ' moment-enter' : ''}`} data-rule={moment.rule} style={{ ['--tone' as string]: teamTone(moment.team_id) }}
     aria-labelledby={`spot-${moment.moment_id}`}>
+    <SpotContext moment={moment} pinned={pinned} nowClock={nowClock} />
     <SpotMeta moment={moment} favorite={favorite} />
     <h3 id={`spot-${moment.moment_id}`} lang={lang}>{story.headline}</h3>
     <div className="qa" lang={lang}>
@@ -179,70 +238,69 @@ function FanSpotlight({ moment, favorite, fresh, pinned, onEvidence, onJump, onI
       <p><span>{t.whyMatters}</span>{language === 'es' ? whyEs(moment, 'fan') : whyItMatters(moment, 'fan')}</p>
     </div>
     {values.length > 0 && <dl className="key-values">
-      {values.map(item => <div key={item.label}><dt>{t[item.label] ?? item.label}</dt><dd>{language === 'es' ? item.value.replace('.', ',') : item.value}{item.unit && <small>{item.unit}</small>}</dd></div>)}
+      {values.map(item => <div key={item.label}><dt>{t[item.label] ?? item.label}</dt><dd>{language === 'es' ? item.value.replace('.', ',') : item.value}{item.unit && <small>{tr(item.unit)}</small>}</dd></div>)}
     </dl>}
     <div className="spot-actions">
       <button type="button" className="button primary" onClick={() => onEvidence(moment)}><FileSearch size={15} aria-hidden="true" />{t.whyBtn}</button>
-      <button type="button" className="button ghost" onClick={() => onJump(moment)}><RotateCcw size={14} aria-hidden="true" />{t.replay}</button>
-      <button type="button" className="text-button quiet" aria-pressed={pinned} onClick={onInspect}><Eye size={14} aria-hidden="true" />{pinned ? 'Return to replay' : 'Show sequence on pitch'}</button>
+      <button type="button" className="button ghost" onClick={() => onJump(moment)}><RotateCcw size={14} aria-hidden="true" />{t.jump}</button>
+      <button type="button" className="text-button quiet" aria-pressed={pinned} onClick={onInspect}><Eye size={14} aria-hidden="true" />{pinned ? tr('Return to replay') : tr('Show sequence on pitch')}</button>
     </div>
     <StatusLine moment={moment} />
   </article>;
 }
 
 /** Analyst: an inspector. Aligned metric rows with units, the calculation and trigger, the source events. */
-function AnalystInspector({ moment, favorite, fresh, pinned, onEvidence, onJump, onInspect }: SpotProps) {
+function AnalystInspector({ moment, favorite, fresh, pinned, nowClock, onEvidence, onJump, onInspect }: SpotProps) {
+  const tr = useTr();
   const language = useLanguage();
   const story = localStory(moment, useContext(RosterCtx), language);
   const rows = metricRows(moment);
-  const calc = calculationRows(moment).filter(([term]) => term !== 'Trigger' && term !== 'Rule version');
   return <article className={`spotlight analyst${fresh ? ' moment-enter' : ''}`} data-rule={moment.rule} style={{ ['--tone' as string]: teamTone(moment.team_id) }}
     aria-labelledby={`spot-${moment.moment_id}`}>
+    <SpotContext moment={moment} pinned={pinned} nowClock={nowClock} />
     <SpotMeta moment={moment} favorite={favorite} />
     <h3 id={`spot-${moment.moment_id}`} lang={language}>{story.headline}</h3>
     <p className="story" lang={story.englishOnly ? 'en' : language}>{story.analyst}{story.englishOnly && <small className="en-only"> {UI[language].aiEnglish}</small>}</p>
     <table className="inspect-table" aria-label="Metrics">
       <tbody>
-        {rows.map(row => <tr key={row.name}><th scope="row">{row.label}</th><td className="num">{row.shown}</td><td className="unit">{row.unit}</td></tr>)}
-        {calc.map(([term, value]) => <tr key={term}><th scope="row">{term}</th><td colSpan={2}>{value}</td></tr>)}
-        <tr><th scope="row">Why flagged</th><td colSpan={2} lang={language}>{language === 'es' ? whyEs(moment, 'analyst') : whyItMatters(moment, 'analyst')}</td></tr>
-        <tr><th scope="row">Source events</th><td colSpan={2} className="mono">{moment.evidence_ids.length} · {moment.evidence_ids[0]}{moment.evidence_ids.length > 1 ? ` … ${moment.evidence_ids[moment.evidence_ids.length - 1]}` : ''}</td></tr>
-        <tr><th scope="row">Versions</th><td colSpan={2}>{moment.rule_version} · {moment.metric_version}</td></tr>
+        {rows.map(row => <tr key={row.name}><th scope="row">{tr(row.label)}</th><td className="num">{num(row.shown)}</td><td className="unit">{row.unit && tr(row.unit)}</td></tr>)}
+        <tr><th scope="row">{tr('Why flagged')}</th><td colSpan={2} lang={language}>{language === 'es' ? whyEs(moment, 'analyst') : whyItMatters(moment, 'analyst')}</td></tr>
+        <tr><th scope="row">{tr('Source')}</th><td colSpan={2}>{moment.evidence_ids.length} {tr(moment.evidence_ids.length === 1 ? 'recorded event' : 'recorded events')} · {tr('details in the evidence')}</td></tr>
       </tbody>
     </table>
     <div className="spot-actions">
-      <button type="button" className="button primary" onClick={() => onEvidence(moment)}><FileSearch size={15} aria-hidden="true" />Inspect evidence</button>
-      <button type="button" className="button ghost" onClick={() => onJump(moment)}><RotateCcw size={14} aria-hidden="true" />Replay from {clockLabel(moment.period, moment.match_time_ms)}</button>
-      <button type="button" className="text-button quiet" aria-pressed={pinned} onClick={onInspect}><Eye size={14} aria-hidden="true" />{pinned ? 'Return to replay' : 'Show sequence on pitch'}</button>
+      <button type="button" className="button primary" onClick={() => onEvidence(moment)}><FileSearch size={15} aria-hidden="true" />{tr('Inspect evidence')}</button>
+      <button type="button" className="button ghost" onClick={() => onJump(moment)}><RotateCcw size={14} aria-hidden="true" />{tr('Jump to')} {clockLabel(moment.period, moment.match_time_ms)}</button>
+      <button type="button" className="text-button quiet" aria-pressed={pinned} onClick={onInspect}><Eye size={14} aria-hidden="true" />{pinned ? tr('Return to replay') : tr('Show sequence on pitch')}</button>
     </div>
     <StatusLine moment={moment} />
   </article>;
 }
 
-interface RowProps { moment: Moment; favorite: boolean; chosen: boolean; onChoose: () => void }
+interface RowProps { moment: Moment; related: Moment[]; favorite: boolean; chosen: boolean; onChoose: () => void }
 
-function FanRow({ moment, favorite, chosen, onChoose }: RowProps) {
+function FanRow({ moment, related, favorite, chosen, onChoose }: RowProps) {
   const language = useLanguage(), roster = useContext(RosterCtx);
   const Icon = RULE_ICON[moment.rule];
   return <button type="button" className="moment-row" aria-pressed={chosen} onClick={onChoose}
     style={{ ['--tone' as string]: teamTone(moment.team_id) }} data-rule={moment.rule}>
     <span className="minute">{clockLabel(moment.period, moment.match_time_ms)}</span>
     <span className="title" lang={language}>{localStory(moment, roster, language).headline}</span>
-    <AuthorTag moment={moment} />
-    <span className="sub"><Icon size={12} aria-hidden="true" />{RULE_LABEL[moment.rule]}
+    <span className="sub"><Icon size={12} aria-hidden="true" />{ruleName(moment.rule, language)}
+      {related.length > 0 && <span className="also">{language === 'es' ? 'también' : 'also'} {related.map(m => ruleName(m.rule, language).toLowerCase()).join(', ')}</span>}
       {favorite && <Star size={11} fill="var(--amber)" color="var(--amber)" aria-label="Involves your favourite" />}</span>
   </button>;
 }
 
-function AnalystRow({ moment, favorite, chosen, onChoose }: RowProps) {
+function AnalystRow({ moment, related, favorite, chosen, onChoose }: RowProps) {
+  const tr = useTr(), language = useLanguage(), roster = useContext(RosterCtx);
   const lead = keyValues(moment, 'analyst')[0];
   return <button type="button" className="moment-row dense" aria-pressed={chosen} onClick={onChoose}
     style={{ ['--tone' as string]: teamTone(moment.team_id) }} data-rule={moment.rule}
-    aria-label={`${clockLabel(moment.period, moment.match_time_ms)} ${RULE_LABEL[moment.rule]}: ${moment.insight.headline}`}>
+    aria-label={`${clockLabel(moment.period, moment.match_time_ms)} ${tr(RULE_LABEL[moment.rule])}: ${localStory(moment, roster, language).headline}`}>
     <span className="minute">{clockLabel(moment.period, moment.match_time_ms)}</span>
-    <span className="rule">{RULE_LABEL[moment.rule]}{favorite ? ' ★' : ''}</span>
+    <span className="rule">{tr(RULE_LABEL[moment.rule])}{related.length ? ` +${related.length}` : ''}{favorite ? ' ★' : ''}</span>
     <span className="team">{moment.team_id ? TEAM_META[moment.team_id]?.short : '–'}</span>
-    <span className="val num">{lead ? `${lead.label} ${lead.value}${lead.unit ? ` ${lead.unit}` : ''}` : '–'}</span>
-    <AuthorTag moment={moment} />
+    <span className="val num">{lead ? `${tr(lead.label)} ${num(lead.value)}${lead.unit ? ` ${tr(lead.unit)}` : ''}` : '–'}</span>
   </button>;
 }

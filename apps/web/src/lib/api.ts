@@ -38,7 +38,7 @@ async function getJson(path: string, options: RequestInit = {}, timeoutMs = DEFA
   try {
     response = await fetch(`${API_BASE_URL}${path}`, { ...options, signal: AbortSignal.timeout(timeoutMs) });
   } catch {
-    throw new ApiError(`Can't reach the API at ${API_BASE_URL}. Start FastAPI and check CORS_ORIGINS.`, 'network');
+    throw new ApiError(`Network error reaching ${API_BASE_URL}`, 'network');
   }
   if (!response.ok) {
     let message = `API returned HTTP ${response.status}`;
@@ -124,6 +124,17 @@ export async function ingestEvents(runId: string, events: Event[]): Promise<Inge
 
 export interface LedgerView { summary: LedgerSummary; diagnostics: { event_id: string | null; code: string; message: string; received_at: string }[] }
 
+/** Simulated physical data (not measured): running distance and top speed per player, ball speeds, sprint alerts. */
+export interface PhysicalView {
+  simulated: true; sprint_alert_mps: number; through_ms: number;
+  players: { player_id: string; team_id: string; distance_m: number; top_speed_mps: number }[];
+  ball_speeds: { event_id: string; type: 'pass' | 'shot'; speed_mps: number }[];
+  alerts: { player_id: string; period: number; start_ms: number; top_speed_mps: number }[];
+}
+export async function fetchPhysical(sprintAlert = 9): Promise<PhysicalView> {
+  return await getJson(`/api/v1/replay/physical?sprint_alert_mps=${sprintAlert}`) as PhysicalView;
+}
+
 export async function fetchLedger(runId: string): Promise<LedgerView> {
   return await getJson(`/api/v1/runs/${encodeURIComponent(runId)}/ledger`) as LedgerView;
 }
@@ -183,10 +194,10 @@ export async function negotiatePush(runId: string): Promise<Negotiated | null> {
   return negotiated;
 }
 
-export async function fetchRecap(scope: RecapScope): Promise<RecapResult | null> {
+export async function fetchRecap(scope: RecapScope, language: 'en' | 'es' = 'en'): Promise<RecapResult | null> {
   let value: unknown;
   try {
-    value = await getJson(`/api/v1/replay/recap?scope=${scope}`);
+    value = await getJson(`/api/v1/replay/recap?scope=${scope}&lang=${language}`);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
@@ -194,4 +205,14 @@ export async function fetchRecap(scope: RecapScope): Promise<RecapResult | null>
   const result = value as RecapResult;
   if (!result || !validateRecap(result.recap)) throw new ApiError('Recap does not match the wire contract.', 'contract');
   return result;
+}
+
+/** What a viewer sees for an error: plain language, no addresses, status codes or server text. The technical
+ * detail is logged to the browser console for diagnosis. */
+export function publicMessage(error: unknown, context: 'match' | 'action' | 'recap' = 'match'): string {
+  console.error('[omnipitch]', context, error);
+  if (context === 'recap') return 'Unable to load this recap. Try again.';
+  if (error instanceof ApiError && error.kind === 'network') return 'Can\'t reach the match right now. Trying again.';
+  if (error instanceof ApiError && error.status === 409) return 'The match moved on. Showing the latest state.';
+  return context === 'action' ? 'That didn\'t work. Try again.' : 'Something went wrong loading the match. Try again.';
 }

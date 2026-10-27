@@ -1,4 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
+import { t } from '../lib/i18n';
+import { useTr } from '../lib/i18n';
 import type { MatchState, MomentumBucket, ReplayInfo } from '../types/contracts';
 import { clockLabel, fmt, runningClock, TEAM_META } from '../lib/format';
 import { DUR, EASE_OUT } from '../lib/motion';
@@ -14,11 +16,16 @@ function Digit({ value }: { value: number }) {
   </span>;
 }
 
+/** Not started yet: no events, or only the kick-off marker at 0:00 and not playing. */
+export function atKickoff(state: MatchState, replay: ReplayInfo) {
+  return state.latest_event_sequence === 0 || (replay.clock_period === 1 && replay.clock_ms === 0 && state.replay_status !== 'playing');
+}
+
 export type ReplayState = 'pre' | 'playing' | 'paused' | 'half' | 'finished';
 
 export function replayState(state: MatchState, replay: ReplayInfo, clockMs: number): ReplayState {
   if (state.replay_status === 'finished') return 'finished';
-  if (state.latest_event_sequence === 0) return 'pre';
+  if (atKickoff(state, replay)) return 'pre';
   if (state.replay_status === 'playing') return 'playing';
   return replay.clock_period === 1 && clockMs >= 45 * 60000 ? 'half' : 'paused';
 }
@@ -32,11 +39,12 @@ export const STATE_LABEL: Record<ReplayState, string> = {
 export function ScoreStrip({ state, replay, clockMs, inspecting }: {
   state: MatchState; replay: ReplayInfo; clockMs: number; inspecting: string | null;
 }) {
+  const tr = useTr();
   const period = replay.clock_period;
   const status = replayState(state, replay, clockMs);
   const home = TEAM_META[state.home_team.id], away = TEAM_META[state.away_team.id];
-  const periodLabel = status === 'pre' ? 'Kick-off' : status === 'half' ? 'Half-time' : status === 'finished' ? 'Full-time' : period === 1 ? 'First half' : 'Second half';
-  return <section className="strip" aria-label="Score">
+  const periodLabel = status === 'pre' ? tr('Kick-off') : status === 'half' ? tr('Half-time') : status === 'finished' ? tr('Full-time') : period === 1 ? tr('First half') : tr('Second half');
+  return <section className="strip" aria-label={t('Score')}>
     <div className="strip-match">
       <div className="strip-team">
         <Crest key={`${state.run_id}-h`} team={state.home_team.id} tilt />
@@ -51,12 +59,12 @@ export function ScoreStrip({ state, replay, clockMs, inspecting }: {
       </div>
     </div>
     <div className="strip-clock">
-      <b aria-label={`Match clock ${clockLabel(period, clockMs)}`}>{runningClock(period, clockMs)}</b>
+      <b aria-label={`${t('Match clock')} ${clockLabel(period, clockMs)}`}>{runningClock(period, clockMs)}</b>
       <span className="long">{periodLabel}</span>
-      <span className="short">{status === 'pre' ? 'Ready' : status === 'half' ? 'HT' : status === 'finished' ? 'FT' : `${period}H · ${STATE_LABEL[status]}`}</span>
+      <span className="short">{status === 'pre' ? tr('Ready') : status === 'half' ? 'HT' : status === 'finished' ? 'FT' : `${period}H · ${tr(STATE_LABEL[status])}`}</span>
     </div>
     <div className="strip-state" data-state={inspecting ? 'inspecting' : status}>
-      <i aria-hidden="true" />{inspecting ? `Inspecting sequence at ${inspecting}` : status === 'paused' ? `Paused at ${runningClock(period, clockMs)}` : STATE_LABEL[status]}
+      <i aria-hidden="true" />{inspecting ? `${tr('Inspecting')} · ${inspecting}` : status === 'paused' ? `${tr('Paused')} · ${runningClock(period, clockMs)}` : tr(STATE_LABEL[status])}
     </div>
   </section>;
 }

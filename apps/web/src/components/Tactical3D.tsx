@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import {
   BoxGeometry, BufferGeometry, CanvasTexture, CircleGeometry, Color, DirectionalLight, Float32BufferAttribute, Group,
   HemisphereLight, LineBasicMaterial, LineSegments, Mesh, MeshBasicMaterial, MeshLambertMaterial, PerspectiveCamera,
-  PlaneGeometry, Scene, SphereGeometry, Vector3, WebGLRenderer,
+  PlaneGeometry, RingGeometry, Scene, SphereGeometry, Vector3, WebGLRenderer,
 } from 'three';
 import type { Event } from '../types/contracts';
 
@@ -12,7 +12,7 @@ import type { Event } from '../types/contracts';
  * paused while the tab is hidden or the view is off screen, and fully disposed on unmount. */
 export type CameraMode = 'broadcast' | 'overhead';
 
-const TONE: Record<string, string> = { harbor: '#ff806a', vale: '#7dd8e7', shot: '#f2cc62' };
+const TONE: Record<string, string> = { harbor: '#ff806a', vale: '#7dd8e7', shot: '#ebcb70' };
 const toWorld = (x: number, y: number, lift = 0) => new Vector3(x - 52.5, lift, y - 34);
 
 export default function Tactical3D({ steps, active, camera, reduced, onFallback }: {
@@ -34,7 +34,7 @@ export default function Tactical3D({ steps, active, camera, reduced, onFallback 
       return;
     }
     renderer.setPixelRatio(Math.min(1.5, Math.max(1, window.devicePixelRatio || 1)));
-    renderer.setClearColor(new Color('#091211'));
+    renderer.setClearColor(new Color('#0b1018'));
     el.appendChild(renderer.domElement);
     const canvas = renderer.domElement;
     const onLost = (event: { preventDefault: () => void }) => { event.preventDefault(); fallback.current('The 3D view lost its graphics context.'); };
@@ -47,7 +47,7 @@ export default function Tactical3D({ steps, active, camera, reduced, onFallback 
 
     // A shallow slab (105 x 68 m field, 4 m margin) with simple lighting and a cheap contact shadow:
     // a tiny radial-gradient texture under the slab instead of a shadow map.
-    scene.add(new HemisphereLight('#f6f1e4', '#1b2f2a', 1.5));
+    scene.add(new HemisphereLight('#f3f1e9', '#14202c', 1.5));
     const sun = new DirectionalLight('#ffffff', 1);
     sun.position.set(-30, 90, 50);
     scene.add(sun);
@@ -61,13 +61,13 @@ export default function Tactical3D({ steps, active, camera, reduced, onFallback 
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = -5;
     scene.add(shadow);
-    const side = keep(new MeshLambertMaterial({ color: '#0d231b' }));
-    const top = keep(new MeshLambertMaterial({ color: '#163628' }));
+    const side = keep(new MeshLambertMaterial({ color: '#0f3228' }));
+    const top = keep(new MeshLambertMaterial({ color: '#123b2f' }));
     const slab = new Mesh(keep(new BoxGeometry(113, 2, 76)), [side, side, top, side, side, side]);
     slab.position.y = -1;
     scene.add(slab);
     for (let i = 0; i < 12; i += 2) {
-      const stripe = new Mesh(keep(new PlaneGeometry(8.75, 68)), keep(new MeshLambertMaterial({ color: '#19392b' })));
+      const stripe = new Mesh(keep(new PlaneGeometry(8.75, 68)), keep(new MeshLambertMaterial({ color: '#144232' })));
       stripe.rotation.x = -Math.PI / 2;
       stripe.position.set(i * 8.75 + 4.375 - 52.5, .005, 0);
       scene.add(stripe);
@@ -111,6 +111,9 @@ export default function Tactical3D({ steps, active, camera, reduced, onFallback 
     });
     const ball = new Mesh(keep(new SphereGeometry(.7, 20, 14)), keep(new MeshBasicMaterial({ color: '#fbfbf4' })));
     scene.add(ball);
+    const halo = new Mesh(keep(new RingGeometry(1.5, 2.1, 32)), keep(new MeshBasicMaterial({ color: '#f3f1e9', transparent: true, opacity: .85, depthWrite: false })));
+    halo.rotation.x = -Math.PI / 2;
+    scene.add(halo);
 
     let current = Math.min(active, items.length - 1);
     let mode: CameraMode = camera;
@@ -120,19 +123,22 @@ export default function Tactical3D({ steps, active, camera, reduced, onFallback 
     let onscreen = true;
 
     const placeCamera = () => {
-      // Fixed cameras that always show the complete pitch, so the sequence is seen in context.
-      if (mode === 'overhead') { cam.position.set(0, 150, .01); cam.lookAt(0, 0, 0); }
-      else { cam.position.set(0, 104, 126); cam.lookAt(0, -16, 16); }
+      // Fixed cameras that always show the complete pitch, so the sequence is seen in context. On narrow
+      // frames the camera steps back just far enough for both touchlines to stay in view.
+      const back = Math.max(1, 1.55 / Math.max(.4, cam.aspect));
+      if (mode === 'overhead') { cam.position.set(0, 150 * back, .01); cam.lookAt(0, 0, 0); }
+      else { cam.position.set(0, 104 * back, 126 * back); cam.lookAt(0, -16, 16); }
     };
 
     const render = () => {
       if (!visible || !onscreen) return;
       items.forEach(item => {
         const on = item.index === current, past = item.index < current;
-        item.material.opacity = on ? 1 : past ? .55 : .18;
-        item.dotMaterial.opacity = on ? 1 : past ? .6 : .25;
+        item.material.opacity = on ? 1 : past ? .42 : .12;
+        item.dotMaterial.opacity = on ? 1 : past ? .5 : .18;
         item.line.scale.x = on ? Math.max(.0001, item.length * draw) : item.length;
-        if (on) ball.position.copy(item.start.clone().lerp(item.end, draw)).setY(.7);
+        item.line.scale.y = on ? 1.7 : 1;
+        if (on) { ball.position.copy(item.start.clone().lerp(item.end, draw)).setY(.7); halo.position.copy(item.start).setY(.08); }
       });
       renderer.render(scene, cam);
       // Numbered HTML labels at each step's recorded start point.
@@ -145,11 +151,14 @@ export default function Tactical3D({ steps, active, camera, reduced, onFallback 
         if (!node) return;
         const p = item.start.clone().project(cam);
         let x = ((p.x + 1) / 2) * box.width;
-        const y = ((1 - p.y) / 2) * box.height - 26;
+        const py = ((1 - p.y) / 2) * box.height;
+        const y = py < 34 ? py + 10 : py - 28;
         while (placed.some(o => Math.abs(o.x - x) < 24 && Math.abs(o.y - y) < 20)) x += 26;
+        x = Math.min(box.width - 14, Math.max(14, x));
         placed.push({ x, y });
         node.style.transform = `translate(${x}px, ${y}px) translateX(-50%)`;
         node.classList.toggle('dim', item.index > current);
+        node.classList.toggle('on', item.index === current);
       });
     };
 
@@ -173,6 +182,7 @@ export default function Tactical3D({ steps, active, camera, reduced, onFallback 
       renderer.setSize(width, height, false);
       cam.aspect = width / height;
       cam.updateProjectionMatrix();
+      placeCamera();
       render();
     };
     const sizes = new ResizeObserver(resize);
