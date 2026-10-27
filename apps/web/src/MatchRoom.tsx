@@ -4,6 +4,7 @@ import { RefreshCw, SlidersHorizontal, WifiOff, X } from 'lucide-react';
 import { AnalysisTabs, type TabRequest } from './components/AnalysisTabs';
 import { Brand } from './components/Crest';
 import { TrustBar } from './components/TrustBar';
+import { StoryLine } from './components/StoryLine';
 import { catchUp, readJoin, storeDismissed, type JoinPoint } from './components/CatchUp';
 import { LanguageContext, setUiLanguage, t, useTr } from './lib/i18n';
 import { Filmstrip, type FilmRange } from './components/ControlDock';
@@ -200,7 +201,8 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
     {replay && <main id="match" tabIndex={-1}>
       <p className="sr-only" aria-live="polite">{modeNote}</p>
       <h1 className="sr-only">{t('OmniPitch match room:')} {replay.state.home_team.name} {t('against')} {replay.state.away_team.name}</h1>
-      <ScoreStrip state={replay.state} replay={replay.replay} clockMs={clockMs} inspecting={inspecting} />
+      <ScoreStrip state={replay.state} replay={replay.replay} clockMs={clockMs} inspecting={inspecting} badge={<TrustBar replay={replay} />} />
+      <StoryLine replay={replay} language={prefs.language} onRecap={openRecapNow} />
       <div className="banner-stack" aria-live="polite">
       <AnimatePresence initial={false}>
         {live.connection === 'offline' && <motion.div key="offline" className="alert" role="alert" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
@@ -222,8 +224,6 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
       </AnimatePresence>
       </div>
 
-      <TrustBar replay={replay} />
-
       <div className="desk">
         <MatchStage replay={replay} selected={selected} onSelect={selectEvent} prefs={prefs} updatePrefs={updatePrefs}
           goal={goal} animate={!reduced} audience={prefs.audience} inspect={inspect} onStopInspect={stopInspect}
@@ -231,9 +231,9 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
           subtitle={<CommentarySubtitle c={commentary} language={prefs.language} />} />
         <div className="desk-film">
           <Filmstrip replay={replay} elapsed={elapsed} busy={live.busy} disabled={disabled} audience={prefs.audience}
-            range={range} onReturn={stopInspect}
+            range={range} onReturn={stopInspect} onChoose={chooseMoment}
             onPlay={live.play} onPause={live.pause} onRestart={restart} onReset={live.reset} onSpeed={live.setSpeed} onSeek={live.seek}
-            onGenerate={live.generate} onLoad={live.load} />
+            onGenerate={live.generate} onLoad={live.load} actions={<CommentaryBar c={commentary} language={prefs.language} />} />
         </div>
         <MomentFeed moments={replay.moments} audience={prefs.audience} favoriteTeam={prefs.favoriteTeam} favoritePlayer={prefs.favoritePlayer}
           focusMetric={prefs.focusMetric} analysis={replay.analysis} events={replay.events}

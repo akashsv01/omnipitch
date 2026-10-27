@@ -1,4 +1,5 @@
-import { History, X } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, History, X } from 'lucide-react';
 import type { Event, MatchState, Moment, Player } from '../types/contracts';
 import { RULE_LABEL, clockLabel, teamTone } from '../lib/format';
 import { localStory, useLanguage, useTr, type Language } from '../lib/i18n';
@@ -70,18 +71,20 @@ export function CatchUpCard({ data, state, roster, onChoose, onDismiss }: {
   data: CatchUpData; state: MatchState; roster: Player[]; onChoose: (moment: Moment) => void; onDismiss: () => void;
 }) {
   const language = useLanguage(), t = TEXT[language], tr = useTr();
-  return <section className="catch-up" aria-labelledby="catch-up-title" lang={language}>
+  const [open, setOpen] = useState(false);
+  return <section className="catch-up" data-open={open || undefined} aria-labelledby="catch-up-title" lang={language}>
     <div className="catch-up-head">
-      <span className="catch-up-eyebrow"><History size={13} aria-hidden="true" />{t.eyebrow}</span>
+      <History size={15} aria-hidden="true" className="catch-up-icon" />
+      <button type="button" className="catch-up-toggle" aria-expanded={open} aria-controls="catch-up-list" onClick={() => setOpen(value => !value)}>
+        <h3 id="catch-up-title">{t.joined} {data.joinedAt}</h3>
+        <span className="catch-up-score"><b>{state.home_team.name} {data.score.home}–{data.score.away} {state.away_team.name}</b>
+          {data.missed.length > 0 && <span className="num"> · {counts(language, data.missed)}</span>}</span>
+        <ChevronDown size={15} aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : undefined }} />
+      </button>
       <button type="button" className="icon-button" aria-label={t.dismiss} onClick={onDismiss}><X size={15} /></button>
     </div>
-    <h3 id="catch-up-title">{t.joined} {data.joinedAt}</h3>
-    <p className="catch-up-score">
-      {t.before}: <b>{state.home_team.name} {data.score.home}–{data.score.away} {state.away_team.name}</b>
-      {data.missed.length > 0 && <span className="num">{counts(language, data.missed)}</span>}
-    </p>
-    {data.picks.length
-      ? <ol className="catch-up-list">
+    {!open ? null : data.picks.length
+      ? <ol className="catch-up-list" id="catch-up-list">
           {data.picks.map(moment => <li key={moment.moment_id}>
             <button type="button" className="moment-row" style={{ ['--tone' as string]: teamTone(moment.team_id) }} data-rule={moment.rule}
               onClick={() => onChoose(moment)}>

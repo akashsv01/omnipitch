@@ -291,6 +291,8 @@ export const ES_UI: Record<string, string> = {
   'PPDA falls to 60% or less of the previous valid window (at least 10 passes and 3 actions; at most once every 10 minutes)': 'El PPDA baja al 60% o menos de la ventana válida anterior (al menos 10 pases y 3 acciones; como mucho una vez cada 10 minutos)',
   'Source': 'Origen',
   'Jump to': 'Ir al',
+  'Replay from': 'Repetir desde el',
+  'Open': 'Abrir',
   'min · rule · team · key value · author': 'min · regla · equipo · valor clave · autoría',
   'details in the evidence': 'detalles en la evidencia',
   'recorded event': 'acción registrada',
@@ -438,6 +440,11 @@ export const ES_UI: Record<string, string> = {
   "Analyst view: metrics, sources and layers.": "Vista analista: métricas, fuentes y capas.",
   "events": "acciones",
   "passes per defensive action": "pases por acción defensiva",
+  // Match room layout: the one-line fact-check badge.
+  "Checked": "Comprobado",
+  "moments": "momentos",
+  "figures": "cifras",
+  "AI-checked": "con IA comprobados",
 };
 
 /** The interface language for code outside React hooks (pure helpers such as eventLabel). The match room and the

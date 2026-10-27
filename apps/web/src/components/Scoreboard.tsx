@@ -36,8 +36,10 @@ export const STATE_LABEL: Record<ReplayState, string> = {
 
 /** Compact match identity and score. Replay state lives here; backend connection lives in the nav;
  * inspecting a past moment is its own state, so it is never confused with "paused". */
-export function ScoreStrip({ state, replay, clockMs, inspecting }: {
+export function ScoreStrip({ state, replay, clockMs, inspecting, badge }: {
   state: MatchState; replay: ReplayInfo; clockMs: number; inspecting: string | null;
+  /** The one-line fact-check badge, beside the clock. */
+  badge?: React.ReactNode;
 }) {
   const tr = useTr();
   const period = replay.clock_period;
@@ -63,6 +65,7 @@ export function ScoreStrip({ state, replay, clockMs, inspecting }: {
       <span className="long">{periodLabel}</span>
       <span className="short">{status === 'pre' ? tr('Ready') : status === 'half' ? 'HT' : status === 'finished' ? 'FT' : `${period}H · ${tr(STATE_LABEL[status])}`}</span>
     </div>
+    {badge && <div className="strip-badge">{badge}</div>}
     <div className="strip-state" data-state={inspecting ? 'inspecting' : status}>
       <i aria-hidden="true" />{inspecting ? `${tr('Inspecting')} · ${inspecting}` : status === 'paused' ? `${tr('Paused')} · ${runningClock(period, clockMs)}` : tr(STATE_LABEL[status])}
     </div>
