@@ -5,6 +5,7 @@ import type { Event, Moment, ReplaySnapshot } from '../types/contracts';
 import type { Audience, Prefs } from '../lib/prefs';
 import { RULE_LABEL, clockLabel, eventLabel, fmt, playerIndex, teamTone } from '../lib/format';
 import { DUR, EASE_OUT } from '../lib/motion';
+import { passDifficulty } from '../lib/passing';
 import { Crest } from './Crest';
 import { Pitch, PitchLegend } from './Pitch';
 
@@ -114,6 +115,7 @@ function EventInspector({ event, moment, events, name }: { event?: Event; moment
   }
   if (!event) return null;
   const length = event.start && event.end ? Math.hypot(event.end.x - event.start.x, event.end.y - event.start.y) : null;
+  const difficulty = passDifficulty(event)?.difficulty ?? null;
   const forward = event.start && event.end && event.attacking_direction ? (event.end.x - event.start.x) * (event.attacking_direction === 'positive_x' ? 1 : -1) : null;
   return <dl className="inspector" aria-label="Selected event">
     <div><dt>Event</dt><dd><b>{eventLabel(event)}</b> · {name ?? '–'}</dd></div>
@@ -121,6 +123,7 @@ function EventInspector({ event, moment, events, name }: { event?: Event; moment
     <div><dt>Start → end</dt><dd className="num">{event.start ? `(${event.start.x}, ${event.start.y})` : '–'}{event.end ? ` → (${event.end.x}, ${event.end.y})` : ''}</dd></div>
     <div><dt>Length · forward</dt><dd className="num">{length === null ? '–' : `${fmt(length, 1)} m`}{forward === null ? '' : ` · ${forward >= 0 ? '+' : ''}${fmt(forward, 1)} m`}</dd></div>
     <div><dt>Attack</dt><dd>{event.attacking_direction === 'positive_x' ? '→ +x' : event.attacking_direction ? '← −x' : '–'}</dd></div>
+    {difficulty !== null && <div><dt>Pass difficulty</dt><dd className="num">{difficulty} / 100</dd></div>}
     <div><dt>ID</dt><dd className="mono">{event.event_id} · #{event.sequence}</dd></div>
   </dl>;
 }
@@ -141,8 +144,9 @@ function GoalRibbon({ goal, replay, scorer, animate }: { goal: Event; replay: Re
 /** The action in focus, in words, at the pitch edge (static under the pitch on phones). */
 /** Coordinates live in the analyst's event inspector below the pitch, not on the turf. */
 function Annotation({ event, name, pinned, onClear }: { event: Event; name?: string; pinned: boolean; onClear: () => void }) {
+  const difficulty = passDifficulty(event)?.difficulty ?? null;
   return <div className="annotation" style={{ ['--tone' as string]: event.type === 'shot' ? 'var(--amber)' : teamTone(event.team_id) }}>
-    <span><b>{eventLabel(event)}</b>{name ? ` by ${name}` : ''}, {clockLabel(event.period, event.match_time_ms)}</span>
+    <span><b>{eventLabel(event)}</b>{name ? ` by ${name}` : ''}, {clockLabel(event.period, event.match_time_ms)}{difficulty !== null && <span className="annotation-meta"> · difficulty {difficulty}</span>}</span>
     {pinned && <button type="button" className="text-button" onClick={onClear}>Return to replay</button>}
   </div>;
 }

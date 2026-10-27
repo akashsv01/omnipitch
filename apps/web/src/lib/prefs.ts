@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { FocusMetric } from './focus';
 
 export type Audience = 'fan' | 'analyst';
 export type MotionPref = 'system' | 'reduced' | 'full';
@@ -9,6 +10,8 @@ export interface Prefs {
   language: Language;
   favoriteTeam: string | null;
   favoritePlayer: string | null;
+  /** One metric the room centres on, or none. */
+  focusMetric: FocusMetric | null;
   motion: MotionPref;
   /** Fan pitch layers (advanced ones live under "Explore tactics"). */
   layers: { trail: boolean; threat: boolean; density: boolean; network: boolean };
@@ -18,7 +21,7 @@ export interface Prefs {
 
 const KEY = 'omnipitch.prefs.v1';
 export const DEFAULT_PREFS: Prefs = {
-  audience: 'fan', language: 'en', favoriteTeam: null, favoritePlayer: null, motion: 'system',
+  audience: 'fan', language: 'en', favoriteTeam: null, favoritePlayer: null, focusMetric: null, motion: 'system',
   layers: { trail: true, threat: false, density: false, network: false },
   analystLayers: { trail: true, threat: true, density: false, network: false },
 };

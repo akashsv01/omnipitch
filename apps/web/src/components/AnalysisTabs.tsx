@@ -6,18 +6,20 @@ import type { RecapScope, Analysis, Event, IngestResult, PpdaWindow, ReplaySnaps
 import type { Audience } from '../lib/prefs';
 import { fetchLedger, ingestEvents, type LedgerView } from '../lib/api';
 import { fmt, playerIndex, surname, teamTone } from '../lib/format';
+import { passingSummary } from '../lib/passing';
 import { INDICATOR } from '../lib/motion';
 import { EventhousePanel } from './EventhousePanel';
+import { PassingPanel } from './PassingPanel';
 import { Pitch } from './Pitch';
 import { RecapPanel } from './RecapPanel';
 import { momentumSlots, momentumSummary } from './Scoreboard';
 
-export type Tab = 'recap' | 'teams' | 'pressing' | 'players' | 'shots' | 'quality';
+export type Tab = 'recap' | 'teams' | 'passing' | 'pressing' | 'players' | 'shots' | 'quality';
 // Fans get the familiar views (recap, match stats, players, shots); analysts get every view. A fan can
 // always switch audience to reach the rest, and switching never resets the replay.
 const TABS: { id: Tab; label: string; fanLabel?: string; fan: boolean }[] = [
   { id: 'recap', label: 'Recap', fan: true }, { id: 'teams', label: 'Team comparison', fanLabel: 'Match stats', fan: true },
-  { id: 'pressing', label: 'Pressing', fan: false }, { id: 'players', label: 'Players', fan: true },
+  { id: 'passing', label: 'Passing', fan: true }, { id: 'pressing', label: 'Pressing', fan: false }, { id: 'players', label: 'Players', fan: true },
   { id: 'shots', label: 'Shot map', fan: true }, { id: 'quality', label: 'Data quality', fan: false },
 ];
 
@@ -59,6 +61,7 @@ export const AnalysisTabs = memo(function AnalysisTabs({ replay, audience, favor
         <Momentum replay={replay} playhead={playhead} audience={audience} />
         <TeamCompare analysis={replay.analysis} audience={audience} />
       </div>}
+      {tab === 'passing' && <PassingPanel replay={replay} audience={audience} onSelectEvent={onSelectEvent} />}
       {tab === 'pressing' && <Pressing analysis={replay.analysis} audience={audience} />}
       {tab === 'players' && <Players replay={replay} favoritePlayer={favoritePlayer} audience={audience} />}
       {tab === 'shots' && <Shots replay={replay} onSelectEvent={onSelectEvent} />}
@@ -219,6 +222,7 @@ function Players({ replay, favoritePlayer, audience }: { replay: ReplaySnapshot;
   const [sort, setSort] = useState<SortKey>('threat_gained');
   const [team, setTeam] = useState<'all' | 'harbor' | 'vale'>('all');
   const people = useMemo(() => playerIndex(replay.replay.roster), [replay.replay.roster]);
+  const passing = useMemo(() => new Map(passingSummary(replay.events, []).players.map(row => [row.player_id, row])), [replay.events]);
   const columns: { key: SortKey; label: string; analyst?: boolean }[] = [
     { key: 'threat_gained', label: 'Threat', analyst: true }, { key: 'progression_m', label: 'Progress m' },
     { key: 'passes', label: 'Passes' }, { key: 'shots', label: 'Shots' }, { key: 'defensive_actions', label: 'Def. actions' },
@@ -235,16 +239,17 @@ function Players({ replay, favoritePlayer, audience }: { replay: ReplaySnapshot;
     <div className="table-wrap"><table>
       <thead><tr><th>Player</th>{visible.map(column => <th key={column.key} className="num" aria-sort={active === column.key ? 'descending' : undefined}>
         <button type="button" onClick={() => setSort(column.key)}>{column.label}{active === column.key && <ArrowDown size={12} />}</button>
-      </th>)}{audience === 'analyst' && <th className="num">Completed</th>}</tr></thead>
+      </th>)}{audience === 'analyst' && <><th className="num">Completed</th><th className="num" title="Average pass difficulty, 0–100">Pass diff.</th></>}</tr></thead>
       <tbody>
-        {rows.length === 0 && <tr><td colSpan={7} className="hint">No player actions yet.</td></tr>}
+        {rows.length === 0 && <tr><td colSpan={8} className="hint">No player actions yet.</td></tr>}
         {rows.map(row => {
           const person = people.get(row.player_id);
           return <tr key={row.player_id} data-favorite={row.player_id === favoritePlayer}>
             <td><span className="player-cell"><span className="shirt" style={{ background: teamTone(row.team_id) }}>{person?.shirt}</span>
               <span>{person?.name ?? row.player_id} <span className="hint">{person?.position}</span></span></span></td>
             {visible.map(column => <td key={column.key} className="num">{fmt(row[column.key], column.key === 'threat_gained' ? 3 : column.key === 'progression_m' ? 0 : 1)}</td>)}
-            {audience === 'analyst' && <td className="num">{row.passes ? `${Math.round(100 * row.passes_completed / row.passes)}%` : '–'}</td>}
+            {audience === 'analyst' && <><td className="num">{row.passes ? `${Math.round(100 * row.passes_completed / row.passes)}%` : '–'}</td>
+              <td className="num">{passing.get(row.player_id)?.meanDifficulty ?? '–'}</td></>}
           </tr>;
         })}
       </tbody>

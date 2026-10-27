@@ -269,6 +269,34 @@ main:focus { outline: none; } /* programmatic skip-link target only */
 .catch-up-score .num { color: var(--text-3); }
 .catch-up-list { list-style: none; margin: 2px 0 0; padding: 0; }
 .catch-up-list .moment-row { padding-block: 7px; }
+.band-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.band-table th, .band-table td { padding: 6px 8px 6px 0; border-top: 1px solid var(--line); text-align: left; }
+.band-table thead th { border-top: 0; font-size: 12px; font-weight: 500; color: var(--text-3); }
+.band-table th small { color: var(--text-3); font-weight: 400; }
+.band-table td:last-child { width: 40%; }
+.band-bar { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.band-bar i { display: block; height: 100%; border-radius: 3px; opacity: .85; }
+.annotation-meta { color: var(--text-3); font-weight: 400; }
+.metric-focus { margin-top: var(--s3); border: 1px solid var(--line); border-radius: var(--r3); background: var(--surface); padding: 8px 12px; }
+.focus-bar { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.focus-bar h2 { display: inline-flex; align-items: center; gap: 7px; flex: none; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.focus-bar .filter-row { flex: 1; min-width: 0; padding-bottom: 0; }
+.focus-bar .icon-button { width: 30px; height: 30px; flex: none; }
+.focus-panel { display: grid; gap: 12px; padding: 12px 0 6px; }
+.focus-now { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 4px 28px; align-items: end; }
+.focus-team { display: grid; gap: 2px; }
+.focus-team span { font-size: 13px; font-weight: 600; }
+.focus-team b { font: 800 34px/1 var(--display); color: var(--text-2); }
+.focus-team[data-lead="true"] b { color: var(--text); }
+.focus-team b small { font: 500 13px var(--sans); color: var(--text-3); margin-left: 3px; }
+.focus-def { font-size: 13px; color: var(--text-3); line-height: 1.45; max-width: 60ch; }
+.focus-panel svg { width: 100%; max-height: 220px; height: auto; display: block; }
+.focus-sub { font-size: 12.5px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
+.focus-list { list-style: none; margin: 0; padding: 0; }
+.focus-list li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.focus-list .shirt { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; font-size: 11px; font-weight: 700; color: #0b0f0d; }
+.focus-list b { font: 800 18px/1 var(--display); }
+@media (max-width: 760px) { .focus-bar { flex-wrap: wrap; } .focus-bar .filter-row { flex-basis: 100%; order: 3; } .focus-now { grid-template-columns: 1fr 1fr; } .focus-def { grid-column: 1 / -1; } }
 .quiet-note { padding: 10px 12px; font-size: 13px; color: var(--text-3); border-top: 1px solid var(--line); }
 .empty { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 28px 16px; color: var(--text-3); font-size: 14px; }
 .empty strong { color: var(--text-2); font-weight: 500; }

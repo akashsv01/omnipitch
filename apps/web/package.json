@@ -11,6 +11,7 @@
     "test:contracts": "node scripts/check-contracts.mjs",
     "test:pitch": "node scripts/check-pitch.mjs",
     "test:push": "node scripts/check-push.mjs",
+    "test:passing": "node scripts/check-passing.mjs",
     "test:replay:browser": "node scripts/smoke-replay.mjs"
   },
   "dependencies": {

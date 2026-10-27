@@ -9,6 +9,7 @@ import { Filmstrip, type FilmRange } from './components/ControlDock';
 import { EvidenceDrawer } from './components/EvidenceDrawer';
 import { EventhousePanel } from './components/EventhousePanel';
 import { MatchStage } from './components/MatchStage';
+import { MetricFocus } from './components/MetricFocus';
 import { MomentFeed } from './components/MomentFeed';
 import { Preferences } from './components/Preferences';
 import { ScoreStrip } from './components/Scoreboard';
@@ -216,6 +217,8 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
         <span><b>Azure mode, but this replay is not Eventhouse data.</b> It is the {replay.replay.source === 'simulator' ? 'local simulator match' : 'uploaded file'} restored at startup. Load a run from Fabric Eventhouse to see cloud data.</span>
         <EventhousePanel replay={replay} busy={live.busy} onLoad={live.loadEventhouse} compact />
       </div>}
+
+      <MetricFocus replay={replay} audience={prefs.audience} metric={prefs.focusMetric} onMetric={focusMetric => updatePrefs({ focusMetric })} onChoose={chooseMoment} />
 
       <div className="desk">
         <MatchStage replay={replay} selected={selected} onSelect={selectEvent} prefs={prefs} updatePrefs={updatePrefs}
