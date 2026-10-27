@@ -269,6 +269,25 @@ main:focus { outline: none; } /* programmatic skip-link target only */
 .catch-up-score .num { color: var(--text-3); }
 .catch-up-list { list-style: none; margin: 2px 0 0; padding: 0; }
 .catch-up-list .moment-row { padding-block: 7px; }
+.player-focus { margin-top: var(--s3); border: 1px solid var(--line); border-radius: var(--r3); background: var(--surface); padding: 8px 12px; }
+.pf-bar { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pf-bar h2 { display: inline-flex; align-items: center; gap: 7px; flex: none; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.pf-bar .icon-button { width: 30px; height: 30px; flex: none; }
+.focus-select { min-width: 0; max-width: 340px; flex: 1; min-height: 32px; padding: 0 10px; border-radius: var(--r2); border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 14px; }
+.player-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: var(--s4); padding: 12px 0 6px; }
+.player-card-pitch { display: grid; gap: 6px; align-content: start; }
+.player-card-body { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.player-head { display: flex; align-items: center; gap: 12px; }
+.player-head .shirt { width: 38px; height: 38px; font-size: 20px; border-radius: 10px; }
+.player-head h3 { font: 800 26px/1 var(--display); letter-spacing: .01em; }
+.player-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 14px; margin: 0; }
+.player-tiles div { display: grid; gap: 2px; padding-top: 6px; border-top: 2px solid var(--tone); }
+.player-tiles dt { font-size: 12px; color: var(--text-3); }
+.player-tiles dd { margin: 0; font: 800 22px/1 var(--display); }
+.player-last { font-size: 13.5px; color: var(--text-2); }
+.pf-sub { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+@media (max-width: 1000px) { .player-card { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .pf-bar { flex-wrap: wrap; } .focus-select { max-width: none; flex-basis: 100%; order: 3; } .player-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .quiet-note { padding: 10px 12px; font-size: 13px; color: var(--text-3); border-top: 1px solid var(--line); }
 .empty { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 28px 16px; color: var(--text-3); font-size: 14px; }
 .empty strong { color: var(--text-2); font-weight: 500; }

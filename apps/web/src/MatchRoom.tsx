@@ -10,6 +10,7 @@ import { EvidenceDrawer } from './components/EvidenceDrawer';
 import { EventhousePanel } from './components/EventhousePanel';
 import { MatchStage } from './components/MatchStage';
 import { MomentFeed } from './components/MomentFeed';
+import { PlayerFocus } from './components/PlayerFocus';
 import { Preferences } from './components/Preferences';
 import { ScoreStrip } from './components/Scoreboard';
 import { INDICATOR } from './lib/motion';
@@ -217,6 +218,8 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
         <EventhousePanel replay={replay} busy={live.busy} onLoad={live.loadEventhouse} compact />
       </div>}
 
+      <PlayerFocus replay={replay} audience={prefs.audience} playerId={prefs.focusPlayer} onPlayer={focusPlayer => updatePrefs({ focusPlayer })} onChoose={chooseMoment} />
+
       <div className="desk">
         <MatchStage replay={replay} selected={selected} onSelect={selectEvent} prefs={prefs} updatePrefs={updatePrefs}
           goal={goal} animate={!reduced} audience={prefs.audience} inspect={inspect} onStopInspect={stopInspect}
@@ -227,7 +230,7 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
             onPlay={live.play} onPause={live.pause} onReset={live.reset} onSpeed={live.setSpeed} onSeek={live.seek}
             onGenerate={live.generate} onLoad={live.load} />
         </div>
-        <MomentFeed moments={replay.moments} audience={prefs.audience} favoriteTeam={prefs.favoriteTeam} favoritePlayer={prefs.favoritePlayer}
+        <MomentFeed moments={replay.moments} audience={prefs.audience} favoriteTeam={prefs.favoriteTeam} favoritePlayer={prefs.focusPlayer ?? prefs.favoritePlayer}
           roster={replay.replay.roster} chosenId={inspectId} onChoose={chooseMoment} onEvidence={setEvidence} onJump={jumpTo} aiMode={replay.insights.status === 'off' ? 'off' : replay.insights.mode} onRecap={openRecapNow}
           catchUp={missedSoFar} state={replay.state} onDismissCatchUp={dismissCatchUp} />
         <div className="desk-analysis">

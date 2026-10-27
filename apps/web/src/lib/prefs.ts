@@ -9,6 +9,8 @@ export interface Prefs {
   language: Language;
   favoriteTeam: string | null;
   favoritePlayer: string | null;
+  /** Player the room follows (player focus), or none. */
+  focusPlayer: string | null;
   motion: MotionPref;
   /** Fan pitch layers (advanced ones live under "Explore tactics"). */
   layers: { trail: boolean; threat: boolean; density: boolean; network: boolean };
@@ -18,7 +20,7 @@ export interface Prefs {
 
 const KEY = 'omnipitch.prefs.v1';
 export const DEFAULT_PREFS: Prefs = {
-  audience: 'fan', language: 'en', favoriteTeam: null, favoritePlayer: null, motion: 'system',
+  audience: 'fan', language: 'en', favoriteTeam: null, favoritePlayer: null, focusPlayer: null, motion: 'system',
   layers: { trail: true, threat: false, density: false, network: false },
   analystLayers: { trail: true, threat: true, density: false, network: false },
 };
