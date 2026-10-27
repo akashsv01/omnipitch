@@ -1,4 +1,5 @@
 import type { Event, Moment, Player, Rule } from '../types/contracts';
+import { t } from './uiText';
 
 export const TEAM_META: Record<string, { short: string; name: string; tone: string }> = {
   harbor: { short: 'HAR', name: 'Harbor Comets', tone: 'var(--harbor)' },
@@ -22,7 +23,8 @@ export function runningClock(period: 1 | 2, ms: number): string {
   const mm = String(Math.floor(shown / 60)).padStart(2, '0');
   const ss = String(shown % 60).padStart(2, '0');
   const extra = total > cap ? total - cap : 0;
-  return extra ? `${mm}:${ss} +${Math.floor(extra / 60)}` : `${mm}:${ss}`;
+  // Stoppage time counts like the broadcast minute: the first added minute is +1 (never +0), matching 45+1'.
+  return extra ? `${mm}:${ss} +${Math.floor(extra / 60) + 1}` : `${mm}:${ss}`;
 }
 
 export const RULE_LABEL: Record<Rule, string> = {
@@ -31,14 +33,14 @@ export const RULE_LABEL: Record<Rule, string> = {
 
 export function eventLabel(event: Event): string {
   switch (event.type) {
-    case 'pass': return event.outcome === 'completed' ? 'Pass' : 'Incomplete pass';
-    case 'shot': return { goal: 'Goal', saved: 'Shot saved', off_target: 'Shot wide', blocked: 'Shot blocked' }[event.outcome as 'goal'] ?? 'Shot';
-    case 'tackle': return event.outcome === 'won' ? 'Tackle won' : 'Tackle missed';
-    case 'challenge': return event.outcome === 'won' ? 'Duel won' : 'Duel lost';
-    case 'interception': return 'Interception';
-    case 'foul': return 'Foul';
-    case 'period_start': return event.period === 1 ? 'Kick-off' : 'Second half';
-    case 'period_end': return event.period === 1 ? 'Half-time' : 'Full-time';
+    case 'pass': return t(event.outcome === 'completed' ? 'Pass' : 'Incomplete pass');
+    case 'shot': return t({ goal: 'Goal', saved: 'Shot saved', off_target: 'Shot wide', blocked: 'Shot blocked' }[event.outcome as 'goal'] ?? 'Shot');
+    case 'tackle': return t(event.outcome === 'won' ? 'Tackle won' : 'Tackle missed');
+    case 'challenge': return t(event.outcome === 'won' ? 'Duel won' : 'Duel lost');
+    case 'interception': return t('Interception');
+    case 'foul': return t('Foul');
+    case 'period_start': return t(event.period === 1 ? 'Kick-off' : 'Second half');
+    case 'period_end': return t(event.period === 1 ? 'Half-time' : 'Full-time');
   }
 }
 
@@ -67,13 +69,14 @@ export function fixedEven(value: number, digits: number): string {
 }
 
 /** The one display rule for a moment metric quoted in its story. It mirrors the backend template formatter
- * (services/agents/agents/narrate.py `_fmt` and the `:g` metrics), so the number in a sentence and the
- * number beside it are always the same text:
- * - distances, times and counts: shortest form at or above 10 or when whole, else one decimal (ties to even);
+ * (services/agents/agents/narrate.py `_fmt`), so the number in a sentence and the number beside it are always
+ * the same text:
+ * - metres, seconds and counts: whole numbers as they are, otherwise one decimal (Python's rounding of the
+ *   stored double), so 27.05 m reads 27.1 m and 7.25 m reads 7.2 m;
  * - threat values and PPDA: the stored value as is (already rounded by the metric code). */
 export function metricText(name: string, value: number): string {
   if (name === 'threat_delta' || name === 'ppda' || name === 'previous_ppda') return String(value);
-  if (Math.abs(value) >= 10 || Number.isInteger(value)) return String(value);
+  if (Number.isInteger(value)) return String(value);
   return fixedEven(value, 1).replace(/\.0$/, '');
 }
 

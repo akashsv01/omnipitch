@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 
-/** Two routes, History API only (no router dependency): "/" is the landing page, "/match" the match room.
- * Production nginx already serves index.html for unknown paths, so both survive a refresh. */
-export type Route = 'landing' | 'match';
+/** Routes, History API only (no router dependency): "/" is the landing page, "/match" the match room, and
+ * "/overlay" and "/producer" the broadcast output (opened directly, never navigated to in-app).
+ * Production nginx already serves index.html for unknown paths, so all of them survive a refresh. */
+export type Route = 'landing' | 'match' | 'overlay' | 'producer';
 
-export const PATHS: Record<Route, string> = { landing: '/', match: '/match' };
+export const PATHS: Record<Route, string> = { landing: '/', match: '/match', overlay: '/overlay', producer: '/producer' };
 
 export function routeOf(pathname: string): Route {
-  return /^\/match\/?$/.test(pathname) ? 'match' : 'landing';
+  const match = /^\/(match|overlay|producer)\/?$/.exec(pathname);
+  return match ? match[1] as Route : 'landing';
 }
 
 type ViewTransition = { finished: Promise<void> };

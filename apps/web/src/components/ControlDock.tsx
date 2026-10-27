@@ -1,4 +1,6 @@
 import { memo, useMemo, useRef, useState } from 'react';
+import { t } from '../lib/i18n';
+import { useTr } from '../lib/i18n';
 import { AnimatePresence, motion } from 'motion/react';
 import { CornerDownRight, Dices, FileUp, Pause, Play, RotateCcw, Shuffle } from 'lucide-react';
 import type { Moment, ReplaySnapshot, Scenario, Speed } from '../types/contracts';
@@ -12,6 +14,7 @@ const SCENARIOS: { id: Scenario; label: string; hint: string }[] = [
   { id: 'standard', label: 'Standard', hint: 'Build-up, a pressing spell and late pressure' },
   { id: 'high_press', label: 'High press', hint: 'Vale press high all match' },
   { id: 'quiet', label: 'Quiet', hint: 'Low tempo; few chances, few moments' },
+  { id: 'late_surge', label: 'Late surge', hint: 'Vale push for goals in the last half hour (a comeback for some seeds)' },
 ];
 
 /** The replay window of the moment being inspected, on the replay timeline (ms). */
@@ -19,30 +22,33 @@ export interface FilmRange { from: number; to: number; label: string }
 
 /** Match filmstrip: a match-time scale with a playhead, the momentum band, moment markers, the inspected
  * sequence range and the replay controls. Reserved space below the stage; a fixed thumb bar on phones. */
-export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, onReturn, onPlay, onPause, onReset, onSpeed, onSeek, onGenerate, onLoad }: {
+export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, onReturn, onPlay, onPause, onRestart, onReset, onSpeed, onSeek, onGenerate, onLoad }: {
   replay: ReplaySnapshot; elapsed: number; busy: boolean; disabled: boolean; audience: Audience;
   range: FilmRange | null; onReturn: () => void;
   onPlay: () => void; onPause: () => void; onReset: () => void; onSpeed: (speed: Speed) => void; onSeek: (ms: number) => void;
+  /** After full-time: back to kick-off and play the same match (no new run). */
+  onRestart: () => void;
   onGenerate: (seed: number, scenario: Scenario) => void; onLoad: (file: File) => void;
 }) {
+  const tr = useTr();
   const { state, replay: info } = replay;
   const playing = state.replay_status === 'playing';
   const finished = state.replay_status === 'finished';
   const [open, setOpen] = useState(false);
-  const label = playing ? 'Pause replay' : finished ? 'Replay finished. Reset to watch again' : state.latest_event_sequence ? 'Resume replay' : 'Play replay';
+  const label = playing ? tr('Pause replay') : finished ? tr('Watch again from kick-off') : state.latest_event_sequence ? tr('Resume replay') : tr('Play replay');
   // The same running clock as the score strip (26:02, not the broadcast minute 27'), so the two never disagree.
   const now = state.latest_event_sequence ? runningClock(info.clock_period, info.clock_ms) : '00:00';
-  return <section className="film" aria-label="Replay controls">
+  return <section className="film" aria-label={t('Replay controls')}>
     <div className="film-controls">
-      <button type="button" className="play" aria-label={label} title={label} disabled={disabled || finished} onClick={playing ? onPause : onPlay}>
+      <button type="button" className="play" aria-label={label} title={label} disabled={disabled} onClick={playing ? onPause : finished ? onRestart : onPlay}>
         {playing ? <Pause size={20} fill="currentColor" aria-hidden="true" /> : <Play size={20} fill="currentColor" style={{ marginLeft: 3 }} aria-hidden="true" />}
       </button>
-      <select className="speed-select" aria-label="Playback speed" value={info.speed} disabled={disabled}
+      <select className="speed-select" aria-label={tr('Playback speed')} value={info.speed} disabled={disabled}
         onChange={event => onSpeed(Number(event.target.value) as Speed)}>
         {SPEEDS.map(speed => <option key={speed} value={speed}>{speed}×</option>)}
       </select>
-      <div className="film-sub" style={{ position: 'relative' }}>
-        <button type="button" className="icon-button" style={{ width: 34, height: 34 }} onClick={onReset} disabled={disabled} aria-label="Reset run (new run ID)" title="Reset run: same match, new run ID"><RotateCcw size={15} /></button>
+      {/* Match setup (seed, scenario, file upload) is developer tooling: dev server only, never on the public site. */}
+      {import.meta.env.DEV && <div className="film-sub" style={{ position: 'relative' }}>
         <button type="button" className="icon-button" style={{ width: 34, height: 34 }} aria-expanded={open} aria-haspopup="dialog" aria-label="New match" title="New match"
           onClick={() => setOpen(value => !value)} disabled={disabled}><Shuffle size={15} /></button>
         <AnimatePresence>
@@ -50,19 +56,19 @@ export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, on
             onGenerate={(seed, scenario) => { onGenerate(seed, scenario); setOpen(false); }}
             onLoad={file => { onLoad(file); setOpen(false); }} />}
         </AnimatePresence>
-      </div>
+      </div>}
     </div>
     <div className="film-main">
       <div className="film-top">
-        <span><b>{now}</b> · {finished ? 'Full-time' : playing ? `Watching replay at ${info.speed}×` : state.latest_event_sequence ? 'Paused' : 'Kick-off'}</span>
+        <span><b>{now}</b> · {finished ? 'FT' : playing ? `${tr('Watching replay')} · ${info.speed}×` : state.latest_event_sequence ? tr('Paused') : tr('Kick-off')}</span>
         {range && <button type="button" className="text-button back" onClick={onReturn}>
-          <CornerDownRight size={14} aria-hidden="true" />Return to replay
+          <CornerDownRight size={14} aria-hidden="true" />{tr('Return to replay')}
         </button>}
       </div>
       <Track replay={replay} elapsed={elapsed} disabled={disabled} onSeek={onSeek} range={range} />
       <p className="film-note" id="momentum-note">{audience === 'analyst'
-        ? <>Band: illustrative threat added by completed passes per 5 minutes (Harbor above, Vale below). Not a probability. {momentumSummary(replay.analysis.momentum)}.</>
-        : <>The band shows who moved the ball into danger, Harbor above and Vale below. It is not a win probability.</>}</p>
+        ? <>{tr('Band: illustrative threat added by completed passes per 5 minutes (Harbor above, Vale below). Not a probability.')} {momentumSummary(replay.analysis.momentum)}.</>
+        : <>{tr('The band shows who moved the ball into danger, Harbor above and Vale below. It is not a win probability.')}</>}</p>
     </div>
   </section>;
 }
@@ -93,7 +99,7 @@ const Track = memo(function Track({ replay, elapsed, disabled, onSeek, range }: 
     return ms <= split ? clockLabel(1, ms) : clockLabel(2, ms - split);
   };
   const near = hover === null ? undefined : replay.moments.find(m => Math.abs(m.replay_ms / duration - hover) < .012);
-  return <div ref={track} className="film-track" role="slider" tabIndex={disabled ? -1 : 0} aria-label="Replay position"
+  return <div ref={track} className="film-track" role="slider" tabIndex={disabled ? -1 : 0} aria-label={t('Replay position')}
     aria-valuemin={0} aria-valuemax={totalMinutes} aria-valuenow={elapsedMinutes}
     aria-valuetext={`Match clock ${now}; ${elapsedMinutes} of ${totalMinutes} replay minutes`} aria-disabled={disabled}
     aria-describedby="momentum-note"
@@ -108,16 +114,17 @@ const Track = memo(function Track({ replay, elapsed, disabled, onSeek, range }: 
       {/* What has been played is lit; the future stays dark. */}
       <div className="film-played" style={{ transform: `scaleX(${fraction})` }} />
     </div>
-    <div className="film-ht" style={{ left: `${halfFraction * 100}%` }} title="Half-time" />
+    <div className="film-ht" style={{ left: `${halfFraction * 100}%` }} title={t('Half-time')} />
     {range && <div className="film-range" title={range.label}
       style={{ left: `${Math.min(range.from, range.to) / duration * 100}%`, width: `${Math.abs(range.to - range.from) / duration * 100}%` }} />}
     {ticks.map(moment => <i key={moment.moment_id} className="film-tick" aria-hidden="true"
       style={{ left: `${(moment.replay_ms / duration) * 100}%`, ['--tone' as string]: teamTone(moment.team_id) }} />)}
-    {pins.map(moment => <Pin key={moment.moment_id} moment={moment} duration={duration} onSeek={onSeek} disabled={disabled} />)}
+    {pins.map((moment, index) => <Pin key={moment.moment_id} moment={moment} duration={duration} onSeek={onSeek} disabled={disabled}
+      crowded={pins.slice(0, index).some(other => other.rule === 'goal' && moment.replay_ms - other.replay_ms < duration * .045)} />)}
     {hover !== null && <>
       <div className="film-hover" style={{ left: `${hover * 100}%` }} />
       <div className="film-preview" aria-hidden="true" style={{ left: `clamp(60px, ${hover * 100}%, calc(100% - 60px))` }}>
-        {matchLabel(hover * duration)}{near ? ` · ${RULE_LABEL[near.rule]}` : ''}
+        {matchLabel(hover * duration)}{near ? ` · ${t(RULE_LABEL[near.rule])}` : ''}
       </div>
     </>}
     <div className="film-head" style={{ left: `${fraction * 100}%` }} />
@@ -148,17 +155,20 @@ function MomentumBand({ replay, halfFraction }: { replay: ReplaySnapshot; halfFr
   </svg>;
 }
 
-function Pin({ moment, duration, onSeek, disabled }: { moment: Moment; duration: number; onSeek: (ms: number) => void; disabled: boolean }) {
+/** A goal pin carries its minute; one that would overlap the previous goal's label keeps only its marker (the title still names it). */
+function Pin({ moment, duration, onSeek, disabled, crowded }: { moment: Moment; duration: number; onSeek: (ms: number) => void; disabled: boolean; crowded: boolean }) {
   const goal = moment.rule === 'goal';
   return <button type="button" className="film-pin" data-rule={moment.rule} tabIndex={-1} disabled={disabled}
     style={{ left: `${(moment.replay_ms / duration) * 100}%`, ['--tone' as string]: teamTone(moment.team_id) }}
-    title={`${clockLabel(moment.period, moment.match_time_ms)} ${RULE_LABEL[moment.rule]}: ${moment.insight.headline}`}
-    aria-label={`Jump to ${RULE_LABEL[moment.rule]} at ${clockLabel(moment.period, moment.match_time_ms)}`}
+    title={`${clockLabel(moment.period, moment.match_time_ms)} ${t(RULE_LABEL[moment.rule])}`}
+    aria-label={`${t('Jump to')} ${t(RULE_LABEL[moment.rule])} ${t('at')} ${clockLabel(moment.period, moment.match_time_ms)}`}
     onPointerDown={event => { event.stopPropagation(); onSeek(moment.replay_ms); }}>
-    {goal && <b>Goal {clockLabel(moment.period, moment.match_time_ms)}</b>}<i />
+    {goal && !crowded && <b><span className="pin-word">{t('Goal')} </span>{clockLabel(moment.period, moment.match_time_ms)}</b>}<i />
   </button>;
 }
 
+/** Match setup, kept out of the fan's way: one small button opens it. Locally it generates, loads or restarts a
+ * match. In Azure mode, where matches come from Fabric Eventhouse, it says so instead of showing disabled fields. */
 function NewMatch({ current, busy, onClose, onGenerate, onLoad, onReset }: {
   current: ReplaySnapshot['replay']; busy: boolean; onClose: () => void; onReset: () => void;
   onGenerate: (seed: number, scenario: Scenario) => void; onLoad: (file: File) => void;
@@ -167,40 +177,48 @@ function NewMatch({ current, busy, onClose, onGenerate, onLoad, onReset }: {
   const [scenario, setScenario] = useState<Scenario>((current.scenario as Scenario) ?? 'standard');
   const valid = /^\d{1,9}$/.test(seed);
   const azure = current.backend_mode === 'azure';
+  const reset = <button type="button" className="button" aria-label="Restart the match from kick-off" onClick={() => { onReset(); onClose(); }}>
+    <RotateCcw size={15} aria-hidden="true" />{azure ? 'Restart this replay' : 'Reset run'}</button>;
   return <motion.div className="popover up" role="dialog" aria-label="New match" {...POPOVER}
     style={{ left: 0, right: 'auto', transformOrigin: 'bottom left' }}
     onKeyDown={event => { if (event.key === 'Escape') onClose(); }}>
-    <h3>Start a new match</h3>
-    <div className="field">
-      <span>Scenario</span>
-      <div className="segmented small" role="radiogroup" aria-label="Scenario">
-        {SCENARIOS.map(item => <button key={item.id} type="button" role="radio" aria-checked={scenario === item.id} onClick={() => setScenario(item.id)}>
-          {scenario === item.id && <motion.span layoutId="scenario-thumb" className="thumb" transition={INDICATOR} />}{item.label}
-        </button>)}
+    <h3>{azure ? 'Match source' : 'Start a new match'}</h3>
+    {azure ? <>
+      <p className="hint">This deployment replays matches published to Fabric Eventhouse. Generating or uploading matches is turned off here.
+        Available replays are listed under <b>Match analysis → Data quality</b>.</p>
+      {reset}
+      <p className="hint">Restarting returns the match to kick-off for everyone watching.</p>
+    </> : <>
+      <div className="field">
+        <span>Scenario</span>
+        <div className="segmented small" role="radiogroup" aria-label="Scenario">
+          {SCENARIOS.map(item => <button key={item.id} type="button" role="radio" aria-checked={scenario === item.id} onClick={() => setScenario(item.id)}>
+            {scenario === item.id && <motion.span layoutId="scenario-thumb" className="thumb" transition={INDICATOR} />}{item.label}
+          </button>)}
+        </div>
+        <span className="hint">{SCENARIOS.find(item => item.id === scenario)?.hint}</span>
       </div>
-      <span className="hint">{SCENARIOS.find(item => item.id === scenario)?.hint}</span>
-    </div>
-    <div className="field-row">
-      <label className="field">Seed
-        <input inputMode="numeric" name="seed" autoComplete="off" value={seed} onChange={event => setSeed(event.target.value.replace(/\D/g, '').slice(0, 9))} aria-invalid={!valid} />
-      </label>
-      <button type="button" className="icon-button" style={{ width: 38, height: 38 }} aria-label="Random seed"
-        onClick={() => setSeed(String(Math.floor(Math.random() * 100000)))}><Dices size={17} /></button>
-    </div>
-    <button type="button" className="button primary" disabled={!valid || busy || azure} onClick={() => onGenerate(Number(seed), scenario)}>Generate match</button>
-    {azure && <p className="hint">Azure mode reads matches from Fabric Eventhouse. Publish a run with the simulator CLI, then load it from the Data quality tab.</p>}
-    <div style={{ display: 'flex', gap: 8 }}>
-      <label className="button file-button" style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <FileUp size={15} aria-hidden="true" />Load JSONL
-        <input type="file" accept=".jsonl,application/x-ndjson" aria-label="Load JSONL file" disabled={azure} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
-          onChange={event => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = '';
-            if (file) onLoad(file);
-          }} />
-      </label>
-      <button type="button" className="button" onClick={() => { onReset(); onClose(); }}><RotateCcw size={15} aria-hidden="true" />Reset run</button>
-    </div>
-    <p className="hint">Each match is a new run with its own ID. The same seed and scenario always produce the same events.</p>
+      <div className="field-row">
+        <label className="field">Seed
+          <input inputMode="numeric" name="seed" autoComplete="off" value={seed} onChange={event => setSeed(event.target.value.replace(/\D/g, '').slice(0, 9))} aria-invalid={!valid} />
+        </label>
+        <button type="button" className="icon-button" style={{ width: 38, height: 38 }} aria-label="Random seed"
+          onClick={() => setSeed(String(Math.floor(Math.random() * 100000)))}><Dices size={17} /></button>
+      </div>
+      <button type="button" className="button primary" disabled={!valid || busy} onClick={() => onGenerate(Number(seed), scenario)}>Generate match</button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <label className="button file-button" style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          <FileUp size={15} aria-hidden="true" />Load JSONL
+          <input type="file" accept=".jsonl,application/x-ndjson" aria-label="Load JSONL file" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+            onChange={event => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              if (file) onLoad(file);
+            }} />
+        </label>
+        {reset}
+      </div>
+      <p className="hint">The same seed and scenario always produce the same match.</p>
+    </>}
   </motion.div>;
 }

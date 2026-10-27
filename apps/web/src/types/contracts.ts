@@ -52,7 +52,12 @@ export interface Insight extends RunScoped {
   limitations: string[];
   generation_mode: 'fixture' | 'ai' | 'fallback';
   knowledge_source_ids: string[];
+  generation_status?: GenerationStatus | null;
+  generation_reason?: string | null;
+  /** Server-built Spanish (validated AI translation or the rule-based Spanish story). */
+  translations?: { es?: { headline: string; casual_text: string; analyst_text: string; generation_status: GenerationStatus; generation_reason?: string | null } } | null;
 }
+export type GenerationStatus = 'ai_accepted' | 'rule_based' | 'pending' | 'skipped' | 'rejected' | 'provider_failure' | 'fixture';
 export type Rule = 'goal' | 'chance' | 'threat_gain' | 'transition' | 'pressing_change';
 export interface Moment {
   moment_id: string;
@@ -150,7 +155,7 @@ export interface ReplayInfo {
   roster: Player[];
 }
 export type Speed = 1 | 5 | 10 | 20 | 40 | 80;
-export type Scenario = 'standard' | 'quiet' | 'high_press';
+export type Scenario = 'standard' | 'quiet' | 'high_press' | 'late_surge';
 export interface InsightSourceStatus {
   mode: 'off' | 'cosmos';
   status: 'off' | 'ok' | 'error';
@@ -195,6 +200,10 @@ export interface RecapKeyMoment {
   generation_mode: 'fixture' | 'ai' | 'fallback'; source_sequence: number; replay_ms: number;
 }
 export interface Recap {
+  /** Language of the recap text; names, scores and units are not translated. Absent means English. */
+  language?: 'en' | 'es';
+  /** Team numbers at the recap's cutoff. */
+  stats?: { home: RecapStats; away: RecapStats } | null;
   schema_version: '1.1';
   run_id: string;
   match_id: string;
@@ -212,4 +221,8 @@ export interface Recap {
   generation_mode: 'ai' | 'fallback';
   limitations: string[];
   recap_version: string;
+}
+export interface RecapStats {
+  goals: number; shots: number; shots_on_target: number; box_entries: number; final_third_entries: number;
+  progression_m: number; completion_pct: number | null; pass_share_pct: number | null; turnovers_won: number;
 }

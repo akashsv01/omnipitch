@@ -140,13 +140,11 @@ Direction: "OmniPitch — football, seen differently". A warm, editorial landing
   - `/` is the landing page and `/match` the match room. Each is its own lazy chunk; the landing page prefetches the match room when the browser is idle.
   - Production nginx already serves `index.html` for unknown paths, so both survive a refresh. Back, Forward and the logo link work; returning visitors see the landing page settled, with no repeated entrance.
   - Entering the match room only reads replay state. It never resets, starts or creates a run.
-- **Transition:** the View Transitions API morphs the hero pitch into the match-stage pitch (`view-transition-name: pitch`) while the page crossfades from ivory to forest, with the logo as the anchor (`brand`).
+- **Transition:** the View Transitions API morphs the hero pitch into the match-stage pitch (`view-transition-name: pitch`) inside the same midnight shell, with the logo as the anchor (`brand`); the whole bridge settles within 560 ms.
   - The hero copy steps out first (160 ms); the destination chunk is awaited for at most 700 ms, after which the match room's own loading skeleton shows.
   - Reduced motion, or a browser without the API, navigates at once.
 - **Brand:** the original pitch-and-arrow `BrandMark` (from commit 3ada323), with the OmniPitch wordmark, top left on every route. It uses fixed colours, plus a hairline edge for dark surfaces. On phones the wordmark yields to the audience switch; the mark and its accessible name stay.
-- **Tokens:**
-  - Match room (`style.css :root`): background `#091211`, surface `#10201e`, raised `#172b28`, text `#f3f3ea` / `#afbdb7` / `#8aa29b`.
-  - Landing (`landing.css`, landing chunk only): ivory `#f3efe5`, ink `#14201f`, cobalt `#3155e7` (5.1:1 on ivory), pale blue `#dce8f1`.
+- **Tokens** (one midnight shell for every route, `style.css :root`): background `#0b1018`, surface `#121b27`, raised `#1b2838`, text `#f3f1e9` / `#b5c0cf` / `#8f9cb0`, cobalt `#3155e7` (text `#93a9ff`), replay accent `#ebcb70`, turf `#123b2f`. Ivory appears only in the landing page's explanatory panels.
   - Colour meaning: Harbor coral `#ff806a` and Vale cyan `#7dd8e7` always encode team; amber `#f2cc62` marks shots, goals and the active action. Cobalt and pale blue are brand-only and never encode teams or outcomes. The suggested warm orange was left out because it is too close to Harbor coral.
 - **Type:** Big Shoulders Display for scores, minutes and headlines; IBM Plex Sans for interface text, with tabular figures; IBM Plex Mono for IDs.
 - **Match room layout:**
@@ -170,6 +168,166 @@ Direction: "OmniPitch — football, seen differently". A warm, editorial landing
 - **Motion:** tokens in `lib/motion.ts` and `--dur-*` (press 140, switch 200, enter 240, drawer 300 ms; Emil Kowalski curves). Ball travel shortens with speed and stops at 20×; animations are keyed by event, so a seek or run change cancels them. Reduced motion collapses animation, skips the view transition and shows the 3D scenes settled.
 - **Accessibility:** skip links, landmarks, labelled controls, a keyboard slider, Space to play or pause, arrow-key tabs and radio groups. The evidence drawer traps focus, closes on Escape and restores focus. Crest tilt only applies with a fine pointer and without reduced motion.
 - **Preferences** (audience, favourites, per-audience layers, motion) live in `localStorage` and never change facts.
+
+## Final pass (2026-10-27, merged into `main`, not yet redeployed)
+
+### Five-stage flow and who does what
+
+synthetic events → football intelligence → grounded explanation → synchronized presentation → personalization.
+
+| Stage | Deterministic service (code) | AI agent (model) |
+| --- | --- | --- |
+| Synthetic events | Seeded simulator (`services/simulator`), publisher to Event Hubs, ledger with `(run_id, event_id)` identity | none |
+| Intelligence | `metrics-v1` and rules `v1` (`services/analytics`), Eventhouse KQL parity queries, bridge detection over the gap-free prefix | none |
+| Explanation | Evidence packet, fallback templates, code validator and meaning checks (`services/agents`), API re-check (`insight_overlay.py`) | Analyst and Tactical Coach run in parallel, then the Broadcaster writes the text; one repair call on rejection (`workflow.py`) |
+| Presentation | Snapshot API, Web PubSub push, server broadcast playout (`services/api/app/broadcast.py`), commentary composer (`commentary.py`), recap builder, Speech proxy | Optional recap rewrite (English and Spanish, final recaps) |
+| Personalization | Audience, focus and language selection in the browser; Spanish templates (`agents/narrate_es.py`) and interface text (`lib/uiText.ts`) | Background translation of accepted AI text (`translations.py`), checked in code |
+
+The three agents share one evidence packet and have bounded handoffs. The Analyst lists the supported facts and the Coach gives one hedged interpretation; the Broadcaster may only use what they return plus the packet. Each run has a 45 s budget, per-call deadlines, a lease, bounded retries with backoff, and create-only publication. On any failure, the deterministic text stands with an explicit status. The agents improve the wording and the audience fit, never the facts: every number, name, event ID and claim is checked in code first.
+
+### Generation states (`insight.generation_status`, optional, contract 1.1)
+
+| Status | Set by | Meaning |
+| --- | --- | --- |
+| `ai_accepted` | narration worker | Model text passed the validator, and the API re-check before display |
+| `rule_based` | API, local path | Template by design (AI narration off) |
+| `pending` | API overlay | AI narration is on for this run but has not reached this moment |
+| `skipped` | narration worker | Not attempted: no model configured, `--fallback-only`, or an AI job cap. Not an error |
+| `rejected` | worker or API overlay | Model output failed validation; the template is shown and the draft never is |
+| `provider_failure` | narration worker | Model error, or a timeout or 429 on the last attempt |
+
+Records written before the field existed are classified from their trace and limitation text (`agents.insights.classify`). `generation_reason` carries the detail. The UI labels each state differently, and a skip is never worded as a failure.
+
+Rule-based text is rebuilt from the frozen moment when served (`ReplayStore._analysis`). Evidence, metrics and IDs stay exactly as stored. Only template wording follows the current, validated templates; stored AI text is never rewritten.
+
+### Geometry and metric definitions (metres, one global 105 × 68 frame)
+
+Shared code: `omnipitch_analytics.metrics` (Python) and `apps/web/src/lib/geometry.ts` (TypeScript, used by the pitch, the inspector and the hero illustration).
+
+| Measure | Definition | Never confused with |
+| --- | --- | --- |
+| Pass length | Planar distance between recorded start and end | forward gain |
+| Forward gain (`forward_progress`) | Signed change in x along the team's attacking direction; negative means backwards | pass length |
+| Goal-distance reduction | Distance to the attacked goal's centre at the start, minus at the end | forward gain |
+| Sequence progression (transition rule) | Sum of forward gains of the actions in one sequence | team forward progression (completed passes only, positive gains) |
+| Carry displacement | **Not available**: events record on-ball actions only | — |
+| Running distance, top speed, ball speed | **Simulated** (`simulator/physical.py`, `GET /api/v1/replay/physical`): derived deterministically from the run's events; always labelled "sim." | measured tracking data (none exists) |
+| Pass difficulty | 0–100 heuristic (`passDifficulty`, `pass_difficulty`): length up to 40, forward gain up to 25, destination (box 20, final third 10), width up to 15; routine < 35, moderate 35–59, difficult 60+ | completion probability (no defender or pressure data) |
+
+Provider coordinates given as percentages are converted with `from_percent` / `fromPercent` before any distance is calculated. Checked fixture: (36, 47) → (60, 28) m gives a 30.6 m pass length and a +24 m forward gain attacking +x (−24 m attacking −x); the same numbers read as percentages give 28.3 m (`test_geometry.py`, `check-pitch.mjs`). Missing data reads "no data yet", a genuine zero reads "none yet", and a sample below the gate reads "sample too small"; none of them is shown as 0.
+
+PPDA: opponent pass attempts ÷ defending-team defensive actions (tackles, interceptions, challenges, fouls), both starting beyond 42 m in the defending team's attacking frame, in non-overlapping 5-minute windows that never cross half-time. Each window needs at least 10 passes and 3 actions. It describes intensity, not where the pressure happened or whether it worked. No xG is calculated or shown.
+
+### Personalization
+
+- **Fan / Analyst:** the same facts, at different depths. The Fan view shows a story, its significance and up to two values. The Analyst view shows measurements, triggers, windows and evidence. The evidence drawer can show the other audience's text for the same moment.
+- **Focus** (`FocusPanel.tsx`, preferences `favoriteTeam`, `favoritePlayer`, `focusMetric`):
+  - **Player:** recorded involvement (actions, passes, progression, shots, defensive actions), last recorded action, and an explicit note when nothing has been recorded for 5+ minutes. No off-ball activity is invented.
+  - **Club:** score, shots, box entries and ball wins against the opponent, plus the latest goal or chance against the club.
+  - **Metric:** definition, current value per team, the trend between the last two valid PPDA windows, and its source moments.
+- **History order:** the history is always in match order (period, then match time). Focus adds a star and a Focus filter; it never reorders the list.
+- **State:** run, cursor and the selected moment are untouched by any view change.
+
+### Recaps
+
+`build_recap(..., language)` writes English or Spanish from the same aggregates. Names, scores, units and digits are identical; Spanish uses a decimal comma. The `recap.language` field is optional and defaults to `en`.
+
+- **Automatic creation:** `GET /api/v1/replay` creates each final recap as soon as that period's `period_end` is revealed (`RecapService.prime`), cut off at that event. It also starts the AI rewrite when one is enabled.
+- **Cut-off:** cache keys include the run, scope, `through_sequence` and status.
+- **Browser guard:** the Recap tab ignores responses for another run, scope or language, or any response requested before a backward seek. "Match so far" stays provisional until the period ends.
+
+### Live commentary (`commentary.py`, `lib/useCommentary.ts`, `components/CommentaryBar.tsx`)
+
+- **One switch:** "Enable commentary" above the pitch. The click also primes audio playback for browsers with strict autoplay rules.
+- **Lines by reference:** `GET /api/v1/commentary/lines?run_id&after&audience&lang` returns ranked candidates for what was revealed since `after`: play-by-play from validated events and context from detected moments. `POST /api/v1/commentary/audio {ref}` (`event:…`, `moment:…`, `recap:…`) recomposes the text on the server and returns MP3 with the caption in `X-Caption`. The browser never sends text, and nothing past the replay position can be referenced.
+- **Prioritisation:** a queue of three. Goals (priority ≥ 90) go straight to the front; routine lines older than 8 s are dropped; at high speeds only major lines are kept, so the newest important line wins.
+- **Recaps:** when a period actually ends during forward playback, its recap is shown in the Recap tab and narrated once; the key is remembered per run, period, audience and language, so a reload or reconnect never repeats it.
+- **One audio controller** (`lib/narration.ts`): owners rank evidence ("Listen + replay") above recap above live. A lower owner waits; two voices never play at once. Pause, skip, replay, mute and the transcript act on whichever owner is speaking.
+- **Warm-up:** the server pre-synthesizes the next lines, so the first spoken line starts within about a second of play (0.8 s measured).
+
+### Broadcast output (`/overlay`, `/producer`; contracts `broadcast-cue-1.0`, feed `broadcast-feed-1.0`)
+
+Cues are built and scheduled on the server (`broadcast.py`), one playout per audience and language, shared by every screen that reads `GET /api/v1/broadcast?audience&lang`:
+
+- A cue appears only once the replay has reached its evidence cutoff.
+- One cue is on screen at a time, for `display_ms` of server wall-clock time. Match time (`match_clock`, `replay_ms`) only places the claim.
+- Goals (`kind: major`) pre-empt other cues.
+- A cue more than 3 match minutes behind the replay is dropped rather than shown late, so at 80× only current, major moments reach the screen.
+- `message_id` is stable across revisions. A rule-based cue (revision 1) is revised in place when accepted AI text arrives (revision 2).
+- A backward seek or a new run clears the screen and the queue.
+- Both views only read the replay; neither has controls.
+
+### Narration (`services/api/app/speech.py`)
+
+- **Endpoints:** `GET /api/v1/speech/status`, `POST /api/v1/speech/moment {moment_id, audience, language}` → MP3, and the commentary audio endpoint above.
+- **Accepted text only:** text is composed on the server from the moment's validated insight in the requested language (the server's Spanish translation or template); any client text is ignored. `speakable()` rewrites minutes, metres and score dashes for the voice.
+- **Cut-off:** only revealed moments can be narrated; others return 404.
+- **Caching:** audio is cached by text, language, voice and format.
+- **Authentication:** Entra ID on the server (`Bearer aad#<resource id>#<token>`); the browser never sees credentials.
+- **Configuration:** `SPEECH_REGION`, `SPEECH_RESOURCE_ID`, optional `SPEECH_VOICE_EN` and `SPEECH_VOICE_ES`. Without them the endpoint returns 503 `speech_not_configured`.
+- **Browser:** one audio controller per page aborts the previous request and stops its audio. "Listen + replay" freezes its text when it starts and keeps it separate from the match cursor. Producer commentary only starts when switched on and follows the server's playout, so stale cues are never spoken.
+- **Verified live (2026-10-27, local API, free F0 resource, custom subdomain, key auth disabled, Entra ID only):**
+  - English first synthesis 3–4.6 s, Spanish 2.6–3.1 s, MP3 at 24 kHz; a repeat comes from the cache in 0.02 s.
+  - Rejections: Spanish text with an added number returns 422, and an unrevealed moment returns 404.
+  - In the browser: Listen + replay in English and Spanish, Pause, Replay with one voice, Stop, and closing the drawer all behave; producer commentary is silent until switched on, then speaks the cue on air.
+  - Unit tests use a fake synthesizer.
+- **Deployment:** the API's managed identity can only use a Speech resource in its own tenant. Enabling audio on the deployed site needs that resource, the same role for the managed identity, and the two settings on the API container app.
+
+### Ask about this moment (`components/AskMoment.tsx`)
+
+Five fixed questions, answered from the moment's evidence:
+
+- why it was flagged;
+- how it was calculated;
+- the four events before it;
+- what the evidence supports;
+- what is unknown.
+
+Answers use the moment's trigger, metrics, calculation rows, limitations and the revealed events. Sources are clickable event IDs, and an unanswerable question says why. No model is involved.
+
+### Scenarios
+
+`late_surge` raises Vale's shot and progression probabilities from 60'. It changes only per-team multipliers, so every other scenario's random draws are unchanged: seed 7 `standard` is still 1,206 events with `period_end` at 618 and 1206. Seed 18 is a comeback: Vale trail, then win 3–1. `test_scenarios.py` checks for every scenario:
+
+- reproducibility;
+- chronology and period markers;
+- attack directions swapping at half-time;
+- that a goal is always on target;
+- that the score matches team stats.
+
+### Challenge coverage (verified 2026-10-27 unless dated otherwise)
+
+| Requirement | Implementation | Where it shows | Evidence | Status |
+| --- | --- | --- | --- | --- |
+| Synthetic events | `services/simulator` (4 scenarios, seeded) | Shuffle → new match; JSONL load | `test_scenarios.py`, contracts check | verified |
+| Ingestion: identity, duplicates, late and out-of-order events, gaps | `db.py` ledger, `/runs/{id}/ingest`; bridge cursor and lookback; KQL dedup | Data quality tab (live duplicate test) | `latency_local.py` (31 duplicates, swaps, a held event: same 55 moments); bridge and phase 5 tests; cloud gate 2026-10-25 | verified |
+| Reconnect and catch-up | Snapshot API plus push; incremental `after_sequence` | Offline banner, recovery | inventory "API down" check, `test:push` | verified |
+| Latency | `trace_report.py` (cloud), `latency_local.py` (local) | — | Cloud p50 ingest→detect 6.5 s (2026-10-25); local receipt→insight p50 218 ms, p95 2.4 s | verified |
+| Interpretation | `metrics-v1`, rules `v1` | Moments, analysis tabs, focus | `test_geometry.py`, `test_local_path.py`, eval set | verified |
+| Grounded explanation | Agents + validator + API re-check; generation states | Author labels, evidence drawer | `test_generation_status.py`, `test_narration.py`, `test_explanations.py` | verified (AI path verified live 2026-10-25) |
+| Rendering | 2D pitch, lazy 3D, overlay | Match room, `/overlay` | `check-pitch.mjs`, interaction inventory (43 PASS) | verified |
+| Personalization | Fan/Analyst, focus (player, club, metric) | Match room | feature walk-through, inventory | verified |
+| Narratives and recaps | Moment stories; automatic half-time and full-time recaps | Recap tab | `test_recap_language.py`, `test_phase4.py` | verified |
+| Multilingual | Spanish interface text, templates, checked model translations of AI text, recaps (with AI rewrite), commentary, cues, transcripts | EN/ES switch, `?lang=es` | `test_spanish.py`, `test_recap_language.py`; browser scan of every tab, drawer and Ask answer in Spanish: 0 English lines (2026-10-27); 10 of 10 live translations accepted | verified locally |
+| Live commentary | Server-composed lines, priority queue, one audio controller | Commentary bar above the pitch | `test_commentary.py`; live commentary check 11 PASS (first line 0.8 s after play, one voice at 80×, recap narrated once, Spanish, off stops audio; 2026-10-27) | verified locally |
+| Broadcast output | `broadcast-cue-1.0`, server playout, `/overlay`, `/producer` | — | `test_broadcast.py`; overlay and producer feature checks | verified locally |
+| Narration | Speech proxy, Listen + replay | Evidence drawer, producer | `test_speech.py`; live audio checks (12 PASS, 2026-10-27) | verified locally; not on the deployed site yet |
+| Follow-up questions | Deterministic Ask panel | Evidence drawer | feature walk-through | verified |
+| Pass difficulty | 0–100 heuristic, completion by band | Analysis → Players | `test_geometry.py` | verified (heuristic, labelled) |
+| Speed, running distance | Simulated physical data | Analysis → Players ("sim.") | `test_physical.py` | verified (simulated, labelled) |
+| Video auto-eventing | — | — | needs video and a vision pipeline; neither exists here | not built |
+
+### Microsoft technologies
+
+| Service | Responsibility | Measured value |
+| --- | --- | --- |
+| Azure Event Hubs | Event transport, partitioned by run and match; supports duplicate re-delivery tests | 400+25 duplicates delivered; full matches published (2026-10-16, 2026-10-25) |
+| Microsoft Fabric Eventstream + Eventhouse (KQL) | Durable event store, deduplication by `(run_id, event_id)`, KQL parity checks | Raw minus unique rows equals the duplicates sent; KQL and Python counts agree (cloud smoke) |
+| Azure Cosmos DB | Moments, narration jobs, insights, reconciliations and the push outbox; conditional writes | One insight per moment under concurrent workers; 0 mismatches across both reconciled periods (2026-10-25) |
+| Azure OpenAI (`gpt-4.1-mini`, Entra ID) | Three-role narration, the optional recap rewrite (English and Spanish) and Spanish translation of accepted text | Role p50 3.5–5.8 s; 9 of 55 accepted under a 10K TPM cap (2026-10-25); 10 of 10 translations and both recap rewrites accepted (2026-10-27, local) |
+| Azure Web PubSub | Push fast path, one group per run | 113 messages, 0 failures (2026-10-25) |
+| Azure Container Apps + managed identity | API and UI hosting without keys | Health probes and default-run preload verified (2026-10-25) |
+| Azure AI Speech (F0, Entra ID only) | Live commentary, narrated recaps and "Listen + replay", through the API | First synthesis 2.6–4.6 s, cached repeat 0.02 s; English and Spanish voices (2026-10-27, local) |
 
 ## Azure mode (Phase 2 cloud path)
 

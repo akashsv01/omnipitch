@@ -14,6 +14,7 @@ from threading import Lock
 from time import monotonic
 from typing import Callable
 
+from agents.insights import classify
 from agents.validation import validate_insight
 
 from .analysis import narration_context
@@ -21,6 +22,10 @@ from .analysis import narration_context
 
 def _suffix(moment_id: str, run_id: str) -> str:
     return moment_id[len(run_id) + 1:] if moment_id.startswith(run_id + ":") else moment_id
+
+
+def _with_status(moment: dict, status: str, reason: str) -> dict:
+    return {**moment, "insight": {**moment["insight"], "generation_status": status, "generation_reason": reason[:300]}}
 
 
 class InsightOverlay:
@@ -62,13 +67,16 @@ class InsightOverlay:
         for moment in moments:
             record = by_suffix.get(_suffix(moment["moment_id"], moment["run_id"]))
             if record is None:
-                out.append(moment)
+                # AI narration is on for this run but has not published this moment yet: the template stands in.
+                out.append(_with_status(moment, "pending", "AI narration has not reached this moment yet"))
                 continue
-            candidate = {**record["insight"], "run_id": moment["run_id"], "moment_id": moment["moment_id"]}
+            kind, reason = classify(record)
+            candidate = {**record["insight"], "run_id": moment["run_id"], "moment_id": moment["moment_id"],
+                         "generation_status": kind, "generation_reason": reason}
             actors = sorted({actors_of[i] for i in moment["evidence_ids"] if actors_of.get(i)})
-            if validate_insight(candidate, moment, narration_context(actors)):
+            if problems := validate_insight(candidate, moment, narration_context(actors)):
                 status["rejected"] += 1  # Never publish what fails our own checks, whatever wrote it.
-                out.append(moment)
+                out.append(_with_status(moment, "rejected", f"API re-check rejected the stored text: {problems[0][:200]}"))
                 continue
             out.append({**moment, "insight": candidate})
             status["narrated"] += 1

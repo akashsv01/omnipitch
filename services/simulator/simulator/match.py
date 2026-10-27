@@ -15,7 +15,7 @@ PITCH_LENGTH = 105.0
 PITCH_WIDTH = 68.0
 SCHEMA_VERSION = "1.1"
 BASELINE = "2026-01-01T12:00:00Z"
-SCENARIOS = ("standard", "quiet", "high_press")
+SCENARIOS = ("standard", "quiet", "high_press", "late_surge")
 PERIOD_MS = 45 * 60 * 1000
 
 HOME = {"id": "harbor", "name": "Harbor Comets", "short": "HAR"}
@@ -53,6 +53,9 @@ class Bias:
     press_home: float = 1.0
     press_away: float = 1.0
     counter: float = 1.0
+    # Per-team multipliers for the away side (Vale); 1.0 keeps the random draws of every other scenario identical.
+    away_shot: float = 1.0
+    away_progression: float = 1.0
 
 
 def _bias(scenario: str, period: int, minute: float) -> Bias:
@@ -60,6 +63,12 @@ def _bias(scenario: str, period: int, minute: float) -> Bias:
         return Bias(progression=0.55, shot=0.3, press_home=0.7, press_away=0.7, counter=0.4)
     if scenario == "high_press":
         return Bias(progression=1.0, shot=1.0, press_home=1.0, press_away=2.4, counter=1.4)
+    if scenario == "late_surge":
+        # Vale push hard in the last half hour: more forward passing and more shots, Harbor sit deeper.
+        # Goals stay random, so a comeback is likely for some seeds, never guaranteed.
+        if period == 2 and minute >= 15:
+            return Bias(progression=0.8, shot=0.7, press_home=1.0, press_away=1.6, counter=1.2, away_shot=3.4, away_progression=1.9)
+        return Bias()
     # Standard match: phases that create build-up, a pressing spell and transitions.
     bias = Bias()
     if period == 1 and 22 <= minute < 34:
@@ -159,7 +168,7 @@ class _Match:
             p_def = _clamp(0.11 * zone_press, 0.04, 0.42)
             p_shot = 0.0
             if x > 78:
-                p_shot = _clamp((0.035 + (x - 78) / 260) * bias.shot, 0, 0.3)
+                p_shot = _clamp((0.035 + (x - 78) / 260) * bias.shot * (bias.away_shot if team == AWAY["id"] else 1.0), 0, 0.3)
             roll = rng.random()
             if roll < p_shot:
                 t = self.shoot(period, t, team, carrier, possession, x, y)
@@ -212,10 +221,11 @@ class _Match:
                 continue
             # Pass from the carrier.
             t += rng.randint(2200, 6200)
-            forward = rng.gauss(7.5 * bias.progression, 9)
+            progression = bias.progression * (bias.away_progression if team == AWAY["id"] else 1.0)
+            forward = rng.gauss(7.5 * progression, 9)
             if x < 30:
                 forward += 4
-            if rng.random() < 0.07 * bias.progression:
+            if rng.random() < 0.07 * progression:
                 forward += rng.uniform(15, 30)  # Occasional line-breaking ball.
             tx = _clamp(x + forward, 2, 103)
             ty = _clamp(y + rng.gauss(0, 13), 1, 67)

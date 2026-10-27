@@ -1,7 +1,7 @@
 import { History, X } from 'lucide-react';
 import type { Event, MatchState, Moment, Player } from '../types/contracts';
 import { RULE_LABEL, clockLabel, teamTone } from '../lib/format';
-import { localStory, useLanguage, type Language } from '../lib/i18n';
+import { localStory, useLanguage, useTr, type Language } from '../lib/i18n';
 
 /** Where this viewer joined a shared replay: the latest event sequence they first saw, per run. */
 export interface JoinPoint { run: string; sequence: number }
@@ -69,7 +69,7 @@ function counts(language: Language, missed: Moment[]) {
 export function CatchUpCard({ data, state, roster, onChoose, onDismiss }: {
   data: CatchUpData; state: MatchState; roster: Player[]; onChoose: (moment: Moment) => void; onDismiss: () => void;
 }) {
-  const language = useLanguage(), t = TEXT[language];
+  const language = useLanguage(), t = TEXT[language], tr = useTr();
   return <section className="catch-up" aria-labelledby="catch-up-title" lang={language}>
     <div className="catch-up-head">
       <span className="catch-up-eyebrow"><History size={13} aria-hidden="true" />{t.eyebrow}</span>
@@ -87,7 +87,7 @@ export function CatchUpCard({ data, state, roster, onChoose, onDismiss }: {
               onClick={() => onChoose(moment)}>
               <span className="minute">{clockLabel(moment.period, moment.match_time_ms)}</span>
               <span className="title">{localStory(moment, roster, language).headline}</span>
-              <span className="sub">{RULE_LABEL[moment.rule]}</span>
+              <span className="sub">{tr(RULE_LABEL[moment.rule])}</span>
             </button>
           </li>)}
         </ol>

@@ -1,4 +1,5 @@
 import type { Audience } from './prefs';
+import { t } from './uiText';
 import type { Moment } from '../types/contracts';
 import { METRIC_LABEL, fmt, metricText } from './format';
 
@@ -84,7 +85,7 @@ export function whyItMatters(moment: Moment, audience: Audience): string {
     }
     case 'pressing_change': {
       const before = m('previous_ppda'), now = m('ppda');
-      return fan ? `${TEAM_NAME[moment.team_id ?? ''] ?? 'The team'} allowed fewer passes before each defensive action than in their previous spell (${before} → ${now}). That is consistent with pressing higher; it does not show the press worked.`
+      return fan ? `${TEAM_NAME[moment.team_id ?? ''] ?? 'The team'} allowed fewer passes before each defensive action than in their previous spell (${before} → ${now}). The opponent got fewer passes in before being challenged. This data does not show where the pressure happened or whether it worked.`
         : `PPDA ${before} → ${now} (trigger: at most 60% of the previous valid window). Lower PPDA describes intensity, not success.`;
     }
   }
@@ -92,11 +93,11 @@ export function whyItMatters(moment: Moment, audience: Audience): string {
 
 /** The trigger each rule applies, as a short threshold. */
 export const TRIGGER: Record<Moment['rule'], string> = {
-  goal: 'Validated shot with is_goal = true',
-  chance: 'On-target shot from ≤ 18 m (no xG model)',
-  transition: '≥ 35 m forward progress, or a shot, within 12 s of a ball win',
-  threat_gain: 'Threat Δ ≥ 0.1, first qualifying pass per possession',
-  pressing_change: 'PPDA ≤ 60% of the previous valid window; ≥ 10 passes, ≥ 3 actions; 10-min cooldown',
+  goal: 'A shot recorded as a goal',
+  chance: 'A shot on target from 18 m or closer (no shot-quality model)',
+  transition: 'A ball win followed within 12 s by at least 35 m of forward progress, or by a shot',
+  threat_gain: 'The first completed pass in a possession that raises the illustrative threat by at least 0.1',
+  pressing_change: 'PPDA falls to 60% or less of the previous valid window (at least 10 passes and 3 actions; at most once every 10 minutes)',
 };
 
 export const AUTHOR = {
@@ -104,25 +105,34 @@ export const AUTHOR = {
   fallback: 'A deterministic template from the metrics above. No model was involved.',
   fixture: 'A hand-authored test fixture.',
 };
-export type Generation = 'ai' | 'rule' | 'pending' | 'fallback' | 'fixture';
+export type Generation = 'ai' | 'rule' | 'pending' | 'skipped' | 'rejected' | 'failure' | 'fixture';
 
-/** How this moment's explanation was produced, from its own insight record and the insight source:
+/** How this moment's explanation was produced. The insight's generation_status (set by the narration worker,
+ * or by the API's overlay) decides; records that predate it fall back to their mode and the insight source:
  * - ai: AI-written and accepted by the code validator (and re-checked by the API);
- * - fallback: an AI attempt failed or was rejected, so the rule-based template is shown;
- * - pending: AI narration is switched on but has not produced this moment's insight yet;
- * - rule: rule-based template, AI narration off. */
+ * - rule: rule-based template by design (AI narration off);
+ * - pending: AI narration is on but has not reached this moment yet;
+ * - skipped: AI was not attempted because of the budget cap or configuration (not a failure);
+ * - rejected: AI text failed validation, so the template is shown;
+ * - failure: the AI service failed or timed out, so the template is shown. */
 export function generation(moment: Moment, aiMode: 'off' | 'cosmos' | string): Generation {
+  const status = moment.insight.generation_status;
+  if (status) return ({ ai_accepted: 'ai', rule_based: 'rule', pending: 'pending', skipped: 'skipped', rejected: 'rejected',
+    provider_failure: 'failure', fixture: 'fixture' } as const)[status];
   const mode = moment.insight.generation_mode;
   if (mode === 'ai') return 'ai';
   if (mode === 'fixture') return 'fixture';
-  if (moment.insight.limitations.some(item => item.startsWith('AI narration unavailable'))) return 'fallback';
+  if (moment.insight.limitations.some(item => item.startsWith('AI narration unavailable'))) return 'failure';
   return aiMode !== 'off' ? 'pending' : 'rule';
 }
 export const GENERATION_LABEL: Record<Generation, string> = {
   ai: 'AI explanation · validation passed', rule: 'Rule-based explanation', pending: 'Rule-based · AI pending',
-  fallback: 'Rule-based fallback after AI failure', fixture: 'Hand-authored fixture',
+  skipped: 'Rule-based · AI not run (budget or settings)', rejected: 'Rule-based · AI text rejected by validation',
+  failure: 'Rule-based · AI service unavailable', fixture: 'Hand-authored fixture',
 };
-export const GENERATION_SHORT: Record<Generation, string> = { ai: 'AI · validated', rule: 'Rule-based', pending: 'AI pending', fallback: 'Fallback', fixture: 'Fixture' };
+export const GENERATION_SHORT: Record<Generation, string> = {
+  ai: 'AI · validated', rule: 'Rule-based', pending: 'AI pending', skipped: 'Rule-based', rejected: 'AI rejected', failure: 'AI unavailable', fixture: 'Fixture',
+};
 
 export interface KeyValue { label: string; value: string; unit?: string }
 
@@ -160,25 +170,25 @@ export function calculationRows(moment: Moment): [string, string][] {
   let rows: [string, string][] = [];
   if (moment.rule === 'threat_gain') {
     rows = [
-      ['Start → end cell', `(${facts.start_cell?.join(', ')}) → (${facts.end_cell?.join(', ')}) on a 16 × 12 grid`],
-      ['Threat before → after', `${facts.start_value} → ${facts.end_value} (Δ ${fmt(facts.end_value - facts.start_value, 3)})`],
-      ['Grid', `${facts.grid_version}; hand-designed, uncalibrated`],
-      ['Entries', [facts.final_third_entry && 'final third', facts.box_entry && 'penalty box'].filter(Boolean).join(', ') || 'none'],
+      [t('Start → end cell'), `(${facts.start_cell?.join(', ')}) → (${facts.end_cell?.join(', ')}) ${t('on a 16 × 12 grid')}`],
+      [t('Threat before → after'), `${facts.start_value} → ${facts.end_value} (Δ ${fmt(facts.end_value - facts.start_value, 3)})`],
+      [t('Grid'), t('hand-designed, uncalibrated')],
+      [t('Entries'), [facts.final_third_entry && t('final third'), facts.box_entry && t('penalty box')].filter(Boolean).join(', ') || t('none')],
     ];
   } else if (moment.rule === 'pressing_change') {
     const w = facts.window, p = facts.previous_window;
     rows = [
-      ['Formula', 'opponent passes in zone ÷ defensive actions in zone'],
-      ['This window', `${w.opponent_passes} ÷ ${w.defensive_actions} = ${w.value} (min ${w.start_ms / 60000}–${w.end_ms / 60000})`],
-      ['Previous valid window', `${p.opponent_passes} ÷ ${p.defensive_actions} = ${p.value} (min ${p.start_ms / 60000}–${p.end_ms / 60000})`],
-      ['Zone', facts.zone],
+      [t('Formula'), t('opponent passes in zone ÷ defensive actions in zone')],
+      [t('This window'), `${w.opponent_passes} ÷ ${w.defensive_actions} = ${w.value} (min ${w.start_ms / 60000}–${w.end_ms / 60000})`],
+      [t('Previous valid window'), `${p.opponent_passes} ÷ ${p.defensive_actions} = ${p.value} (min ${p.start_ms / 60000}–${p.end_ms / 60000})`],
+      [t('Zone'), t("beyond 42 m from the defending team's own goal line")],
     ];
   } else if (moment.rule === 'transition') {
-    rows = [['Turnover', facts.turnover_type], ['Ended in a shot', facts.ended_in_shot ? 'yes' : 'no']];
+    rows = [[t('Turnover'), t(facts.turnover_type)], [t('Ended in a shot'), t(facts.ended_in_shot ? 'yes' : 'no')]];
   } else if (moment.rule === 'goal') {
-    rows = [['Score after goal', Object.entries(facts.score ?? {}).map(([team, goals]) => `${TEAM_NAME[team] ?? team} ${goals}`).join(', ')]];
+    rows = [[t('Score after goal'), Object.entries(facts.score ?? {}).map(([team, goals]) => `${TEAM_NAME[team] ?? team} ${goals}`).join(', ')]];
   } else if (moment.rule === 'chance') {
-    rows = [['Outcome', facts.outcome]];
+    rows = [[t('Outcome'), t(String(facts.outcome).replace('_', ' '))]];
   }
-  return [...rows, ['Trigger', TRIGGER[moment.rule]], ['Rule version', `${moment.rule} ${moment.rule_version} · ${moment.metric_version}`]];
+  return [...rows, [t('Trigger'), t(TRIGGER[moment.rule])]];
 }

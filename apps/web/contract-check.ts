@@ -11,4 +11,4 @@ export const insightKeys: SameKeys<typeof insight, Insight> = true;
 // JSON imports widen literals; runtime JSON Schema checks verify those literals.
 export const exampleEvent: Event = { ...event, schema_version: '1.1', period: 1, type: 'pass', outcome: 'completed', attacking_direction: 'positive_x', synthetic: true };
 export const exampleState: MatchState = { ...state, schema_version: '1.1', period: 1, replay_status: 'paused', synthetic: true };
-export const exampleInsight: Insight = { ...insight, schema_version: '1.1', language: 'en', generation_mode: 'fixture' };
+export const exampleInsight: Insight = { ...insight, schema_version: '1.1', language: 'en', generation_mode: 'fixture', generation_status: 'fixture', translations: null };

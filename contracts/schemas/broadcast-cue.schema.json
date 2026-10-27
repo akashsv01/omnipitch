@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omnipitch.local/contracts/broadcast-cue.schema.json",
+  "title": "broadcast-cue",
+  "description": "One on-screen insight for the broadcast overlay, built from a verified moment and its validated insight. Match time (match_clock, replay_ms, evidence_cutoff_sequence) says where in the match the claim belongs; display_ms is wall-clock screen time. A cue is stale once the replay is stale_after_match_ms of match time past it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "message_id", "revision", "revision_reason", "run_id", "match_id", "moment_id", "rule", "kind",
+    "match_clock", "replay_ms", "evidence_cutoff_sequence", "source_ids", "audience", "language", "headline", "text",
+    "measurements", "priority", "display_ms", "stale_after_match_ms", "generation_status", "validation", "synthetic"],
+  "properties": {
+    "schema_version": { "const": "broadcast-cue-1.0" },
+    "message_id": { "type": "string", "minLength": 1, "description": "Stable across revisions: run, moment, audience and language." },
+    "revision": { "type": "integer", "minimum": 1, "description": "1 = rule-based text; 2 = accepted AI text replacing it." },
+    "revision_reason": { "enum": ["template", "ai_accepted"] },
+    "run_id": { "type": "string", "minLength": 1 },
+    "match_id": { "type": "string", "minLength": 1 },
+    "moment_id": { "type": "string", "minLength": 1 },
+    "rule": { "enum": ["goal", "chance", "threat_gain", "transition", "pressing_change"] },
+    "kind": { "enum": ["major", "standard"], "description": "Major cues (goals) pre-empt standard ones." },
+    "match_clock": {
+      "type": "object", "additionalProperties": false, "required": ["period", "match_time_ms", "label"],
+      "properties": {
+        "period": { "enum": [1, 2] },
+        "match_time_ms": { "type": "integer", "minimum": 0 },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    },
+    "replay_ms": { "type": "integer", "minimum": 0 },
+    "evidence_cutoff_sequence": { "type": "integer", "minimum": 1, "description": "The last event the claim may use; the cue is never shown before the replay reaches it." },
+    "source_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "audience": { "enum": ["fan", "analyst"] },
+    "language": { "enum": ["en", "es"] },
+    "headline": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "text": { "type": "string", "minLength": 1, "maxLength": 400 },
+    "measurements": {
+      "type": "array", "maxItems": 3,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["label", "value"],
+        "properties": { "label": { "type": "string" }, "value": { "type": "string" }, "unit": { "type": "string" } }
+      }
+    },
+    "priority": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "display_ms": { "type": "integer", "minimum": 1000, "maximum": 30000 },
+    "stale_after_match_ms": { "type": "integer", "minimum": 0 },
+    "generation_status": { "enum": ["ai_accepted", "rule_based", "pending", "skipped", "rejected", "provider_failure", "fixture"] },
+    "validation": { "enum": ["passed", "not_applicable"], "description": "passed: model text accepted by the code validator and the API re-check. not_applicable: template text, no model output existed." },
+    "synthetic": { "const": true }
+  }
+}

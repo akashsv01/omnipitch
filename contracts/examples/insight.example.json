@@ -27,5 +27,8 @@
     "Pass continuity alone does not establish a tactical pattern."
   ],
   "generation_mode": "fixture",
-  "knowledge_source_ids": []
+  "knowledge_source_ids": [],
+  "generation_status": "fixture",
+  "generation_reason": null,
+  "translations": null
 }

@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Database, RefreshCw, SlidersHorizontal, WifiOff, X } from 'lucide-react';
+import { RefreshCw, SlidersHorizontal, WifiOff, X } from 'lucide-react';
 import { AnalysisTabs, type TabRequest } from './components/AnalysisTabs';
 import { Brand } from './components/Crest';
 import { TrustBar } from './components/TrustBar';
 import { catchUp, readJoin, storeDismissed, type JoinPoint } from './components/CatchUp';
-import { LanguageContext } from './lib/i18n';
+import { LanguageContext, setUiLanguage, t, useTr } from './lib/i18n';
 import { Filmstrip, type FilmRange } from './components/ControlDock';
 import { EvidenceDrawer } from './components/EvidenceDrawer';
-import { EventhousePanel } from './components/EventhousePanel';
 import { MatchStage } from './components/MatchStage';
 import { MomentFeed } from './components/MomentFeed';
 import { Preferences } from './components/Preferences';
 import { ScoreStrip } from './components/Scoreboard';
+import { CommentaryBar } from './components/CommentaryBar';
+import { useCommentary } from './lib/useCommentary';
 import { INDICATOR } from './lib/motion';
-import { API_BASE_URL } from './lib/api';
 import { RULE_LABEL, clockLabel } from './lib/format';
 import { usePrefs, type Audience } from './lib/prefs';
 import { useInterpolatedElapsed, useReplay } from './lib/useReplay';
@@ -26,6 +26,7 @@ export { prefetchReplay } from './lib/useReplay';
 export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
   prefs: ReturnType<typeof usePrefs>[0]; updatePrefs: ReturnType<typeof usePrefs>[1]; reduced: boolean; onHome: () => void;
 }) {
+  setUiLanguage(prefs.language);  // for pure helpers (event names, calculation rows) rendered below
   const live = useReplay();
   const { replay } = live;
   const latest = useRef({ replay, live });
@@ -36,7 +37,6 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
   const [evidence, setEvidence] = useState<Moment>();
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [goal, setGoal] = useState<Event | null>(null);
-  const [restoredSeen, setRestoredSeen] = useState(false);
   const goalTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const knownGoals = useRef<{ run?: string; ids: Set<string> }>({ ids: new Set() });
 
@@ -44,6 +44,19 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
   const selected = useMemo(() => replay?.events.find(event => event.event_id === selectedId), [replay?.events, selectedId]);
   const inspect = useMemo(() => replay?.moments.find(m => m.moment_id === inspectId) ?? null, [replay?.moments, inspectId]);
   useEffect(() => { setSelectedId(undefined); setEvidence(undefined); setInspectId(undefined); setGoal(null); }, [runId]);
+  // Evidence for a moment that no longer exists at this replay position (a seek back) is closed, never left stale.
+  useEffect(() => {
+    if (evidence && replay && !replay.moments.some(m => m.moment_id === evidence.moment_id)) setEvidence(undefined);
+  }, [evidence, replay]);
+  // Arriving from the landing page: move keyboard focus to the match once it is on screen.
+  useEffect(() => {
+    if (!replay) return;
+    try {
+      if (sessionStorage.getItem('omnipitch.focusEntry') !== '1') return;
+      sessionStorage.removeItem('omnipitch.focusEntry');
+    } catch { return; }
+    requestAnimationFrame(() => document.getElementById('match')?.focus({ preventScroll: true }));
+  }, [replay]);
   // A shared replay can be mid-match when this viewer arrives: remember where, once per run, for the catch-up card.
   const [join, setJoin] = useState<JoinPoint & { dismissed: boolean } | null>(null);
   useEffect(() => {
@@ -114,7 +127,7 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
   const chooseMoment = useCallback((moment: Moment | undefined) => { setInspectId(moment?.moment_id); setSelectedId(undefined); }, []);
   const stopInspect = useCallback(() => setInspectId(undefined), []);
   const start = useCallback(() => { void latest.current.live.play(); }, []);
-  const loadEventhouse = useCallback((id: string) => latest.current.live.loadEventhouse(id), []);
+  const restart = useCallback(async () => { await latest.current.live.seek(0); await latest.current.live.play(); }, []);
 
   // The inspected moment's sequence as a range on the replay timeline (event times relative to the moment's).
   const range = useMemo<FilmRange | null>(() => {
@@ -141,6 +154,9 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
       setRecapPrompt(period === 2 ? { text: 'Full-time recap is ready', scope: 'full_time' } : { text: 'Half-time recap is ready', scope: 'first_half' });
     }
   }, [replay]);
+  // Live commentary; a narrated recap brings the Recap tab to that period (without scrolling the page).
+  const showRecap = useCallback((scope: RecapScope) => setTabRequest({ tab: 'recap', nonce: Date.now(), scope }), []);
+  const commentary = useCommentary(replay, prefs.audience, prefs.language, prefs.favoritePlayer, showRecap);
   const openRecapNow = useCallback(() => {
     setTabRequest({ tab: 'recap', nonce: Date.now() });
     document.getElementById('analysis-title')?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
@@ -163,15 +179,14 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
   const inspecting = inspect ? `${clockLabel(inspect.period, inspect.match_time_ms)}` : null;
 
   return <LanguageContext.Provider value={prefs.language}><div className="shell" data-audience={prefs.audience}>
-    <a className="skip-link" href="#match">Skip to the match</a>
+    <a className="skip-link" href="#match">{prefs.language === 'es' ? 'Ir al partido' : 'Skip to the match'}</a>
     <header className="nav">
-      <Brand onNavigate={onHome} tagline="Match room" />
+      <Brand onNavigate={onHome} tagline={t('Match room')} />
       <AudienceToggle value={prefs.audience} onChange={audience => updatePrefs({ audience })} />
       <LanguageToggle value={prefs.language} onChange={language => updatePrefs({ language })} />
       <span className="nav-sep" aria-hidden="true" />
-      {replay && <SourceBadge replay={replay} />}
-      <span className="nav-status" data-state={live.connection} role="status" title="Connection to the match API (separate from the replay state)">
-        <span className="dot" aria-hidden="true" /><span className="label">{live.connection === 'online' ? 'Connected' : live.connection === 'offline' ? 'Offline' : 'Connecting'}</span>
+      <span className="nav-status" data-state={live.connection} role="status" title={t('Live connection to the match')}>
+        <span className="dot" aria-hidden="true" /><span className="label">{t(live.connection === 'online' ? 'Connected' : live.connection === 'offline' ? 'Offline' : 'Connecting')}</span>
       </span>
       <div style={{ position: 'relative' }}>
         <button type="button" className="icon-button" aria-label="Viewing preferences" aria-expanded={prefsOpen} aria-haspopup="dialog"
@@ -184,58 +199,49 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
 
     {replay && <main id="match" tabIndex={-1}>
       <p className="sr-only" aria-live="polite">{modeNote}</p>
-      <h1 className="sr-only">OmniPitch match room: {replay.state.home_team.name} against {replay.state.away_team.name}</h1>
+      <h1 className="sr-only">{t('OmniPitch match room:')} {replay.state.home_team.name} {t('against')} {replay.state.away_team.name}</h1>
       <ScoreStrip state={replay.state} replay={replay.replay} clockMs={clockMs} inspecting={inspecting} />
       <div className="banner-stack" aria-live="polite">
       <AnimatePresence initial={false}>
         {live.connection === 'offline' && <motion.div key="offline" className="alert" role="alert" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
-          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><WifiOff size={16} />{live.connectionError} Showing the last received state; controls return when the API does.</span>
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><WifiOff size={16} />{live.connectionError} {t('Showing the last update; controls return when the connection does.')}</span>
           <button type="button" className="button" onClick={live.reconnect}><RefreshCw size={14} />Retry</button>
         </motion.div>}
         {live.actionError && <motion.div key="action" className="alert" role="alert" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
           <span>{live.actionError}</span>
-          <button type="button" className="icon-button" aria-label="Dismiss" onClick={live.clearActionError}><X size={15} /></button>
+          <button type="button" className="icon-button" aria-label={t('Dismiss')} onClick={live.clearActionError}><X size={15} /></button>
         </motion.div>}
         {recapPrompt && <motion.div key="recap" className="notice recap-prompt" role="status" style={{ justifyContent: 'space-between', alignItems: 'center' }}
           initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}>
-          <span>{recapPrompt.text}: the score, up to three verified key moments and what the data supports.</span>
+          <span>{t(recapPrompt.text)}: {t('the score, the key moments and the main story.')}</span>
           <span style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className="button primary" onClick={openRecap}>Read recap</button>
-            <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setRecapPrompt(null)}><X size={15} /></button>
+            <button type="button" className="button primary" onClick={openRecap}>{t('Read recap')}</button>
+            <button type="button" className="icon-button" aria-label={t('Dismiss')} onClick={() => setRecapPrompt(null)}><X size={15} /></button>
           </span>
-        </motion.div>}
-        {replay.replay.restored && !restoredSeen && <motion.div key="restored" className="notice" style={{ justifyContent: 'space-between' }}
-          initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
-          <span>Restored the saved replay after an API restart: same run, score and moments, paused where it stopped.</span>
-          <button type="button" className="icon-button" aria-label="Dismiss" onClick={() => setRestoredSeen(true)}><X size={15} /></button>
         </motion.div>}
       </AnimatePresence>
       </div>
 
       <TrustBar replay={replay} />
 
-      {replay.replay.backend_mode === 'azure' && replay.replay.source !== 'eventhouse' && <div className="alert" role="status"
-        style={{ background: 'var(--amber-soft)', borderColor: 'rgba(242,204,98,.4)', color: 'var(--text)', marginTop: 10, display: 'grid' }}>
-        <span><b>Azure mode, but this replay is not Eventhouse data.</b> It is the {replay.replay.source === 'simulator' ? 'local simulator match' : 'uploaded file'} restored at startup. Load a run from Fabric Eventhouse to see cloud data.</span>
-        <EventhousePanel replay={replay} busy={live.busy} onLoad={live.loadEventhouse} compact />
-      </div>}
-
       <div className="desk">
         <MatchStage replay={replay} selected={selected} onSelect={selectEvent} prefs={prefs} updatePrefs={updatePrefs}
           goal={goal} animate={!reduced} audience={prefs.audience} inspect={inspect} onStopInspect={stopInspect}
-          onStart={start} startDisabled={disabled} />
+          onStart={start} startDisabled={disabled} commentary={<CommentaryBar c={commentary} language={prefs.language} />} />
         <div className="desk-film">
           <Filmstrip replay={replay} elapsed={elapsed} busy={live.busy} disabled={disabled} audience={prefs.audience}
             range={range} onReturn={stopInspect}
-            onPlay={live.play} onPause={live.pause} onReset={live.reset} onSpeed={live.setSpeed} onSeek={live.seek}
+            onPlay={live.play} onPause={live.pause} onRestart={restart} onReset={live.reset} onSpeed={live.setSpeed} onSeek={live.seek}
             onGenerate={live.generate} onLoad={live.load} />
         </div>
         <MomentFeed moments={replay.moments} audience={prefs.audience} favoriteTeam={prefs.favoriteTeam} favoritePlayer={prefs.favoritePlayer}
+          focusMetric={prefs.focusMetric} analysis={replay.analysis} events={replay.events}
           roster={replay.replay.roster} chosenId={inspectId} onChoose={chooseMoment} onEvidence={setEvidence} onJump={jumpTo} aiMode={replay.insights.status === 'off' ? 'off' : replay.insights.mode} onRecap={openRecapNow}
+          nowClock={replay.state.latest_event_sequence ? clockLabel(replay.replay.clock_period, replay.replay.clock_ms) : null}
           catchUp={missedSoFar} state={replay.state} onDismissCatchUp={dismissCatchUp} />
         <div className="desk-analysis">
         <AnalysisTabs replay={replay} audience={prefs.audience} favoritePlayer={prefs.favoritePlayer}
-          busy={live.busy} onLoadEventhouse={loadEventhouse} onJumpMoment={jumpToMoment} tabRequest={tabRequest} push={live.push}
+          busy={live.busy} onJumpMoment={jumpToMoment} tabRequest={tabRequest}
           onSelectEvent={selectFromAnalysis} playhead={Math.round(Math.min(1, elapsed / Math.max(1, replay.replay.duration_ms)) * 200) / 200} />
         </div>
       </div>
@@ -245,22 +251,7 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
 
     {replay && <>
       <footer className="foot">
-        <p className="disclosure-line">All teams, players and events are synthetic. {replay.insights.ai > 0
-          ? `${replay.insights.ai} moment ${replay.insights.ai === 1 ? 'explanation is' : 'explanations are'} AI-written and passed the code validator (labelled "AI · validated"); the rest are rule-based templates from verified metrics.`
-          : replay.insights.mode === 'off' || replay.insights.status === 'off' ? 'Moment explanations are rule-based templates from verified metrics; AI narration does not cover this run.' : 'Moment explanations are rule-based templates for now; AI narration is on but has not produced accepted text for these moments yet (labelled "AI pending").'}</p>
-        <details className="disclosure">
-          <summary>Data source and diagnostics</summary>
-          <div>
-            <dl>
-              <dt>Events available so far</dt><dd className="num">{replay.state.latest_event_sequence} / {replay.total_events} events</dd>
-              <dt>Source</dt><dd>{sourceLabel(replay)}{replay.replay.source_detail ? ` · ${replay.replay.source_detail}` : ''}</dd>
-              <dt>Backend</dt><dd>{replay.replay.backend_mode} mode · API {API_BASE_URL}</dd>
-              <dt>Run</dt><dd className="mono">{replay.state.run_id}</dd>
-              <dt>Narrated insights</dt><dd>{replay.insights.mode === 'off' ? 'off (templates only)' : `${replay.insights.narrated} narrated, ${replay.insights.ai} AI, ${replay.insights.rejected} rejected (${replay.insights.status})`}</dd>
-              <dt>Live updates</dt><dd>{live.push.state === 'off' ? 'polling only' : live.push.state}</dd>
-            </dl>
-          </div>
-        </details>
+        <p className="disclosure-line">{t('All teams, players and events are synthetic. Each explanation is labelled: written by AI and checked against the match data, or written from fixed rules.')}</p>
       </footer>
 
       <AnimatePresence>
@@ -271,23 +262,6 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
   </div></LanguageContext.Provider>;
 }
 
-type Snapshot = NonNullable<ReturnType<typeof useReplay>['replay']>;
-
-function sourceLabel(replay: Snapshot) {
-  const { backend_mode: mode, source, source_run_id: run, seed, scenario } = replay.replay;
-  if (source === 'eventhouse') return `Eventhouse run ${run}`;
-  if (mode === 'azure') return 'Azure: no Eventhouse run loaded';
-  if (source === 'upload') return 'Uploaded JSONL';
-  return `Simulator, seed ${seed} (${scenario?.replace('_', ' ')})`;
-}
-
-function SourceBadge({ replay }: { replay: Snapshot }) {
-  const { backend_mode: mode, source, source_detail: detail } = replay.replay;
-  const label = source === 'eventhouse' ? 'Eventhouse' : mode === 'azure' ? 'Not loaded' : source === 'upload' ? 'Uploaded file' : 'Simulator';
-  return <span className="nav-status nav-source" title={`${sourceLabel(replay)}${detail ? ` · ${detail}` : ''}`} data-state={mode === 'azure' && source !== 'eventhouse' ? 'offline' : undefined}>
-    <Database size={14} aria-hidden="true" />{label}
-  </span>;
-}
 
 /** Language of the moment explanations. Interface chrome stays in English; AI-written text is English only. */
 function LanguageToggle({ value, onChange }: { value: 'en' | 'es'; onChange: (value: 'en' | 'es') => void }) {
@@ -300,10 +274,11 @@ function LanguageToggle({ value, onChange }: { value: 'en' | 'es'; onChange: (va
 }
 
 function AudienceToggle({ value, onChange }: { value: Audience; onChange: (value: Audience) => void }) {
+  const tr = useTr();
   return <div className="segmented" role="group" aria-label="Audience mode">
     {(['fan', 'analyst'] as const).map(mode => <button key={mode} type="button" aria-pressed={value === mode} onClick={() => onChange(mode)}>
       {value === mode && <motion.span layoutId="audience-thumb" className="thumb" transition={INDICATOR} />}
-      {mode === 'fan' ? 'Fan view' : 'Analyst view'}
+      {tr(mode === 'fan' ? 'Fan view' : 'Analyst view')}
     </button>)}
   </div>;
 }
@@ -312,10 +287,9 @@ function Boot({ offline, message, onRetry }: { offline: boolean; message?: strin
   if (offline) {
     return <div className="empty" style={{ marginTop: 24, padding: 48 }} role="alert">
       <WifiOff size={28} />
-      <strong>Can't reach the match API</strong>
-      <span>{message}</span>
-      <span className="hint">Start it from the repository root: <span className="mono">uvicorn app.main:app --app-dir services/api --port 8000</span></span>
-      <button type="button" className="button primary" onClick={onRetry}><RefreshCw size={15} />Try again</button>
+      <strong>{t("The match isn't available right now")}</strong>
+      <span>{message ?? 'Check your connection and try again.'}</span>
+      <button type="button" className="button primary" onClick={onRetry}><RefreshCw size={15} />{t('Try again')}</button>
     </div>;
   }
   // Same geometry as the loaded desk, so nothing jumps when the match arrives.

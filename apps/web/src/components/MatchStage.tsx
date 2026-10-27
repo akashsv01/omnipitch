@@ -1,71 +1,95 @@
 import { memo, useMemo, useState } from 'react';
+import { t } from '../lib/i18n';
+import { useTr } from '../lib/i18n';
 import { AnimatePresence, motion } from 'motion/react';
 import { Flame, GitFork, Grid3x3, Play, Route, SlidersHorizontal, X } from 'lucide-react';
 import type { Event, Moment, ReplaySnapshot } from '../types/contracts';
 import type { Audience, Prefs } from '../lib/prefs';
-import { RULE_LABEL, clockLabel, eventLabel, fmt, playerIndex, teamTone } from '../lib/format';
+import { RULE_LABEL, clockLabel, eventLabel, metricText, playerIndex, teamTone } from '../lib/format';
+import { forwardGain, passDifficulty, passLength } from '../lib/geometry';
 import { DUR, EASE_OUT } from '../lib/motion';
 import { Crest } from './Crest';
 import { Pitch, PitchLegend } from './Pitch';
+import { atKickoff } from './Scoreboard';
 
 const LAYERS = [
-  { key: 'trail', label: 'Recent play', icon: Route },
-  { key: 'threat', label: 'Threat grid', icon: Flame },
+  { key: 'trail', label: 'Recent sequence', icon: Route },
+  { key: 'threat', label: 'Threat', icon: Flame },
   { key: 'density', label: 'Event density', icon: Grid3x3 },
-  { key: 'network', label: 'Pass network', icon: GitFork },
+  { key: 'network', label: 'Passing connections', icon: GitFork },
 ] as const;
+type Layers = Prefs['layers'];
+/** One clear view at a time by default; combining layers is a deliberate, separate step. */
+const PRESETS: { id: string; label: string; icon: typeof Route; layers: Layers }[] = [
+  { id: 'recent', label: 'Recent sequence', icon: Route, layers: { trail: true, threat: false, density: false, network: false } },
+  { id: 'threat', label: 'Threat', icon: Flame, layers: { trail: true, threat: true, density: false, network: false } },
+  { id: 'density', label: 'Event density', icon: Grid3x3, layers: { trail: false, threat: false, density: true, network: false } },
+  { id: 'network', label: 'Passing connections', icon: GitFork, layers: { trail: false, threat: false, density: false, network: true } },
+];
+const sameLayers = (a: Layers, b: Layers) => a.trail === b.trail && a.threat === b.threat && a.density === b.density && a.network === b.network;
 
 /** The pitch as the stage. Two modes: following the newest event, or inspecting one moment's source sequence
  * (numbered steps on a quieter pitch). Pre-match shows the fixture and an explicit start. */
-export const MatchStage = memo(function MatchStage({ replay, selected, onSelect, prefs, updatePrefs, goal, animate, audience, inspect, onStopInspect, onStart, startDisabled }: {
+export const MatchStage = memo(function MatchStage({ replay, selected, onSelect, prefs, updatePrefs, goal, animate, audience, inspect, onStopInspect, onStart, startDisabled, commentary }: {
   replay: ReplaySnapshot; selected?: Event; onSelect: (event: Event | undefined) => void; prefs: Prefs;
   updatePrefs: (patch: Partial<Prefs>) => void; goal: Event | null; animate: boolean; audience: Audience;
   inspect: Moment | null; onStopInspect: () => void; onStart: () => void; startDisabled: boolean;
+  /** Live commentary, in the header row so it costs no height above the pitch. */
+  commentary?: React.ReactNode;
 }) {
+  const tr = useTr();
   const people = useMemo(() => playerIndex(replay.replay.roster), [replay.replay.roster]);
   const focus = selected ?? [...replay.events].reverse().find(event => event.start);
-  const networkTeam = prefs.favoriteTeam ?? focus?.team_id ?? 'harbor';
+  const [teamPick, setTeamPick] = useState<string | null>(null);
+  const networkTeam = teamPick ?? prefs.favoriteTeam ?? focus?.team_id ?? 'harbor';
   const fan = audience === 'fan';
   // Each audience remembers its own layers; switching never rewrites the other's view.
   const layerKey = fan ? 'layers' : 'analystLayers';
   const layers = prefs[layerKey];
   const [tactics, setTactics] = useState(false);
-  const pre = replay.state.latest_event_sequence === 0;
+  const preset = PRESETS.find(p => sameLayers(p.layers, layers))?.id ?? 'custom';
+  const [combine, setCombine] = useState(false);
+  const combining = combine || preset === 'custom';
+  const pre = atKickoff(replay.state, replay.replay);
   const steps = inspect ? replay.events.filter(event => inspect.evidence_ids.includes(event.event_id) && event.start).length : 0;
   const caption = inspect ? `This moment's ${steps} recorded ${steps === 1 ? 'action' : 'actions'}, numbered in order; later events are hidden. Lines join recorded points.`
-    : layers.density ? 'Event density: action locations only, not tracking.'
-    : layers.network ? `${networkTeam === 'harbor' ? 'Harbor' : 'Vale'} pass network: average action locations, not tracked positions.`
-    : layers.threat ? `Threat grid (${focus?.team_id === 'vale' ? 'Vale' : 'Harbor'} frame): hand-designed, not a probability.`
-    : 'Lines join recorded points; the moving ball is illustrative.';
+    : t('Lines join recorded points; the moving ball is illustrative.');
   const toggle = (key: keyof Prefs['layers']) => updatePrefs({ [layerKey]: {
     ...layers, [key]: !layers[key],
     // Threat and density share the turf as heat layers: one at a time keeps both readable.
     ...(key === 'density' && !layers.density ? { threat: false } : {}), ...(key === 'threat' && !layers.threat ? { density: false } : {}),
   } });
-  const chips = <div className="layer-chips" role="group" aria-label="Pitch layers">
-    {LAYERS.map(({ key, label, icon: Icon }) => <button key={key} type="button" className="chip" aria-pressed={layers[key]} onClick={() => toggle(key)}
-      disabled={!!inspect && key !== 'threat'}>
-      <Icon size={14} aria-hidden="true" />{label}
-    </button>)}
+  const chips = <div className="layer-tools">
+    <div className="layer-chips" role="radiogroup" aria-label={t('Pitch view')}>
+      {PRESETS.map(({ id, label, icon: Icon, layers: next }) => <button key={id} type="button" role="radio" className="chip" aria-checked={preset === id}
+        onClick={() => { setCombine(false); updatePrefs({ [layerKey]: next }); }} disabled={!!inspect && id !== 'threat' && id !== 'recent'}>
+        <Icon size={14} aria-hidden="true" />{tr(label)}
+      </button>)}
+      <button type="button" className="chip quiet" aria-pressed={combining} onClick={() => setCombine(value => !value)} disabled={!!inspect}>{tr('Combine…')}</button>
+    </div>
+    {combining && !inspect && <div className="layer-chips combine" role="group" aria-label={t('Combine layers')}>
+      {LAYERS.map(({ key, label }) => <label key={key} className="check"><input type="checkbox" checked={layers[key]} onChange={() => toggle(key)} />{tr(label)}</label>)}
+    </div>}
   </div>;
 
   return <section className="desk-stage" aria-labelledby="pitch-title">
     <div className="stage-head">
-      <h2 id="pitch-title">Match pitch</h2>
+      <h2 id="pitch-title">{tr('Match pitch')}</h2>
       {inspect
         ? <span className="stage-mode" data-mode="inspecting" role="status">
-            Inspecting <b>{clockLabel(inspect.period, inspect.match_time_ms)} {RULE_LABEL[inspect.rule].toLowerCase()}</b>
-            <button type="button" className="text-button" onClick={onStopInspect}><X size={14} aria-hidden="true" />Return to replay</button>
+            {tr('Inspecting')} <b>{clockLabel(inspect.period, inspect.match_time_ms)} {RULE_LABEL[inspect.rule].toLowerCase()}</b>
+            <button type="button" className="text-button" onClick={onStopInspect}><X size={14} aria-hidden="true" />{tr('Return to replay')}</button>
           </span>
-        : <span className="stage-mode">{selected ? 'Showing a selected event' : pre ? 'Waiting for kick-off' : 'Following replay'}</span>}
+        : <span className="stage-mode">{selected ? tr('Showing a selected event') : pre ? tr('Waiting for kick-off') : tr('Following replay')}</span>}
+      {commentary}
       {fan
         ? <div className="tactics">
             <button type="button" className="chip" aria-expanded={tactics} aria-controls="tactics-panel" onClick={() => setTactics(open => !open)}>
-              <SlidersHorizontal size={14} aria-hidden="true" />Explore tactics{LAYERS.some(l => l.key !== 'trail' && layers[l.key]) ? <span className="count">on</span> : null}
+              <SlidersHorizontal size={14} aria-hidden="true" />{tr('Explore tactics')}{preset !== 'recent' ? <span className="count">{tr(PRESETS.find(p => p.id === preset)?.label ?? 'Custom')}</span> : null}
             </button>
             {tactics && <div className="tactics-panel" id="tactics-panel">
               {chips}
-              <p className="hint">Heat and network layers summarise recorded actions. They are not tracking data.</p>
+              <p className="hint">{tr('These views summarise recorded actions. None of them is player tracking.')}</p>
             </div>}
           </div>
         : chips}
@@ -82,8 +106,8 @@ export const MatchStage = memo(function MatchStage({ replay, selected, onSelect,
           <div className="fixture">
             <Crest team={replay.state.home_team.id} />{replay.state.home_team.name}<small>v</small>{replay.state.away_team.name}<Crest team={replay.state.away_team.id} />
           </div>
-          <p>A synthetic match, replayed event by event. Moments appear only when the recorded events support them.</p>
-          <button type="button" className="button primary" onClick={onStart} disabled={startDisabled}><Play size={16} fill="currentColor" aria-hidden="true" />Start replay</button>
+          <p>{tr('A synthetic match, replayed event by event. Moments appear only when the recorded events support them.')}</p>
+          <button type="button" className="button primary" onClick={onStart} disabled={startDisabled}><Play size={16} fill="currentColor" aria-hidden="true" />{tr('Start replay')}</button>
         </div>
       </div>}
       <AnimatePresence>
@@ -92,12 +116,29 @@ export const MatchStage = memo(function MatchStage({ replay, selected, onSelect,
       {focus && !inspect && !pre && !goal && <Annotation event={focus} name={people.get(focus.player_id ?? '')?.name} pinned={!!selected} onClear={() => onSelect(undefined)} />}
     </div>
     <div className="stage-foot">
-      <span>{caption}</span>
+      {inspect ? <span>{caption}</span>
+        : <LayerKey layers={layers} attackingTeam={focus?.team_id ?? 'harbor'} networkTeam={networkTeam} onTeam={setTeamPick} />}
       <PitchLegend compact={fan} />
     </div>
     {!fan && focus && !pre && <EventInspector event={inspect ? undefined : focus} moment={inspect} events={replay.events} name={people.get(focus.player_id ?? '')?.name} />}
   </section>;
 });
+
+/** What each active layer means, its scope and its scale, beside the pitch it describes. */
+function LayerKey({ layers, attackingTeam, networkTeam, onTeam }: { layers: Layers; attackingTeam: string; networkTeam: string; onTeam: (team: string) => void }) {
+  const name = (team: string) => team === 'harbor' ? 'Harbor' : 'Vale';
+  return <div className="layer-key">
+    {layers.threat && <span><i className="scale threat" aria-hidden="true" /><b>{t('Threat:')}</b> {t("low → high, from {team}'s attacking direction. A hand-designed grid, not a probability.").replace('{team}', name(attackingTeam))}</span>}
+    {layers.density && <span><i className="scale density" aria-hidden="true" /><b>{t('Event density:')}</b> {t('fewer → more recorded actions so far, both teams. Locations of actions only, not tracking.')}</span>}
+    {layers.network && <span><b>{t('Passing connections:')}</b>
+      <span className="segmented small" role="radiogroup" aria-label={t('Team for passing connections')}>
+        {['harbor', 'vale'].map(team => <button key={team} type="button" role="radio" aria-checked={networkTeam === team} onClick={() => onTeam(team)}>
+          {networkTeam === team && <span className="thumb" />}{name(team)}</button>)}
+      </span>
+      {t("Circles at each player's average action position (not a tracked position); line width = completed passes between them.")}</span>}
+    {layers.trail && !layers.threat && !layers.density && !layers.network && <span><b>{t('Recent sequence:')}</b> {t('the latest actions of the current passage of play; older ones fade. The moving ball is illustrative.')}</span>}
+  </div>;
+}
 
 /** Analyst: the event in focus (or the inspected moment's sequence) as aligned, measurable fields. */
 function EventInspector({ event, moment, events, name }: { event?: Event; moment: Moment | null; events: Event[]; name?: string }) {
@@ -113,15 +154,16 @@ function EventInspector({ event, moment, events, name }: { event?: Event; moment
     </dl>;
   }
   if (!event) return null;
-  const length = event.start && event.end ? Math.hypot(event.end.x - event.start.x, event.end.y - event.start.y) : null;
-  const forward = event.start && event.end && event.attacking_direction ? (event.end.x - event.start.x) * (event.attacking_direction === 'positive_x' ? 1 : -1) : null;
-  return <dl className="inspector" aria-label="Selected event">
-    <div><dt>Event</dt><dd><b>{eventLabel(event)}</b> · {name ?? '–'}</dd></div>
-    <div><dt>Time</dt><dd className="num">{clockLabel(event.period, event.match_time_ms)} · P{event.period}</dd></div>
-    <div><dt>Start → end</dt><dd className="num">{event.start ? `(${event.start.x}, ${event.start.y})` : '–'}{event.end ? ` → (${event.end.x}, ${event.end.y})` : ''}</dd></div>
-    <div><dt>Length · forward</dt><dd className="num">{length === null ? '–' : `${fmt(length, 1)} m`}{forward === null ? '' : ` · ${forward >= 0 ? '+' : ''}${fmt(forward, 1)} m`}</dd></div>
-    <div><dt>Attack</dt><dd>{event.attacking_direction === 'positive_x' ? '→ +x' : event.attacking_direction ? '← −x' : '–'}</dd></div>
-    <div><dt>ID</dt><dd className="mono">{event.event_id} · #{event.sequence}</dd></div>
+  const length = event.start && event.end ? passLength(event.start, event.end) : null;
+  const forward = event.start && event.end && event.attacking_direction ? forwardGain(event.start, event.end, event.attacking_direction) : null;
+  const difficulty = event.type === 'pass' && event.start && event.end && event.attacking_direction ? passDifficulty(event.start, event.end, event.attacking_direction) : null;
+  return <dl className="inspector" aria-label={t('Selected event')}>
+    <div><dt>{t('Event')}</dt><dd><b>{eventLabel(event)}</b> · {name ?? '–'}</dd></div>
+    <div><dt>{t('Time')}</dt><dd className="num">{clockLabel(event.period, event.match_time_ms)} · P{event.period}</dd></div>
+    <div><dt>{t(event.type === 'shot' ? 'Shot length · towards goal' : 'Pass length · forward gain')}</dt><dd className="num">{length === null ? t('not recorded') : `${metricText('pass_distance', length)} m`}{forward === null ? '' : ` · ${forward >= 0 ? '+' : '−'}${metricText('forward_progress', Math.abs(forward))} m`}</dd></div>
+    {difficulty && <div><dt>{t('Difficulty indicator')}</dt><dd title="A heuristic from length, forward gain, destination and width. Not a completion probability: no defender or pressure data exists.">{difficulty.score}/100 · {t(difficulty.band)}</dd></div>}
+    <div><dt>{t('Attacking')}</dt><dd>{event.attacking_direction === 'positive_x' ? t('the right-hand goal') : event.attacking_direction ? t('the left-hand goal') : '–'}</dd></div>
+    <div><dt>{t('Position (m)')}</dt><dd className="num">{event.start ? `${event.start.x}, ${event.start.y}` : '–'}{event.end ? ` → ${event.end.x}, ${event.end.y}` : ''}</dd></div>
   </dl>;
 }
 

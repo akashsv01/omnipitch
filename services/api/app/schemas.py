@@ -7,7 +7,7 @@ Identifier = Annotated[str, Field(min_length=1)]
 EventType = Literal["pass", "shot", "tackle", "interception", "challenge", "foul", "period_start", "period_end"]
 Outcome = Literal["completed", "incomplete", "goal", "saved", "off_target", "blocked", "won", "lost", "committed", "none"]
 Direction = Literal["positive_x", "negative_x"]
-SCENARIOS = ("standard", "quiet", "high_press")
+SCENARIOS = ("standard", "quiet", "high_press", "late_surge")
 SPEEDS = (1, 5, 10, 20, 40, 80)
 MAX_EVENTS = 2500
 
@@ -124,6 +124,9 @@ class Insight(RunScoped):
     limitations: Annotated[list[Identifier], Field(min_length=1)]
     generation_mode: Literal["fixture", "ai", "fallback"]
     knowledge_source_ids: list[Identifier] = []
+    generation_status: Literal["ai_accepted", "rule_based", "pending", "skipped", "rejected", "provider_failure", "fixture"] | None = None
+    generation_reason: Annotated[str, Field(max_length=300)] | None = None
+    translations: dict | None = None
 
     @field_validator("evidence_ids")
     @classmethod
@@ -315,7 +318,7 @@ class ReplayControl(WireModel):
 class GenerateRequest(WireModel):
     run_id: Identifier
     seed: Annotated[int, Field(ge=0, le=2_147_483_647)]
-    scenario: Literal["standard", "quiet", "high_press"]
+    scenario: Literal["standard", "quiet", "high_press", "late_surge"]
 
 
 class IngestRejection(WireModel):
@@ -371,6 +374,8 @@ class RecapPlayerFocus(WireModel):
 
 
 class Recap(WireModel):
+    language: Literal["en", "es"] = "en"
+    stats: dict | None = None
     schema_version: Literal["1.1"]
     run_id: Identifier
     match_id: Identifier
