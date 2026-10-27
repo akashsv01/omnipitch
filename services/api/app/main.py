@@ -274,7 +274,7 @@ def broadcast(audience: Literal["fan", "analyst"] = "fan", language: Literal["en
 @app.get("/api/v1/commentary/lines")
 def commentary_lines(run_id: str = Query(..., min_length=1, max_length=200), after: int = Query(0, ge=0),
                      audience: Literal["fan", "analyst"] = "fan", language: Literal["en", "es"] = Query("en", alias="lang"),
-                     player_id: str | None = Query(None, max_length=60)) -> dict:
+                     player_id: str | None = Query(None, max_length=60), brief: bool = False) -> dict:
     """Commentary candidates for events and moments revealed after `after`, newest last, each with a priority.
     Only the replay's current run and revealed position are used, so nothing ahead of the replay can be said."""
     replay = store()
@@ -299,7 +299,7 @@ def commentary_lines(run_id: str = Query(..., min_length=1, max_length=200), aft
             lines.append({"ref": f"moment:{moment['moment_id']}", "kind": moment["rule"], "priority": COMMENTARY_RULES[moment["rule"]]
                           + (10 if moment["insight"].get("generation_status") == "ai_accepted" else 0),
                           "sequence": moment["source_sequence"], "period": moment["period"], "match_time_ms": moment["match_time_ms"],
-                          "clock": clock_of(moment), "text": moment_line(moment, audience, language)})
+                          "clock": clock_of(moment), "text": moment_line(moment, audience, language, brief)})
     lines.sort(key=lambda line: line["sequence"])
     _warm(lines, language)
     return {"run_id": run_id, "through": len(events), "lines": lines, "stale": False}
@@ -332,6 +332,7 @@ class CommentaryAudio(WireModel):
     ref: str = Field(min_length=3, max_length=240)
     audience: Literal["fan", "analyst"]
     language: Literal["en", "es"]
+    brief: bool = False
 
 
 @app.post("/api/v1/commentary/audio")
@@ -355,7 +356,7 @@ def commentary_audio(request: CommentaryAudio) -> Response:
         moment = next((m for m in moments if m["moment_id"] == ref), None)
         if moment is None:
             raise HTTPException(404, detail={"code": "line_not_available", "message": "That moment is not revealed yet."})
-        return _audio_response(moment_line(moment, request.audience, request.language), request.language)
+        return _audio_response(moment_line(moment, request.audience, request.language, request.brief), request.language)
     if kind == "recap" and ref in ("first_half", "full_time"):
         period = 1 if ref == "first_half" else 2
         end = next((e for e in events if e["type"] == "period_end" and e["period"] == period), None)

@@ -28,7 +28,7 @@ export const speaking = () => onAir && (onAir.state === 'playing' || onAir.state
 export const onHubChange = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
 
 export interface SpeakRequest { moment_id: string; audience: Audience; language: Language }
-export type Outcome = { result: 'ended' | 'stopped' | 'blocked' | 'error'; caption: string | null; error?: string };
+export type Outcome = { result: 'ended' | 'stopped' | 'stale' | 'blocked' | 'error'; caption: string | null; error?: string };
 
 export class Narrator {
   private audio: HTMLAudioElement | null = null;
@@ -37,6 +37,8 @@ export class Narrator {
   private token = 0;
   private done: ((outcome: Outcome) => void) | null = null;
   volume = 0.9;
+  /** Delivery speed (1 = normal); live commentary reads a little faster when the replay runs fast. */
+  rate = 1;
   state: NarratorState = 'idle';
   error: string | null = null;
   constructor(readonly owner: Owner = 'evidence', private onChange: (state: NarratorState, error: string | null) => void = () => undefined) {}
@@ -58,8 +60,9 @@ export class Narrator {
   /** "Listen + replay": the accepted text of one moment. */
   speak(request: SpeakRequest): Promise<Outcome> { return this.play('/api/v1/speech/moment', request); }
 
-  /** Any server speech endpoint. Resolves when the line ends, is stopped or superseded, or fails. */
-  async play(path: string, body: unknown, onStart?: (caption: string | null) => void): Promise<Outcome> {
+  /** Any server speech endpoint. Resolves when the line ends, is stopped or superseded, or fails. `wanted` is asked
+   * again once the audio has arrived: a line the match has moved past is dropped rather than spoken late. */
+  async play(path: string, body: unknown, onStart?: (caption: string | null) => void, wanted?: () => boolean): Promise<Outcome> {
     if (onAir && onAir !== this && RANK[onAir.owner] > RANK[this.owner] && speaking()) return { result: 'blocked', caption: null };
     if (onAir && onAir !== this) onAir.stop();
     this.stop();
@@ -84,10 +87,13 @@ export class Narrator {
       const caption = decodeURIComponent(response.headers.get('X-Caption') ?? '') || null;
       const blob = await response.blob();
       if (token !== this.token) return { result: 'stopped', caption };
+      if (wanted && !wanted()) { this.set('idle'); this.finish({ result: 'stale', caption }); return finished; }
       this.url = URL.createObjectURL(blob);
       const audio = this.audio = this.el();
       audio.src = this.url;
       audio.volume = this.volume;
+      audio.defaultPlaybackRate = audio.playbackRate = this.rate;  // loading a new src resets playbackRate to the default
+      audio.preservesPitch = true;
       audio.onended = () => { if (token === this.token) { this.set('ended'); this.finish({ result: 'ended', caption }); } };
       this.lastCaption = caption;
       await audio.play();

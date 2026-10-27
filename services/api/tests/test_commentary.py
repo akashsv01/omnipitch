@@ -78,3 +78,16 @@ def test_audio_is_composed_from_references_and_cut_off(monkeypatch):
 def test_speakable_reads_minutes_metres_and_scores():
     assert speakable("Goal at 45+2': shot from 14 m. Score 1-0.", "en") == "Goal at minute 45 plus 2: shot from 14 metres. Score 1 to 0."
     assert speakable("Gol en el 25': 12,5 m en 4,5 s.", "es") == "Gol en el minuto 25: 12,5 metros en 4,5 segundos."
+
+
+def test_brief_moment_lines_keep_only_the_headline(monkeypatch):
+    # Fast replays read a moment's headline only, so the line ends before the match has moved on.
+    client, store, _ = setup(monkeypatch, 600)
+    full = {l["ref"]: l["text"] for l in lines(client, store)["lines"] if l["ref"].startswith("moment:")}
+    brief = {l["ref"]: l["text"] for l in lines(client, store, brief="true")["lines"] if l["ref"].startswith("moment:")}
+    assert full and full.keys() == brief.keys()
+    for ref, text in brief.items():
+        assert full[ref].startswith(text) and len(text) < len(full[ref]) and text.count(". ") == 0
+    ref = next(iter(brief))
+    response = client.post("/api/v1/commentary/audio", json={"run_id": store.state.run_id, "ref": ref, "audience": "fan", "language": "en", "brief": True})
+    assert response.status_code == 200 and unquote(response.headers["x-caption"]) == brief[ref]

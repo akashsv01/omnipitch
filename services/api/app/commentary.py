@@ -81,13 +81,14 @@ def event_line(event: dict, events: list[dict], players: dict, audience: str, la
     return None
 
 
-def moment_line(moment: dict, audience: str, language: str) -> str:
-    """Context for a detected moment, from its accepted insight text in the viewer's language."""
+def moment_line(moment: dict, audience: str, language: str, brief: bool = False) -> str:
+    """Context for a detected moment, from its accepted insight text in the viewer's language. `brief` keeps only the
+    headline, for fast replays where a full explanation would still be playing long after the moment has passed."""
     insight = moment["insight"]
     source = (insight.get("translations") or {}).get("es") if language == "es" else None
     if source:
-        return f"{source['headline']}. {source['casual_text'] if audience == 'fan' else source['analyst_text']}"
-    return f"{insight['headline']}. {insight['casual_text'] if audience == 'fan' else insight['analyst_text']}"
+        return f"{source['headline']}." if brief else f"{source['headline']}. {source['casual_text'] if audience == 'fan' else source['analyst_text']}"
+    return f"{insight['headline']}." if brief else f"{insight['headline']}. {insight['casual_text'] if audience == 'fan' else insight['analyst_text']}"
 
 
 def recap_line(recap: dict) -> str:
