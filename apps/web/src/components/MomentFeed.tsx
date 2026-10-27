@@ -197,12 +197,12 @@ interface SpotProps {
 function SpotContext({ moment, pinned, nowClock }: { moment: Moment; pinned: boolean; nowClock: string | null }) {
   const tr = useTr();
   const at = clockLabel(moment.period, moment.match_time_ms);
-  return <p className="spot-context" data-pinned={pinned || undefined}>
+  return <span className="spot-context" data-pinned={pinned || undefined}>
     {pinned ? tr('Selected moment') : tr('Latest moment')}{nowClock && nowClock !== at ? <> · {tr('replay is at')} <b>{nowClock}</b></> : null}
-  </p>;
+  </span>;
 }
 
-function SpotMeta({ moment, favorite }: { moment: Moment; favorite: boolean }) {
+function SpotMeta({ moment, favorite, context }: { moment: Moment; favorite: boolean; context?: React.ReactNode }) {
   const tr = useTr();
   const Icon = RULE_ICON[moment.rule];
   const team = moment.team_id ? TEAM_META[moment.team_id] : undefined;
@@ -211,6 +211,7 @@ function SpotMeta({ moment, favorite }: { moment: Moment; favorite: boolean }) {
     {team && moment.team_id && <span className="spot-team" style={{ color: team.tone }}><Crest team={moment.team_id} />{team.name}</span>}
     <span className="spot-kind"><Icon size={14} aria-hidden="true" />{tr(RULE_LABEL[moment.rule])}</span>
     {favorite && <Star size={13} fill="var(--amber)" color="var(--amber)" aria-label="Involves your favourite" />}
+    {context}
   </div>;
 }
 
@@ -230,8 +231,7 @@ function FanSpotlight({ moment, favorite, fresh, pinned, nowClock, onEvidence, o
   const story = localStory(moment, useContext(RosterCtx), language);
   return <article className={`spotlight fan${fresh ? ' moment-enter' : ''}`} data-rule={moment.rule} style={{ ['--tone' as string]: teamTone(moment.team_id) }}
     aria-labelledby={`spot-${moment.moment_id}`}>
-    <SpotContext moment={moment} pinned={pinned} nowClock={nowClock} />
-    <SpotMeta moment={moment} favorite={favorite} />
+    <SpotMeta moment={moment} favorite={favorite} context={<SpotContext moment={moment} pinned={pinned} nowClock={nowClock} />} />
     <h3 id={`spot-${moment.moment_id}`} lang={lang}>{story.headline}</h3>
     <div className="qa" lang={lang}>
       <p><span>{t.whatHappened}</span><span className="said" lang={story.englishOnly ? 'en' : lang}>{story.casual}</span>{story.englishOnly && <small className="en-only">{t.aiEnglish}</small>}</p>
@@ -257,8 +257,7 @@ function AnalystInspector({ moment, favorite, fresh, pinned, nowClock, onEvidenc
   const rows = metricRows(moment);
   return <article className={`spotlight analyst${fresh ? ' moment-enter' : ''}`} data-rule={moment.rule} style={{ ['--tone' as string]: teamTone(moment.team_id) }}
     aria-labelledby={`spot-${moment.moment_id}`}>
-    <SpotContext moment={moment} pinned={pinned} nowClock={nowClock} />
-    <SpotMeta moment={moment} favorite={favorite} />
+    <SpotMeta moment={moment} favorite={favorite} context={<SpotContext moment={moment} pinned={pinned} nowClock={nowClock} />} />
     <h3 id={`spot-${moment.moment_id}`} lang={language}>{story.headline}</h3>
     <p className="story" lang={story.englishOnly ? 'en' : language}>{story.analyst}{story.englishOnly && <small className="en-only"> {UI[language].aiEnglish}</small>}</p>
     <table className="inspect-table" aria-label="Metrics">
@@ -270,7 +269,7 @@ function AnalystInspector({ moment, favorite, fresh, pinned, nowClock, onEvidenc
     </table>
     <div className="spot-actions">
       <button type="button" className="button primary" onClick={() => onEvidence(moment)}><FileSearch size={15} aria-hidden="true" />{tr('Inspect evidence')}</button>
-      <button type="button" className="button ghost" onClick={() => onJump(moment)}><RotateCcw size={14} aria-hidden="true" />{tr('Jump to')} {clockLabel(moment.period, moment.match_time_ms)}</button>
+      <button type="button" className="button ghost" onClick={() => onJump(moment)}><RotateCcw size={14} aria-hidden="true" />{tr('Replay from')} {clockLabel(moment.period, moment.match_time_ms)}</button>
       <button type="button" className="text-button quiet" aria-pressed={pinned} onClick={onInspect}><Eye size={14} aria-hidden="true" />{pinned ? tr('Return to replay') : tr('Show sequence on pitch')}</button>
     </div>
     <StatusLine moment={moment} />

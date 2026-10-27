@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ShieldCheck } from 'lucide-react';
 import type { ReplaySnapshot } from '../types/contracts';
 import { generation } from '../lib/evidence';
@@ -38,16 +38,33 @@ export function TrustBar({ replay }: { replay: ReplaySnapshot }) {
       : [[counts.ai, tr('AI-written and checked'), 'ai'], [counts.rejected, tr('AI texts rejected, rule-based kept')],
         ...(counts.pending ? [[counts.pending, tr('awaiting AI')]] : [])] as [number, string, string?][]),
   ];
-  return <section className="trust-bar" aria-labelledby="trust-title">
-    <div className="trust-head">
+  // One line in the score strip; the counts and the method open as a panel on demand, so it never pushes the pitch down.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: Event) => {
+      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !box.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('keydown', close);
+    document.addEventListener('pointerdown', close);
+    return () => { document.removeEventListener('keydown', close); document.removeEventListener('pointerdown', close); };
+  }, [open]);
+  return <div className="trust" ref={box}>
+    <button type="button" className="trust-pill" aria-expanded={open} aria-controls="trust-panel" onClick={() => setOpen(value => !value)}
+      aria-label={`${tr('Checked before it is shown')}: ${counts.moments} ${tr('moments')}, ${counts.figures} ${tr('figures')}`} title={tr('How we check')}>
+      <ShieldCheck size={15} aria-hidden="true" />
+      <span className="trust-word">{tr('Checked')}</span>
+      <span className="trust-summary"><b className="num">{counts.moments}</b> {tr('moments')} · <b className="num">{counts.figures}</b> {tr('figures')}
+        {aiMode !== 'off' && <> · <b className="num" data-mode="ai">{counts.ai}</b> {tr('AI-checked')}</>}</span>
+      <ChevronDown size={14} aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : undefined }} />
+    </button>
+    {open && <section className="trust-panel" id="trust-panel" aria-labelledby="trust-title">
       <h2 id="trust-title"><ShieldCheck size={15} aria-hidden="true" />{tr('Checked before it is shown')}</h2>
-      <button type="button" className="text-button" aria-expanded={open} aria-controls="trust-how" onClick={() => setOpen(value => !value)}>
-        {tr('How we check')}<ChevronDown size={14} aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : undefined }} />
-      </button>
-    </div>
-    <dl className="trust-stats">
-      {stats.map(([value, label, mode]) => <div key={label} data-mode={mode}><dt>{label}</dt><dd className="num">{value.toLocaleString()}</dd></div>)}
-    </dl>
-    {open && <ol className="trust-how" id="trust-how">{STEPS.map(step => <li key={step}>{tr(step)}</li>)}</ol>}
-  </section>;
+      <dl className="trust-stats">
+        {stats.map(([value, label, mode]) => <div key={label} data-mode={mode}><dt>{label}</dt><dd className="num">{value.toLocaleString()}</dd></div>)}
+      </dl>
+      <h3>{tr('How we check')}</h3>
+      <ol className="trust-how">{STEPS.map(step => <li key={step}>{tr(step)}</li>)}</ol>
+    </section>}
+  </div>;
 }

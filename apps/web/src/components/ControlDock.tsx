@@ -22,13 +22,17 @@ export interface FilmRange { from: number; to: number; label: string }
 
 /** Match filmstrip: a match-time scale with a playhead, the momentum band, moment markers, the inspected
  * sequence range and the replay controls. Reserved space below the stage; a fixed thumb bar on phones. */
-export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, onReturn, onPlay, onPause, onRestart, onReset, onSpeed, onSeek, onGenerate, onLoad }: {
+export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, onReturn, onPlay, onPause, onRestart, onReset, onSpeed, onSeek, onGenerate, onLoad, actions, onChoose }: {
   replay: ReplaySnapshot; elapsed: number; busy: boolean; disabled: boolean; audience: Audience;
   range: FilmRange | null; onReturn: () => void;
+  /** A marker on the timeline opens its moment: the explanation, its sequence on the pitch and its range here. */
+  onChoose: (moment: Moment) => void;
   onPlay: () => void; onPause: () => void; onReset: () => void; onSpeed: (speed: Speed) => void; onSeek: (ms: number) => void;
   /** After full-time: back to kick-off and play the same match (no new run). */
   onRestart: () => void;
   onGenerate: (seed: number, scenario: Scenario) => void; onLoad: (file: File) => void;
+  /** Further broadcast controls beside the clock line (live commentary), so every control sits in this one bar. */
+  actions?: React.ReactNode;
 }) {
   const tr = useTr();
   const { state, replay: info } = replay;
@@ -38,26 +42,12 @@ export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, on
   const label = playing ? tr('Pause replay') : finished ? tr('Watch again from kick-off') : state.latest_event_sequence ? tr('Resume replay') : tr('Play replay');
   // The same running clock as the score strip (26:02, not the broadcast minute 27'), so the two never disagree.
   const now = state.latest_event_sequence ? runningClock(info.clock_period, info.clock_ms) : '00:00';
+  // One transport row: play on the left, the clock and timeline in the middle, the other controls on the right,
+  // all on the same centre line.
   return <section className="film" aria-label={t('Replay controls')}>
-    <div className="film-controls">
-      <button type="button" className="play" aria-label={label} title={label} disabled={disabled} onClick={playing ? onPause : finished ? onRestart : onPlay}>
-        {playing ? <Pause size={20} fill="currentColor" aria-hidden="true" /> : <Play size={20} fill="currentColor" style={{ marginLeft: 3 }} aria-hidden="true" />}
-      </button>
-      <select className="speed-select" aria-label={tr('Playback speed')} value={info.speed} disabled={disabled}
-        onChange={event => onSpeed(Number(event.target.value) as Speed)}>
-        {SPEEDS.map(speed => <option key={speed} value={speed}>{speed}×</option>)}
-      </select>
-      {/* Match setup (seed, scenario, file upload) is developer tooling: dev server only, never on the public site. */}
-      {import.meta.env.DEV && <div className="film-sub" style={{ position: 'relative' }}>
-        <button type="button" className="icon-button" style={{ width: 34, height: 34 }} aria-expanded={open} aria-haspopup="dialog" aria-label="New match" title="New match"
-          onClick={() => setOpen(value => !value)} disabled={disabled}><Shuffle size={15} /></button>
-        <AnimatePresence>
-          {open && <NewMatch current={info} busy={busy} onClose={() => setOpen(false)} onReset={onReset}
-            onGenerate={(seed, scenario) => { onGenerate(seed, scenario); setOpen(false); }}
-            onLoad={file => { onLoad(file); setOpen(false); }} />}
-        </AnimatePresence>
-      </div>}
-    </div>
+    <button type="button" className="play" aria-label={label} title={label} disabled={disabled} onClick={playing ? onPause : finished ? onRestart : onPlay}>
+      {playing ? <Pause size={20} fill="currentColor" aria-hidden="true" /> : <Play size={20} fill="currentColor" style={{ marginLeft: 3 }} aria-hidden="true" />}
+    </button>
     <div className="film-main">
       <div className="film-top">
         <span><b>{now}</b> · {finished ? 'FT' : playing ? `${tr('Watching replay')} · ${info.speed}×` : state.latest_event_sequence ? tr('Paused') : tr('Kick-off')}</span>
@@ -65,16 +55,33 @@ export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, on
           <CornerDownRight size={14} aria-hidden="true" />{tr('Return to replay')}
         </button>}
       </div>
-      <Track replay={replay} elapsed={elapsed} disabled={disabled} onSeek={onSeek} range={range} />
+      <Track replay={replay} elapsed={elapsed} disabled={disabled} onSeek={onSeek} range={range} onChoose={onChoose} />
       <p className="film-note" id="momentum-note">{audience === 'analyst'
         ? <>{tr('Band: illustrative threat added by completed passes per 5 minutes (Harbor above, Vale below). Not a probability.')} {momentumSummary(replay.analysis.momentum)}.</>
         : <>{tr('The band shows who moved the ball into danger, Harbor above and Vale below. It is not a win probability.')}</>}</p>
     </div>
+    <div className="film-tools">
+      <select className="speed-select" aria-label={tr('Playback speed')} value={info.speed} disabled={disabled}
+        onChange={event => onSpeed(Number(event.target.value) as Speed)}>
+        {SPEEDS.map(speed => <option key={speed} value={speed}>{speed}×</option>)}
+      </select>
+      {/* Match setup (seed, scenario, file upload) is developer tooling: dev server only, never on the public site. */}
+      {import.meta.env.DEV && <div className="film-sub" style={{ position: 'relative' }}>
+        <button type="button" className="icon-button" aria-expanded={open} aria-haspopup="dialog" aria-label="New match" title="New match"
+          onClick={() => setOpen(value => !value)} disabled={disabled}><Shuffle size={15} /></button>
+        <AnimatePresence>
+          {open && <NewMatch current={info} busy={busy} onClose={() => setOpen(false)} onReset={onReset}
+            onGenerate={(seed, scenario) => { onGenerate(seed, scenario); setOpen(false); }}
+            onLoad={file => { onLoad(file); setOpen(false); }} />}
+        </AnimatePresence>
+      </div>}
+      {actions}
+    </div>
   </section>;
 }
 
-const Track = memo(function Track({ replay, elapsed, disabled, onSeek, range }: {
-  replay: ReplaySnapshot; elapsed: number; disabled: boolean; onSeek: (ms: number) => void; range: FilmRange | null;
+const Track = memo(function Track({ replay, elapsed, disabled, onSeek, range, onChoose }: {
+  replay: ReplaySnapshot; elapsed: number; disabled: boolean; onSeek: (ms: number) => void; range: FilmRange | null; onChoose: (moment: Moment) => void;
 }) {
   const track = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -119,7 +126,7 @@ const Track = memo(function Track({ replay, elapsed, disabled, onSeek, range }: 
       style={{ left: `${Math.min(range.from, range.to) / duration * 100}%`, width: `${Math.abs(range.to - range.from) / duration * 100}%` }} />}
     {ticks.map(moment => <i key={moment.moment_id} className="film-tick" aria-hidden="true"
       style={{ left: `${(moment.replay_ms / duration) * 100}%`, ['--tone' as string]: teamTone(moment.team_id) }} />)}
-    {pins.map((moment, index) => <Pin key={moment.moment_id} moment={moment} duration={duration} onSeek={onSeek} disabled={disabled}
+    {pins.map((moment, index) => <Pin key={moment.moment_id} moment={moment} duration={duration} onChoose={onChoose}
       crowded={pins.slice(0, index).some(other => other.rule === 'goal' && moment.replay_ms - other.replay_ms < duration * .045)} />)}
     {hover !== null && <>
       <div className="film-hover" style={{ left: `${hover * 100}%` }} />
@@ -155,14 +162,14 @@ function MomentumBand({ replay, halfFraction }: { replay: ReplaySnapshot; halfFr
   </svg>;
 }
 
-/** A goal pin carries its minute; one that would overlap the previous goal's label keeps only its marker (the title still names it). */
-function Pin({ moment, duration, onSeek, disabled, crowded }: { moment: Moment; duration: number; onSeek: (ms: number) => void; disabled: boolean; crowded: boolean }) {
+/** A goal pin carries its minute and opens its moment; one that would overlap the previous goal's label keeps only its marker (the title still names it). */
+function Pin({ moment, duration, onChoose, crowded }: { moment: Moment; duration: number; onChoose: (moment: Moment) => void; crowded: boolean }) {
   const goal = moment.rule === 'goal';
-  return <button type="button" className="film-pin" data-rule={moment.rule} tabIndex={-1} disabled={disabled}
+  return <button type="button" className="film-pin" data-rule={moment.rule}
     style={{ left: `${(moment.replay_ms / duration) * 100}%`, ['--tone' as string]: teamTone(moment.team_id) }}
     title={`${clockLabel(moment.period, moment.match_time_ms)} ${t(RULE_LABEL[moment.rule])}`}
-    aria-label={`${t('Jump to')} ${t(RULE_LABEL[moment.rule])} ${t('at')} ${clockLabel(moment.period, moment.match_time_ms)}`}
-    onPointerDown={event => { event.stopPropagation(); onSeek(moment.replay_ms); }}>
+    aria-label={`${t('Open')} ${t(RULE_LABEL[moment.rule])} ${t('at')} ${clockLabel(moment.period, moment.match_time_ms)}`}
+    onPointerDown={event => event.stopPropagation()} onClick={() => onChoose(moment)}>
     {goal && !crowded && <b><span className="pin-word">{t('Goal')} </span>{clockLabel(moment.period, moment.match_time_ms)}</b>}<i />
   </button>;
 }
