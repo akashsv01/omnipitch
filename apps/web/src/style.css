@@ -760,8 +760,8 @@ main#match { animation: room-in var(--dur-enter) var(--ease-out) both; }
 .stat-rows td.num { font: 700 18px/1 var(--sans); font-variant-numeric: tabular-nums; color: var(--text); width: 22%; }
 .recap-origin summary { display: inline-flex; align-items: center; gap: 6px; }
 
-/* Live commentary: in the pitch header row (no extra height); one-line caption, transcript drops down over the page. */
-.commentary { position: relative; flex: 1 1 260px; min-width: 0; display: grid; gap: 2px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+/* Live commentary controls: in the pitch header row (no extra height); the transcript drops down over the page. */
+.commentary { position: relative; flex: 0 1 auto; min-width: 0; display: grid; gap: 2px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
 .commentary.off { flex: 0 1 auto; background: none; border: 0; padding: 0; justify-items: start; }
 .commentary.off .button { min-height: 32px; padding: 0 12px; font-size: 13.5px; }
 .commentary-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -781,6 +781,19 @@ main#match { animation: room-in var(--dur-enter) var(--ease-out) both; }
 .commentary-transcript b { color: var(--text-3); font-variant-numeric: tabular-nums; font-weight: 600; }
 @media (max-width: 1100px) { .commentary-volume { display: none; } }
 @media (max-width: 760px) { .commentary { flex-basis: 100%; order: 3; border-radius: var(--r3); } .commentary-caption { white-space: normal; } }
+/* The spoken line as a broadcast subtitle: full text, centred over the bottom of the pitch, up to three lines. */
+.commentary-subtitle { position: absolute; left: 50%; bottom: 5.5%; z-index: 3; width: max-content; max-width: min(88%, 760px); transform: translateX(-50%); pointer-events: none; }
+.commentary-subtitle p { display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 8px 16px; border-radius: var(--r2); background: rgba(9, 18, 17, .9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35); color: var(--text); font-size: 16px; line-height: 1.4; text-wrap: balance;
+  animation: subtitle-in var(--dur-enter) var(--ease-out) both; }
+.commentary-subtitle b { flex: none; color: var(--amber); font-weight: 700; font-variant-numeric: tabular-nums; }
+.commentary-subtitle span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.commentary-subtitle p[data-kind="recap"] { border-left: 3px solid var(--amber); }
+@keyframes subtitle-in { from { opacity: 0; transform: translateY(6px); } }
+@media (max-width: 760px) {
+  .commentary-subtitle { position: static; transform: none; width: auto; max-width: none; margin-top: 8px; }
+  .commentary-subtitle p { font-size: 14.5px; padding: 8px 12px; }
+}
 
 .speed-alert { color: var(--amber); }
 th .num small, th small { font-weight: 400; color: var(--text-3); }

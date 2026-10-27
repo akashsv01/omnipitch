@@ -30,12 +30,14 @@ const sameLayers = (a: Layers, b: Layers) => a.trail === b.trail && a.threat ===
 
 /** The pitch as the stage. Two modes: following the newest event, or inspecting one moment's source sequence
  * (numbered steps on a quieter pitch). Pre-match shows the fixture and an explicit start. */
-export const MatchStage = memo(function MatchStage({ replay, selected, onSelect, prefs, updatePrefs, goal, animate, audience, inspect, onStopInspect, onStart, startDisabled, commentary }: {
+export const MatchStage = memo(function MatchStage({ replay, selected, onSelect, prefs, updatePrefs, goal, animate, audience, inspect, onStopInspect, onStart, startDisabled, commentary, subtitle }: {
   replay: ReplaySnapshot; selected?: Event; onSelect: (event: Event | undefined) => void; prefs: Prefs;
   updatePrefs: (patch: Partial<Prefs>) => void; goal: Event | null; animate: boolean; audience: Audience;
   inspect: Moment | null; onStopInspect: () => void; onStart: () => void; startDisabled: boolean;
-  /** Live commentary, in the header row so it costs no height above the pitch. */
+  /** Live commentary controls, in the header row so they cost no height above the pitch. */
   commentary?: React.ReactNode;
+  /** The spoken line as a subtitle over the bottom of the pitch (below it on phones). */
+  subtitle?: React.ReactNode;
 }) {
   const tr = useTr();
   const people = useMemo(() => playerIndex(replay.replay.roster), [replay.replay.roster]);
@@ -101,6 +103,7 @@ export const MatchStage = memo(function MatchStage({ replay, selected, onSelect,
           players={replay.analysis.players} network={{ team: networkTeam, links: replay.analysis.pass_network[networkTeam] ?? [] }}
           highlightIds={inspect?.evidence_ids} numbered={!!inspect} animate={animate} speed={replay.replay.speed} />
       </div>
+      {!pre && subtitle}
       {pre && !inspect && <div className="stage-overlay">
         <div className="stage-card">
           <div className="fixture">

@@ -12,7 +12,8 @@ const T = {
     unavailable: 'Narración no disponible. Los textos siguen actualizándose.', recap: 'Resumen', empty: 'Aún no se ha dicho nada.' },
 };
 
-/** Live commentary: one action turns it on; then captions, controls and a timestamped transcript follow the match. */
+/** Live commentary: one action turns it on; then controls and a timestamped transcript follow the match in the pitch
+ * header, and each spoken line is shown in full as a subtitle on the pitch (CommentarySubtitle). */
 export function CommentaryBar({ c, language }: { c: ReturnType<typeof useCommentary>; language: Language }) {
   const t = T[language];
   const [open, setOpen] = useState(false);
@@ -25,9 +26,9 @@ export function CommentaryBar({ c, language }: { c: ReturnType<typeof useComment
   return <section className="commentary" aria-label={t.live}>
     <div className="commentary-row">
       <span className="commentary-dot" data-on={speakingNow || undefined} aria-hidden="true" />
-      <p className="commentary-caption" aria-live="polite">
+      <p className="commentary-caption">
         {c.needsTap ? <button type="button" className="text-button inline" onClick={c.resumeAfterTap}>{t.tap}</button>
-          : c.caption ? <><b>{c.caption.kind === 'recap' ? t.recap : c.caption.clock}</b> {c.caption.text}</> : t.wait}
+          : c.caption ? t.live : t.wait}
       </p>
       <div className="commentary-controls">
         <button type="button" className="icon-button" onClick={c.paused ? c.resume : c.pause} aria-label={c.paused ? t.resume : t.pause}>
@@ -47,4 +48,17 @@ export function CommentaryBar({ c, language }: { c: ReturnType<typeof useComment
         : [...c.transcript].reverse().map((line, i) => <li key={`${line.clock}-${i}`}><b>{line.kind === 'recap' ? t.recap : line.clock}</b><span>{line.text}</span></li>)}
     </ol>}
   </section>;
+}
+
+/** The line being spoken, in full, as a subtitle on the pitch (below it on phones). Keyed per line so each new line
+ * fades in; screen readers hear it once through the live region. */
+export function CommentarySubtitle({ c, language }: { c: ReturnType<typeof useCommentary>; language: Language }) {
+  const t = T[language];
+  if (!c.enabled || !c.caption) return null;
+  const { caption } = c;
+  return <div className="commentary-subtitle" aria-live="polite" lang={language}>
+    <p key={`${caption.clock}|${caption.text}`} data-kind={caption.kind}>
+      <b>{caption.kind === 'recap' ? t.recap : caption.clock}</b><span>{caption.text}</span>
+    </p>
+  </div>;
 }
