@@ -4,6 +4,28 @@ Phases describe intended work, not committed completion dates. Implement only th
 
 ## Current state
 
+**Final pass (2026-10-27, branch `final-design`, local only, not merged or deployed).** This adds:
+
+- the midnight design;
+- honest generation states;
+- shared geometry with verified metre definitions;
+- player, club and metric focus;
+- Spanish recaps with automatic half-time and full-time creation;
+- the broadcast overlay and producer views with a versioned cue contract;
+- live spoken commentary (automatic play-by-play and moment context, Azure AI Speech) and "Listen + replay";
+- automatically narrated half-time and full-time recaps;
+- a full Spanish interface, model translations of accepted AI text, and a Spanish AI recap rewrite;
+- server-side broadcast playout shared by every screen;
+- a pass-difficulty indicator and simulated physical data (labelled as simulated);
+- removal of implementation text from the public interface (diagnostics are development-only);
+- deterministic "Ask about this moment";
+- the `late_surge` scenario;
+- a local latency harness.
+
+Not built, deliberately: auto-eventing from video (no video or vision pipeline).
+
+Details: Phase 6 → Final pass. Open: review and merge, then a redeploy, so that the live site and the video match this release. Narration audio is verified locally against a real Azure AI Speech resource (2026-10-27); the deployed API needs its own resource in its tenant. The licence is still pending.
+
 **Phase 5 complete (2026-10-25); Phase 6 next.** The deployed candidate runs the latest `main` with the default judge run, HTTP health probes and a budget alert. All gate tests pass: duplicates, late events, outages (including the bridge's store outage), reconnect, quiet runs and measured latency (`latency-20261025-a`). Scope is frozen: bug fixes only. Phase 6 in progress: fresh-clone check, live smoke test and judge runbook done (2026-10-25); cross-browser checks, video, release tag and submission remain.
 
 **Phase 4 complete (2026-10-21).** The joint gate passed on the full match `gate-20261020-d` through the real pipeline: simulator → Event Hubs → Eventhouse → bridge (moments, jobs, both period reconciliations) → narration (prompts v3, checked in code) → validated Cosmos insights in the UI → Web PubSub push → reconnect. Reconnect restores score, clock and insights (API restart and tab reopen); the halftime and full-time recaps are final, link to verified moments and show "Reconciled" from the bridge's records; fan and analyst views read one checked insight per moment. Details: Phase 4 below. Next: deployment for judges (Phase 6 work brought forward), then Phase 5 polish. Earlier Phase 4 note: Implemented and tested locally: meaning checks in code (score state, box position, pass counts, defender breach, transition direction, fan text that mentions missing data) with prompts v3 and derived facts in the evidence packet; a validated overlay that shows the narration worker's Cosmos insights in the UI (`OMNIPITCH_INSIGHTS=cosmos`), re-checking each one against the API's own moment and reporting its status; halftime/full-time recaps (`GET /api/v1/replay/recap`, contract `recap.schema.json`) built from verified moments, with an optional checked AI rewrite (`OMNIPITCH_RECAP_AI=on`); a Recap tab whose key moments seek the replay; a half-time/full-time prompt; AI/Template labels on every moment. Live check 2026-10-20 (`services/api/tests/phase4_live.py --run-id p4-live-20261020-a --seed-local --ai-jobs 6`): 55 moments and jobs created in Cosmos with the bridge's detector (Eventhouse hop UNVERIFIED for this run), 6 of 6 model-narrated jobs (prompts v3, `gpt-4.1-mini`) published validated AI insights, 49 fallback; the API overlay showed all 55 with 0 rejected, both recaps linked verified moments, and a restarted API restored score, clock and insights. Reading the six AI texts found one meaning error the checks missed ("keep the score intact" on a chance); the score-state rule was extended, and the overlay now rejects that stored insight on display (54 narrated, 5 AI, 1 rejected, seen in the browser after an API restart that restored the run). The same live check exposed an API defect the tests missed: with `OMNIPITCH_INSIGHTS=cosmos` every request returned 500 because `services/bridge` (the shared Cosmos client) was not on the API's import path; fixed, and a failed insight source is now reported in the snapshot instead of failing requests. Not yet done: the joint run through Eventhouse and Tanmayee's bridge, bilingual text, deployment.
@@ -449,9 +471,45 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
     - PASS (browser, production build): mode switches ×6 keep run, sequence, status and the inspected moment, with no extra polling; 2D/3D selection is identical after a camera change; local evidence playback leaves the shared replay unchanged; canvases are 1 while 3D is open and 0 after closing or route round trips; no future moments; the recap cites only revealed moments; no horizontal overflow at five sizes; filmstrip on screen in both audiences at 1440×900 and 1366×768.
     - Note: moments are frozen when first detected, so runs created before this change keep their old template text; new runs use the new wording.
 
+- [x] Final pass (Akash, 2026-10-27, branch `final-design`, local; not merged, not deployed).
+  - **Built:**
+    - **Generation states:** `insight.generation_status` and reason. A skip is never labelled a failure; legacy records are classified; rule-based text is rebuilt from frozen evidence.
+    - **Geometry:** `lib/geometry.ts` mirrors `metrics.py`, with `from_percent` / `fromPercent`.
+    - **Focus panel:** player, club and metric focus; the history is always in match order.
+    - **Spanish recaps:** `recap.language` and `?lang=es`. Recaps are created automatically at each `period_end`, and stale responses after a backward seek are ignored.
+    - **Broadcast:** `broadcast-cue-1.0`, the cue scheduler, `/overlay` and `/producer`.
+    - **Narration:** `/api/v1/speech/*`, "Listen + replay" and producer commentary.
+    - **Ask about this moment.**
+    - **`late_surge` scenario:** seed 18 is a comeback.
+    - **Wording:** PPDA text states the measure, not a tactic; recap trend wording reworded the same way.
+  - **Tests (PASS, 2026-10-27):**
+    - Python: 210 passed, 21 skipped. New files: `test_generation_status.py` (11), `test_geometry.py` (3), `test_recap_language.py` (3), `test_speech.py` (4) and `test_scenarios.py` (6).
+    - Frontend: typecheck, build, `test:contracts`, `test:push`, `test:pitch` (adds the geometry fixture, generation labels and broadcast scheduling) and `test:replay:browser`.
+  - **Browser (PASS, local dev server and local API):**
+    - Interaction inventory: 43 PASS, 0 FAIL, 0 BLOCKED. It covers routes, playback, moments, evidence, 3D and its fallback, layers, preferences, language, audiences, analysis, keyboard, the API-down state and six viewport sizes.
+    - Feature walk-through: 10 PASS. Focus panel; match-ordered history; focus filter; honest labels; Ask with sources; Listen + replay as captions only (Speech not configured); Spanish recap; overlay without controls; producer with commentary off by default; 0 console errors.
+  - **Measured locally:** `services/api/tests/latency_local.py`, seed 7, full match, 303 requests with 31 duplicates, swapped pairs and one event held back. Receipt → validated insight p50 218 ms, p95 2.4 s; 0 failures; the same 55 moments as a clean delivery. This is the local in-process path; the cloud figures are in Phase 5.
+  - **Azure AI Speech (Akash, 2026-10-27, at Akash's request):**
+    - **Setup:** a free F0 resource in the developer subscription, with a custom subdomain and key auth disabled. Only the developer's identity has *Cognitive Services Speech User*, scoped to that resource. Settings live in the local `services/api/.env`; `.env.example` documents them.
+    - **PASS:**
+      - Direct synthesis (English 4.6 s with the token, Spanish 2.6 s, valid MP3, a cached repeat in 0.1 ms).
+      - API endpoints (English fan 3.9 s, then 0.02 s from the cache; analyst 3.0 s; Spanish 3.1 s; Spanish with an added number → 422; unknown moment → 404).
+      - Browser audio checks, 12 of 12: English and Spanish narration plays, Pause holds, Replay with one voice, Stop, closing the drawer stops speech, commentary silent until on, speaks the cue on air, stops when switched off, and 0 console errors.
+    - **Fixed:** Pause/Resume tracked only the visual sequence, so after a short sequence ended it read "Resume" while the narration was still speaking. It now covers both.
+    - **Open:** the deployed API needs a Speech resource in its own tenant (its managed identity cannot use this one); a script for that is with the submission notes.
+  - **UNVERIFIED:** Safari; screen readers. Not deployed, so the live site and the recorded video still show `main`.
+  - **Second pass (Akash, 2026-10-27, same branch, local; not merged, not deployed):**
+    - **Built:** live spoken commentary (server-composed play-by-play and moment context, priority queue, one audio controller); half-time and full-time recaps narrated once, never repeated after a reload; the full Spanish interface, background model translation of accepted AI text (checked in code) and a Spanish AI recap rewrite; server-side broadcast playout shared by every screen; a pass-difficulty indicator; simulated physical data labelled "sim."; implementation text removed from the public interface (Data quality and run tools are development-only); typography and Key moments, recap and stat-row improvements.
+    - **Python (PASS):** 227 passed, 21 skipped. New: `test_commentary.py`, `test_broadcast.py`, `test_spanish.py`, `test_physical.py`; `test_geometry.py` and `test_recap_language.py` extended.
+    - **Frontend (PASS):** typecheck, build, `test:contracts`, `test:pitch`, `test:push`, `test:replay:browser` (now checks the upload source through the API, since the source chip is no longer shown publicly).
+    - **Browser (local, real Azure AI Speech):** interaction inventory 43 PASS / 0 FAIL / 0 BLOCKED; feature walk-through 10 PASS on three of four runs, one run reported 9 (output not kept; not reproduced); live audio 12 PASS; live commentary 11 PASS (first line 0.8 s after play; one voice at 80×; half-time recap narrated and shown in the Recap tab, not repeated after a reload; Spanish; switching off stops audio); landing checks PASS.
+    - **Scans (production build):** implementation-text scan 0 hits; Spanish scan of every tab, the drawer and every Ask answer in both audiences 0 English lines.
+    - **Live model checks:** 10 of 10 Spanish translations accepted; English and Spanish AI recap rewrites accepted.
+    - **Not built, deliberately:** auto-eventing from video. It needs match video and a vision pipeline (detection, tracking, event classification); this project has neither.
+
 ## Stretch
 
 - [ ] Export reusable synthetic datasets with provenance and schema version (was the repo's Phase 5).
-- [ ] Basic producer selection and recap tools (was the repo's Phase 5; the guide allows a producer queue only if the core is stable).
+- [x] Basic producer selection and recap tools: `/producer` with queue, revisions and commentary (2026-10-27, branch `final-design`, not deployed).
 
 - [x] Simple 3D replay after the 2D path is reliable: evidence-drawer 3D view on branch `ui-matchdesk` (2026-10-25), not merged.

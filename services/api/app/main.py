@@ -3,7 +3,9 @@ import os
 from threading import Lock
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from typing import Literal
+
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import replay as replay_module
@@ -14,7 +16,11 @@ from .replay import replay_error
 from .sample_data import sample_events, sample_state
 from .reconciliations import from_env as reconciliation_source_from_env
 from .recaps import from_env as recap_service_from_env
-from .schemas import (MAX_EVENTS, EventhouseLoad, RecapResponse, EventPage, EventsResponse, GenerateRequest, HealthResponse,
+from .commentary import clock_of, event_line, moment_line, recap_line, speakable
+from .speech import SpeechError, from_env as speech_service_from_env, spoken_text
+from pydantic import Field
+
+from .schemas import (WireModel, MAX_EVENTS, EventhouseLoad, RecapResponse, EventPage, EventsResponse, GenerateRequest, HealthResponse,
                       IngestResult, LedgerSummary, MatchState, ReadyResponse, ReplayControl, ReplaySnapshot)
 
 MAX_BODY_BYTES = 2 * 1_048_576
@@ -34,7 +40,8 @@ def cors_origins() -> list[str]:
 SETTINGS = settings()  # Invalid OMNIPITCH_BACKEND_MODE fails startup rather than guessing.
 app = FastAPI(title="OmniPitch API", version="0.3.0")
 app.add_middleware(CORSMiddleware, allow_origins=cors_origins(), allow_credentials=False,
-                   allow_methods=["GET", "POST"], allow_headers=["Accept", "Content-Type"])
+                   allow_methods=["GET", "POST"], allow_headers=["Accept", "Content-Type"],
+                   expose_headers=["X-Caption"])
 
 
 _default_lock = Lock()
@@ -154,7 +161,22 @@ def events() -> EventsResponse:
 
 @app.get("/api/v1/replay", response_model=ReplaySnapshot)
 def replay(run_id: str | None = None, after_sequence: int = Query(0, ge=0)) -> ReplaySnapshot:
-    return store().snapshot(run_id, after_sequence)
+    snapshot = store().snapshot(run_id, after_sequence)
+    _prime_recaps()
+    return snapshot
+
+
+def _prime_recaps() -> None:
+    """Half-time and full-time recaps are created when their period ends, not when someone opens the Recap tab.
+    A recap failure never breaks the snapshot; the Recap tab rebuilds on demand either way."""
+    try:
+        replay = store()
+        ends = replay.revealed_period_ends()
+        if ends and recaps().unprimed(ends):
+            events, moments = replay.recap_inputs()
+            recaps().prime(events, moments)
+    except Exception:  # noqa: BLE001  (best effort; the on-demand path reports errors)
+        pass
 
 
 _recaps = None
@@ -175,12 +197,187 @@ def reconciliations():
     return _reconciliations
 
 
+_speech = None
+
+
+def speech():
+    global _speech
+    if _speech is None:
+        _speech = speech_service_from_env()
+    return _speech
+
+
+class SpeechRequest(WireModel):
+    moment_id: str = Field(min_length=1, max_length=200)
+    audience: Literal["fan", "analyst"]
+    language: Literal["en", "es"]
+    # Spanish only: the browser's rule-based translation of the same insight; English is composed server-side.
+    text: str | None = Field(default=None, max_length=600)
+
+
+@app.get("/api/v1/speech/status")
+def speech_status() -> dict:
+    """Whether narration audio is available; the text and captions work either way."""
+    return speech().status()
+
+
+@app.post("/api/v1/speech/moment")
+def speech_moment(request: SpeechRequest) -> Response:
+    """MP3 narration of one revealed moment's accepted text. Never narrates a moment the replay has not reached."""
+    events, moments = store().recap_inputs()
+    moment = next((m for m in moments if m["moment_id"] == request.moment_id), None)
+    if moment is None:
+        raise HTTPException(404, detail={"code": "moment_not_available", "message": "That moment is not revealed at the current replay position."})
+    text = spoken_text(moment, request.audience) if request.language == "en" else moment_line(moment, request.audience, "es")
+    return _audio_response(text, request.language)
+
+
+def _audio_response(text: str, language: str) -> Response:
+    """MP3 of accepted text, with the caption that was spoken (percent-encoded) for the transcript."""
+    from urllib.parse import quote
+    try:
+        audio, key = speech().audio(speakable(text, language), language)
+    except SpeechError as exc:
+        raise HTTPException(exc.status, detail={"code": exc.code, "message": exc.message}) from exc
+    return Response(audio, media_type="audio/mpeg", headers={"X-Narration-Key": key[:16], "X-Caption": quote(text),
+                                                              "Access-Control-Expose-Headers": "X-Caption", "Cache-Control": "private, max-age=3600"})
+
+
+COMMENTARY_RULES = {"transition": 50, "pressing_change": 45, "threat_gain": 30}
+
+
+_playout = None
+
+
+@app.get("/api/v1/replay/physical")
+def replay_physical(sprint_alert_mps: float = Query(9.0, ge=5.0, le=12.0)) -> dict:
+    """SIMULATED running distance, top speed and ball speed up to the replay position (no tracking exists)."""
+    from simulator.physical import physical_summary
+    from .sample_data import roster
+    events, _ = store().recap_inputs()
+    return physical_summary(events, roster(), sprint_alert_mps)
+
+
+@app.get("/api/v1/broadcast")
+def broadcast(audience: Literal["fan", "analyst"] = "fan", language: Literal["en", "es"] = Query("en", alias="lang")) -> dict:
+    """The shared playout for one audience and language: what is on air, what is queued, and the recent log."""
+    global _playout
+    from .broadcast import Playout
+    if _playout is None:
+        _playout = Playout()
+    snap = store().snapshot().model_dump(mode="json")
+    state, info = snap["state"], snap["replay"]
+    clock = clock_of({"period": info["clock_period"], "match_time_ms": info["clock_ms"]})
+    return _playout.feed(snap["moments"], state["run_id"], state["latest_event_sequence"], int(info["elapsed_ms"]), clock, audience, language)
+
+
+@app.get("/api/v1/commentary/lines")
+def commentary_lines(run_id: str = Query(..., min_length=1, max_length=200), after: int = Query(0, ge=0),
+                     audience: Literal["fan", "analyst"] = "fan", language: Literal["en", "es"] = Query("en", alias="lang"),
+                     player_id: str | None = Query(None, max_length=60)) -> dict:
+    """Commentary candidates for events and moments revealed after `after`, newest last, each with a priority.
+    Only the replay's current run and revealed position are used, so nothing ahead of the replay can be said."""
+    replay = store()
+    events, moments = replay.recap_inputs()
+    if replay.state.run_id != run_id:
+        return {"run_id": replay.state.run_id, "through": len(events), "lines": [], "stale": True}
+    players = _players()
+    lines = []
+    for event in events[after:]:
+        line = event_line(event, events, players, audience, language)
+        if line is None and player_id and event.get("player_id") == player_id and event["type"] in ("tackle", "interception") \
+                and event.get("outcome") == "won":
+            # Focus: the followed player's ball wins are always worth a line.
+            line = (f"{players.get(player_id, '')} recupera el balón." if language == "es" else f"{players.get(player_id, '')} wins the ball."), 45
+        if line:
+            lines.append({"ref": f"event:{event['event_id']}", "kind": event["type"], "priority": line[1], "sequence": event["sequence"],
+                          "period": event["period"], "match_time_ms": event["match_time_ms"], "clock": clock_of(event), "text": line[0]})
+    for moment in moments:
+        if moment["source_sequence"] > after and moment["rule"] in COMMENTARY_RULES:
+            if moment["rule"] == "threat_gain" and not moment["facts"].get("box_entry"):
+                continue
+            lines.append({"ref": f"moment:{moment['moment_id']}", "kind": moment["rule"], "priority": COMMENTARY_RULES[moment["rule"]]
+                          + (10 if moment["insight"].get("generation_status") == "ai_accepted" else 0),
+                          "sequence": moment["source_sequence"], "period": moment["period"], "match_time_ms": moment["match_time_ms"],
+                          "clock": clock_of(moment), "text": moment_line(moment, audience, language)})
+    lines.sort(key=lambda line: line["sequence"])
+    _warm(lines, language)
+    return {"run_id": run_id, "through": len(events), "lines": lines, "stale": False}
+
+
+_WARM = None
+
+
+def _warm(lines: list[dict], language: str) -> None:
+    """Synthesize the most likely next lines in the background, so speaking them starts from the cache."""
+    global _WARM
+    if not speech().status()["configured"] or not lines:
+        return
+    if _WARM is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _WARM = ThreadPoolExecutor(max_workers=2, thread_name_prefix="speech-warm")
+    for line in sorted(lines, key=lambda l: (-l["priority"], -l["sequence"]))[:3]:
+        _WARM.submit(_safe_audio, speakable(line["text"], language), language)
+
+
+def _safe_audio(text: str, language: str) -> None:
+    try:
+        speech().audio(text, language)
+    except Exception:  # noqa: BLE001  (warming is best effort; the real request reports errors)
+        pass
+
+
+class CommentaryAudio(WireModel):
+    run_id: str = Field(min_length=1, max_length=200)
+    ref: str = Field(min_length=3, max_length=240)
+    audience: Literal["fan", "analyst"]
+    language: Literal["en", "es"]
+
+
+@app.post("/api/v1/commentary/audio")
+def commentary_audio(request: CommentaryAudio) -> Response:
+    """Speech for one commentary line, recomposed on the server from its reference (never from client text)."""
+    replay = store()
+    events, moments = replay.recap_inputs()
+    if replay.state.run_id != request.run_id:
+        raise HTTPException(409, detail={"code": "stale_run", "message": "The match has changed."})
+    kind, _, ref = request.ref.partition(":")
+    if kind == "event":
+        event = next((e for e in events if e["event_id"] == ref), None)
+        players = _players()
+        line = event and event_line(event, events, players, request.audience, request.language)
+        if not line and event and event["type"] in ("tackle", "interception"):
+            line = (f"{players.get(event.get('player_id') or '', '')} {'recupera el balón.' if request.language == 'es' else 'wins the ball.'}", 45)
+        if not line:
+            raise HTTPException(404, detail={"code": "line_not_available", "message": "Nothing to say for that action yet."})
+        return _audio_response(line[0], request.language)
+    if kind == "moment":
+        moment = next((m for m in moments if m["moment_id"] == ref), None)
+        if moment is None:
+            raise HTTPException(404, detail={"code": "line_not_available", "message": "That moment is not revealed yet."})
+        return _audio_response(moment_line(moment, request.audience, request.language), request.language)
+    if kind == "recap" and ref in ("first_half", "full_time"):
+        period = 1 if ref == "first_half" else 2
+        end = next((e for e in events if e["type"] == "period_end" and e["period"] == period), None)
+        if end is None:  # Stopped playback is not the end of a half: only a revealed period_end counts.
+            raise HTTPException(404, detail={"code": "line_not_available", "message": "That half has not finished yet."})
+        result = recaps().recap([e for e in events if e["sequence"] <= end["sequence"]], moments, ref, request.language, wait_s=8.0)
+        return _audio_response(recap_line(result["recap"]), request.language)
+    raise HTTPException(422, detail={"code": "bad_ref", "message": "Unknown commentary reference."})
+
+
+def _players() -> dict:
+    from .sample_data import roster
+    return {p["player_id"]: p["name"] for p in roster()}
+
+
 @app.get("/api/v1/replay/recap", response_model=RecapResponse)
-def replay_recap(scope: str = Query("first_half", pattern="^(first_half|full_time)$")) -> RecapResponse:
+def replay_recap(scope: str = Query("first_half", pattern="^(first_half|full_time)$"),
+                 lang: str = Query("en", pattern="^(en|es)$")) -> RecapResponse:
     """Halftime or full-time recap of the revealed replay; provisional until that period has ended."""
     replay = store()
     events, moments = replay.recap_inputs()
-    result = recaps().recap(events, moments, scope)
+    result = recaps().recap(events, moments, scope, lang)
     if result is None:
         raise HTTPException(404, detail={"code": "recap_not_available",
                                          "message": "The first half has not started yet." if scope == "first_half"

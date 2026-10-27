@@ -2,8 +2,10 @@ import { useId, useMemo } from 'react';
 import { motion } from 'motion/react';
 import type { Event, PassLink, Player, PlayerStats } from '../types/contracts';
 import { THREAT_GRID, THREAT_MAX } from '../lib/threatGrid';
-import { eventLabel, playerIndex, surname, teamTone } from '../lib/format';
+import { clockLabel, eventLabel, playerIndex, surname, teamTone } from '../lib/format';
+import { t } from '../lib/i18n';
 import { EASE_OUT, travelSeconds } from '../lib/motion';
+import { passLength } from '../lib/geometry';
 
 export interface PitchLayers { trail: boolean; threat: boolean; density: boolean; network: boolean }
 
@@ -59,9 +61,13 @@ export function Pitch({ events, selected, onSelect, layers = DEFAULT_LAYERS, ros
 
   // Threat grid is team-relative; draw it in the frame of the team in focus.
   const threatFrame = focus?.attacking_direction ?? 'positive_x';
-  const description = focus && focus.start
+  const sequenceDescription = highlightIds && trail.length
+    ? `Sequence of ${trail.length} recorded ${trail.length === 1 ? 'action' : 'actions'}: ${trail.map((event, index) =>
+        `${index + 1}, ${eventLabel(event)} by ${surname(people.get(event.player_id ?? ''))} at (${event.start!.x}, ${event.start!.y})`).join('; ')}.`
+    : null;
+  const description = sequenceDescription ?? (focus && focus.start
     ? `${eventLabel(focus)} by ${surname(people.get(focus.player_id ?? ''))} (${focus.team_id}) at (${focus.start.x}, ${focus.start.y})${focus.end ? ` to (${focus.end.x}, ${focus.end.y})` : ''} metres. ${focus.attacking_direction === 'positive_x' ? 'Attacking right' : 'Attacking left'}.`
-    : 'No located event yet.';
+    : 'No located event yet.');
   // Attack directions for the period being shown: the highlighted sequence's own period when one is shown
   // (a first-half moment inspected during the second half must not take second-half directions).
   const shownPeriod = (highlightIds ? events.find(event => highlightIds.includes(event.event_id))?.period : undefined) ?? focus?.period;
@@ -81,15 +87,15 @@ export function Pitch({ events, selected, onSelect, layers = DEFAULT_LAYERS, ros
           <path d="M 0 1 L 9 5 L 0 9 L 2 5 z" fill={`var(--${tone})`} />
         </marker>)}
         <radialGradient id={`${id}-glow`}>
-          <stop offset="0%" stopColor="#f2cc62" stopOpacity=".75" />
-          <stop offset="100%" stopColor="#f2cc62" stopOpacity="0" />
+          <stop offset="0%" stopColor="#ebcb70" stopOpacity=".75" />
+          <stop offset="100%" stopColor="#ebcb70" stopOpacity="0" />
         </radialGradient>
         <radialGradient id={`${id}-light`} cx="50%" cy="40%" r="70%">
           <stop offset="0" stopColor="#ffffff" stopOpacity=".05" />
           <stop offset="1" stopColor="#000000" stopOpacity=".22" />
         </radialGradient>
       </defs>
-      <rect x="-4" y="-4" width="113" height="76" fill="#0e2f23" />
+      <rect x="-4" y="-4" width="113" height="76" fill="var(--turf-edge)" />
       {Array.from({ length: 12 }, (_, index) => <rect key={index} x={index * 8.75} y="0" width="8.75" height="68" fill={index % 2 ? 'var(--grass)' : 'var(--grass-2)'} />)}
       <rect x="-4" y="-4" width="113" height="76" fill={`url(#${id}-light)`} />
 
@@ -125,7 +131,7 @@ export function Pitch({ events, selected, onSelect, layers = DEFAULT_LAYERS, ros
         const name = team === 'harbor' ? 'Harbor' : 'Vale';
         return <text key={team} className="pitch-attack" x={right ? 1 : 104} y={index ? 70.9 : -1.3} textAnchor={right ? 'start' : 'end'} fontSize="1.9"
           fill={teamTone(team)} style={{ fontFamily: 'var(--sans)', fontWeight: 600 }}>
-          {right ? `${name} attack →` : `← ${name} attack`}
+          {right ? `${name} ${t('attack')} →` : `← ${name} ${t('attack')}`}
         </text>;
       })}
 
@@ -178,14 +184,14 @@ function StepBadge({ at, team, n, dim }: { at: { x: number; y: number }; team: s
   </g>;
 }
 
-const distance = (event: Event) => event.start && event.end ? Math.hypot(event.end.x - event.start.x, event.end.y - event.start.y) : 0;
+const distance = (event: Event) => event.start && event.end ? passLength(event.start, event.end) : 0;
 
 function EventMark({ event, arrowId, opacity, weight = 1, onSelect, focus = false, draw = 0 }: {
   event: Event; arrowId: string; opacity: number; weight?: number; onSelect?: (event: Event) => void; focus?: boolean; draw?: number;
 }) {
   if (!event.start) return null;
   const tone = teamTone(event.team_id);
-  const label = `${eventLabel(event)}, event ${event.sequence}`;
+  const label = `${eventLabel(event)}, ${clockLabel(event.period, event.match_time_ms)}`;
   const handlers = onSelect ? { onClick: () => onSelect(event), className: 'pitch-hit' } : {};
   if ((event.type === 'pass' || event.type === 'shot') && event.end) {
     const lost = event.outcome !== 'completed' && event.type === 'pass';
@@ -198,7 +204,7 @@ function EventMark({ event, arrowId, opacity, weight = 1, onSelect, focus = fals
       <line x1={event.start.x} y1={event.start.y} x2={event.end.x} y2={event.end.y} stroke={stroke}
         strokeWidth={width} strokeDasharray={lost ? '1 .8' : undefined} markerEnd={lost ? undefined : `url(#${marker})`} strokeLinecap="round"
         style={draw && !lost ? { strokeDasharray: '200', strokeDashoffset: 0, animation: `pitch-draw ${draw}s cubic-bezier(.23,1,.32,1) both` } : undefined} />
-      <circle cx={event.start.x} cy={event.start.y} r={focus ? .85 : .55} fill="#0e2f23" stroke={stroke} strokeWidth=".3" />
+      <circle cx={event.start.x} cy={event.start.y} r={focus ? .85 : .55} fill="var(--turf-edge)" stroke={stroke} strokeWidth=".3" />
       {lost && <path d={`M ${event.end.x - .8} ${event.end.y - .8} L ${event.end.x + .8} ${event.end.y + .8} M ${event.end.x + .8} ${event.end.y - .8} L ${event.end.x - .8} ${event.end.y + .8}`}
         stroke={tone} strokeWidth=".32" strokeLinecap="round" />}
       {shot && <ShotEnd event={event} />}
@@ -222,7 +228,7 @@ function EventMark({ event, arrowId, opacity, weight = 1, onSelect, focus = fals
 function ShotEnd({ event }: { event: Event }) {
   const end = event.end!, start = event.start!;
   const angle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
-  if (event.is_goal) return <g><circle cx={end.x} cy={end.y} r="1.05" fill="var(--flood)" stroke="#0e2f23" strokeWidth=".25" /></g>;
+  if (event.is_goal) return <g><circle cx={end.x} cy={end.y} r="1.05" fill="var(--flood)" stroke="var(--turf-edge)" strokeWidth=".25" /></g>;
   if (event.outcome === 'off_target') return <circle cx={end.x} cy={end.y} r=".8" fill="none" stroke="var(--flood)" strokeWidth=".3" />;
   return <rect x={end.x - .25} y={end.y - 1} width=".5" height="2" rx=".2" fill="var(--flood)" transform={`rotate(${angle} ${end.x} ${end.y})`} />;
 }
@@ -235,7 +241,7 @@ function Ball({ event, seconds, glow }: { event: Event; seconds: number; glow: s
   return <motion.g initial={seconds ? { transform: `translate(${start.x}px, ${start.y}px)`, opacity: .6 } : { transform: to, opacity: 1 }}
     animate={{ transform: to, opacity: 1 }} transition={{ duration: seconds, ease: EASE_OUT }}>
     <circle r="2.8" fill={glow} />
-    <circle r=".95" fill="#fbfbf4" stroke="#0e2f23" strokeWidth=".22" />
+    <circle r=".95" fill="#fbfbf4" stroke="var(--turf-edge)" strokeWidth=".22" />
   </motion.g>;
 }
 
@@ -269,7 +275,7 @@ function PassNetwork({ links, team, players, people, direction }: {
   const place = (point: { x: number; y: number }) => direction === 'negative_x' ? { x: 105 - point.x, y: 68 - point.y } : point;
   const max = Math.max(1, ...links.map(link => link.count));
   const tone = teamTone(team);
-  return <g aria-label={`Pass network for ${team}: average action locations, not tracking`}>
+  return <g aria-label={`${t('Pass network for')} ${team}: ${t('average action locations, not tracking')}`}>
     {links.map(link => {
       const from = nodes.get(link.from);
       const to = nodes.get(link.to);
@@ -284,7 +290,7 @@ function PassNetwork({ links, team, players, people, direction }: {
       const at = place(node.mean_action_location);
       const r = 1.1 + Math.min(1.4, node.action_count / 40);
       return <g key={node.player_id}>
-        <circle cx={at.x} cy={at.y} r={r} fill="#0e2f23" stroke={tone} strokeWidth=".35" />
+        <circle cx={at.x} cy={at.y} r={r} fill="var(--turf-edge)" stroke={tone} strokeWidth=".35" />
         <text x={at.x} y={at.y + .62} textAnchor="middle" fontSize="1.7" fill="var(--text)"
           style={{ fontFamily: 'var(--display)', fontWeight: 700 }}>{person?.shirt ?? ''}</text>
       </g>;
@@ -298,9 +304,9 @@ export function PitchLegend({ compact = false }: { compact?: boolean }) {
   return <span className="legend">
     <span>{swatch(<line x1="1" y1="6" x2="15" y2="6" stroke="var(--harbor)" strokeWidth="2" />)}Harbor</span>
     <span>{swatch(<line x1="1" y1="6" x2="15" y2="6" stroke="var(--vale)" strokeWidth="2" />)}Vale</span>
-    <span>{swatch(<line x1="1" y1="6" x2="15" y2="6" stroke="var(--text-2)" strokeWidth="2" strokeDasharray="3 2" />)}Incomplete pass</span>
-    <span>{swatch(<><line x1="1" y1="6" x2="12" y2="6" stroke="var(--flood)" strokeWidth="2" /><circle cx="14" cy="6" r="3" fill="var(--flood)" /></>)}Shot / goal</span>
-    {!compact && <span>{swatch(<path d="M9 1 L14 6 L9 11 L4 6 Z" fill="var(--text-2)" />)}Ball won</span>}
-    {!compact && <span>{swatch(<rect x="6" y="2" width="6" height="8" rx="1" fill="var(--danger)" />)}Foul</span>}
+    <span>{swatch(<line x1="1" y1="6" x2="15" y2="6" stroke="var(--text-2)" strokeWidth="2" strokeDasharray="3 2" />)}{t('Incomplete pass')}</span>
+    <span>{swatch(<><line x1="1" y1="6" x2="12" y2="6" stroke="var(--flood)" strokeWidth="2" /><circle cx="14" cy="6" r="3" fill="var(--flood)" /></>)}{t('Shot / goal')}</span>
+    {!compact && <span>{swatch(<path d="M9 1 L14 6 L9 11 L4 6 Z" fill="var(--text-2)" />)}{t('Ball won')}</span>}
+    {!compact && <span>{swatch(<rect x="6" y="2" width="6" height="8" rx="1" fill="var(--danger)" />)}{t('Foul')}</span>}
   </span>;
 }

@@ -18,7 +18,9 @@ def clock_label(period: int, match_time_ms: int) -> str:
 
 
 def _fmt(value: float) -> str:
-    return f"{value:g}" if abs(value) >= 10 or value == int(value) else f"{value:.1f}".rstrip("0").rstrip(".")
+    """Metres and seconds at one decimal at most (27.05 -> 27.1, 7.25 -> 7.2, 38.0 -> 38). The frontend's
+    metricText applies the same rule, so a sentence and the value beside it always match."""
+    return f"{value:g}" if value == int(value) else f"{value:.1f}".rstrip("0").rstrip(".")
 
 
 TRANSITION_MIN_PROGRESS_M = 35.0  # Mirrors the detector's trigger (omnipitch_analytics.detect); used only to pick wording.
@@ -61,8 +63,10 @@ def fallback_limitation(reason: str | None) -> str:
     return f"AI narration unavailable ({reason}); this text is a deterministic template from verified metrics."
 
 
-def build_fallback_insight(moment: dict, context: dict, reason: str | None = None) -> dict:
-    """context: {"teams": {id: name}, "players": {id: name}, "home": id, "away": id}."""
+def build_fallback_insight(moment: dict, context: dict, reason: str | None = None, status: str = "rule_based") -> dict:
+    """context: {"teams": {id: name}, "players": {id: name}, "home": id, "away": id}.
+
+    status says why the template is shown (see insight.schema.json generation_status); reason is the detail."""
     teams, players = context["teams"], context["players"]
     team = teams.get(moment["team_id"], "The team")
     player = players.get(moment["player_id"]) if moment.get("player_id") else None
@@ -80,18 +84,22 @@ def build_fallback_insight(moment: dict, context: dict, reason: str | None = Non
         analyst = (f"Goal at {clock}: shot from {_fmt(metrics['shot_distance'])} m, ending a possession with "
                    f"{int(metrics['possession_actions'])} recorded actions. Score {score[home]}-{score[away]}.")
     elif rule == "chance":
-        headline = f"{team} test the goalkeeper"
+        headline = {"saved": f"{team} force a save"}.get(facts.get("outcome"), f"{team} test the goalkeeper")
         casual = f"{player} gets a shot on target from {_fmt(metrics['shot_distance'])} m."
         analyst = f"On-target shot at {clock} from {_fmt(metrics['shot_distance'])} m, outcome {facts['outcome']}. No shot-quality model is applied."
     elif rule == "threat_gain":
-        headline = f"{team} move into a more dangerous area"
+        headline = (f"{team} pass into the box" if facts.get("box_entry") else f"{team} reach the final third" if facts.get("final_third_entry")
+                    else f"{team} move into a more dangerous area")
         where = " into the box" if facts.get("box_entry") else " into the final third" if facts.get("final_third_entry") else ""
-        casual = f"{player} plays the ball {_fmt(metrics['forward_progress'])} m forward{where}."
+        # A pass can raise the illustrative threat with little or no forward gain; never say "0 m forward".
+        casual = (f"{player} plays the ball {_fmt(metrics['forward_progress'])} m forward{where}." if metrics["forward_progress"] >= 1
+                  else f"{player} plays the ball across{where}.")
         analyst = (f"Completed pass at {clock}: {_fmt(metrics['pass_distance'])} m long, {_fmt(metrics['forward_progress'])} m forward. "
                    f"Illustrative threat {facts['start_value']:g} to {facts['end_value']:g} "
-                   f"(+{metrics['threat_delta']:g}, {facts['grid_version']}).")
+                   f"(+{metrics['threat_delta']:g}).")
     elif rule == "transition":
-        headline = f"{team} break after winning the ball"
+        headline = {"both": f"{team} break and shoot", "progress": f"{team} break forward after winning the ball",
+                    "shot": f"{team} shoot soon after winning the ball"}[transition_branch(moment)]
         won = "an interception" if facts["turnover_type"] == "interception" else "a tackle"
         progress, elapsed, actions = metrics["forward_progress"], _fmt(metrics["elapsed"]), int(metrics["actions"])
         # Word the story by the trigger that fired: a long advance, a quick shot after the regain, or both.
@@ -114,11 +122,12 @@ def build_fallback_insight(moment: dict, context: dict, reason: str | None = Non
     elif rule == "pressing_change":
         window = facts["window"]
         start, end = window["start_ms"] // 60000, window["end_ms"] // 60000
-        headline = f"{team} press higher"
-        casual = f"{team} are disrupting their opponents' build-up more often in this spell."
+        # PPDA measures how many passes the opponents made per defensive action; it is not proof of a higher press.
+        headline = f"{team} allow fewer passes per defensive action"
+        casual = f"{team} made a defensive action after fewer opponent passes than in their previous spell."
         analyst = (f"PPDA fell from {metrics['previous_ppda']:g} to {metrics['ppda']:g} "
                    f"({int(metrics['opponent_passes'])} opponent passes, {int(metrics['defensive_actions'])} defensive actions, "
-                   f"minutes {start}-{end} of period {moment['period']}). Consistent with increased pressure.")
+                   f"minutes {start}-{end} of period {moment['period']}). PPDA describes intensity, not where the pressure happened or whether it worked.")
     else:
         raise ValueError(f"no template for rule {rule!r}")
     return {
@@ -127,4 +136,5 @@ def build_fallback_insight(moment: dict, context: dict, reason: str | None = Non
         "language": "en", "evidence_ids": list(moment["evidence_ids"]), "metrics": [dict(m) for m in moment["metrics"]],
         "limitations": list(moment["limitations"]) + [fallback_limitation(reason)],
         "generation_mode": "fallback", "knowledge_source_ids": [f"{rule}-v1"],
+        "generation_status": status, "generation_reason": reason[:300] if reason else None,
     }

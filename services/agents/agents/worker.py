@@ -78,9 +78,10 @@ class NarrationWorker:
         if moment is None:
             return self._complete(job, "failed", None, "moment record not found for this job")
         context = self.context_for(moment)
-        insight, reason, trace = None, None, {}
+        insight, reason, trace, status = None, None, {}, "rule_based"
         if self.client is None:
-            reason = self.no_model_reason
+            # Not attempted: budget cap, --fallback-only or no deployment configured. Not a failure.
+            reason, status = self.no_model_reason, "skipped"
         else:
             try:
                 result = run_workflow(moment, context, self.client, self.budget_s, self.per_call_s)
@@ -88,25 +89,27 @@ class NarrationWorker:
                 if result.insight is not None:
                     insight = result.insight
                 else:
-                    reason = "output failed validation after one repair"
+                    reason, status = "output failed validation after one repair", "rejected"
                     trace["rejected"] = result.errors[:8]
             except (ModelTimeout, ModelRateLimited) as exc:
                 if job["attempt"] < job["max_attempts"]:
                     return self._complete(job, "retry_wait", None, f"{type(exc).__name__} ({self.client.name}): {exc}",
                                           retry_after=self._backoff(job, getattr(exc, "retry_after", None)))
-                reason = f"{type(exc).__name__} on the last attempt"
+                reason, status = f"{type(exc).__name__} on the last attempt", "provider_failure"
                 trace = {"model": self.client.name, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
             except ModelError as exc:
                 # Record which deployment failed, so a deliberate failure is distinguishable from a misconfiguration.
-                reason = f"model error ({self.client.name}): {str(exc)[:120]}"
+                reason, status = f"model error ({self.client.name}): {str(exc)[:120]}", "provider_failure"
                 trace = {"model": self.client.name, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
         if insight is None:
-            insight = build_fallback_insight(moment, context, reason)
+            insight = build_fallback_insight(moment, context, reason, status)
+        else:
+            insight = {**insight, "generation_status": "ai_accepted", "generation_reason": None}
         # Final guard: nothing unvalidated is ever written, whatever its source.
         problems = validate_insight(insight, moment, context) + [e.message for e in INSIGHT_VALIDATOR.iter_errors(insight)]
         if problems and insight["generation_mode"] == "ai":
             reason = f"final validation rejected AI output: {problems[0][:120]}"
-            insight = build_fallback_insight(moment, context, reason)
+            insight = build_fallback_insight(moment, context, reason, "rejected")
             problems = validate_insight(insight, moment, context) + [e.message for e in INSIGHT_VALIDATOR.iter_errors(insight)]
         if problems:
             return self._complete(job, "failed", None, f"fallback failed validation: {problems[0][:200]}")

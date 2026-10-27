@@ -13,9 +13,11 @@ from uuid import uuid4
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from .analysis import analyse, moments_with_insights
+from .analysis import analyse, moments_with_insights, narration_context
+from agents.narrate import build_fallback_insight  # noqa: E402  (path set up by .analysis)
 from .db import Database
 from .insight_overlay import InsightOverlay
+from .translations import TranslationService, from_env as translations_from_env
 from .sample_data import AWAY, HOME, roster, sample_state, simulate_match
 from .schemas import MAX_EVENTS, SPEEDS, Event, ReplaySnapshot
 
@@ -76,8 +78,10 @@ def parse_jsonl(text: str) -> list[Event]:
 
 class ReplayStore:
     def __init__(self, clock=monotonic, db: Database | None = None, source: list[Event] | None = None,
-                 backend_mode: str = "local", overlay: InsightOverlay | None = None):
+                 backend_mode: str = "local", overlay: InsightOverlay | None = None,
+                 translations: TranslationService | None = None):
         self.clock = clock
+        self.translations = translations or TranslationService()
         self.backend_mode = backend_mode
         self.overlay = overlay or InsightOverlay(None)
         self.lock = RLock()
@@ -201,8 +205,15 @@ class ReplayStore:
         self.db.save_moments(self.state.run_id, moments)
         # Serve stored moments: evidence frozen at detection time stays authoritative.
         stored = self.db.moments(self.state.run_id, through_sequence=count)
+        actors_of = {e["event_id"]: e.get("player_id") for e in revealed}
         for moment in stored:
             moment["replay_ms"] = self.schedule[moment["source_sequence"] - 1]
+            # Evidence stays frozen; rule-based text is a pure function of it, so it is rebuilt with the current
+            # (validated) templates. Runs stored before a wording fix never show the old wording.
+            if moment["insight"]["generation_mode"] == "fallback":
+                actors = sorted({actors_of[i] for i in moment["evidence_ids"] if actors_of.get(i)})
+                frozen = {key: value for key, value in moment.items() if key not in ("insight", "replay_ms")}
+                moment["insight"] = build_fallback_insight(frozen, narration_context(actors))
         analysis = analyse(revealed)
         self._cache = (key, analysis, stored)
         return analysis, stored
@@ -213,6 +224,7 @@ class ReplayStore:
         offset = after_sequence if run_id == self.state.run_id and 0 <= after_sequence <= count else 0
         analysis, moments = self._analysis()
         moments, insights = self.overlay.apply(moments, self.dicts[:count], self.meta.get("source_run_id"))
+        moments = self.translations.attach(moments, narration_context([]))
         elapsed = self._elapsed()
         latest = self.events[count - 1] if count else self.events[0]
         clock_period = latest.period
@@ -239,7 +251,14 @@ class ReplayStore:
             count = self.state.latest_event_sequence
             _, moments = self._analysis()
             moments, _ = self.overlay.apply(moments, self.dicts[:count], self.meta.get("source_run_id"))
-            return self.dicts[:count], moments
+            return self.dicts[:count], self.translations.attach(moments, narration_context([]))
+
+    def revealed_period_ends(self) -> list[tuple[str, int, int]]:
+        """(run_id, period, sequence) of every revealed period_end: the triggers for automatic recaps."""
+        with self.lock:
+            self._advance()
+            count = self.state.latest_event_sequence
+            return [(e["run_id"], e["period"], e["sequence"]) for e in self.dicts[:count] if e["type"] == "period_end"]
 
     def snapshot(self, run_id: str | None = None, after_sequence: int = 0) -> ReplaySnapshot:
         with self.lock:
@@ -352,5 +371,5 @@ def get_replay_store() -> ReplayStore:
     if replay_store is None:
         from .config import settings
         from .insight_overlay import from_env
-        replay_store = ReplayStore(backend_mode=settings().mode, overlay=from_env())
+        replay_store = ReplayStore(backend_mode=settings().mode, overlay=from_env(), translations=translations_from_env())
     return replay_store

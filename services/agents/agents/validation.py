@@ -12,7 +12,7 @@ from .semantics import fan_text_errors, semantic_errors
 
 REQUIRED = {"schema_version", "run_id", "match_id", "moment_id", "headline", "casual_text", "analyst_text",
             "language", "evidence_ids", "metrics", "limitations", "generation_mode"}
-OPTIONAL = {"knowledge_source_ids"}
+OPTIONAL = {"knowledge_source_ids", "generation_status", "generation_reason", "translations"}
 FORBIDDEN = [
     (re.compile(r"\bprobabilit|\blikelihood|\bodds\b|\bchance of scoring|\bxg\b|expected goals", re.I),
      "probability or xG claim from an illustrative score"),

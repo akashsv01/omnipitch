@@ -77,3 +77,39 @@ def test_goal_without_score_facts_stays_neutral():
 
 def test_context_helper_is_unchanged():
     assert narration_context([])["teams"]
+
+
+def test_headlines_follow_the_evidence_instead_of_repeating():
+    shot = build_fallback_insight(transition(3.7, True), CONTEXT)["headline"]
+    long_run = build_fallback_insight(transition(42.2, False), CONTEXT)["headline"]
+    both = build_fallback_insight(transition(38.0, True), CONTEXT)["headline"]
+    assert len({shot, long_run, both}) == 3
+    box = moment("threat_gain", [("threat_delta", 0.21, "illustrative threat"), ("forward_progress", 20.0, "m"), ("pass_distance", 27.05, "m")],
+                 {"start_value": 0.04, "end_value": 0.25, "grid_version": "illustrative-threat-v1", "box_entry": True, "final_third_entry": True})
+    insight = build_fallback_insight(box, CONTEXT)
+    assert insight["headline"] == "Vale Owls pass into the box"
+    assert "27.1 m long" in insight["analyst_text"]          # one decimal everywhere, never 27.05 in prose
+    assert validate_insight(insight, box, CONTEXT) == []
+
+
+def test_pressing_wording_states_the_measure_not_a_tactic():
+    m = moment("pressing_change", [("ppda", 4.2, "passes per defensive action"), ("previous_ppda", 9.0, "passes per defensive action"),
+                                   ("opponent_passes", 21, "passes"), ("defensive_actions", 5, "actions")],
+               {"window": {"start_ms": 600000, "end_ms": 900000}, "previous_window": {}, "zone": "x > 42 m", "window_ms": 300000})
+    insight = build_fallback_insight(m, CONTEXT)
+    assert "press higher" not in insight["headline"] and "fewer passes per defensive action" in insight["headline"]
+
+
+def test_unsupported_adjectives_are_rejected():
+    from agents.semantics import semantic_errors
+    m = transition(3.7, True)
+    assert any("unsupported judgement" in e for e in semantic_errors("A stunning counter from Vale Owls.", m))
+    assert not semantic_errors("Vale Owls get a shot away 6.5 seconds later.", m)
+
+
+def test_sideways_threat_gain_never_says_zero_metres_forward():
+    from agents.narrate_es import story_es
+    m = moment("threat_gain", [("forward_progress", 0.2, "m"), ("pass_distance", 9.0, "m"), ("threat_delta", 0.12, "illustrative")],
+               {"box_entry": False, "final_third_entry": False, "start_value": 0.1, "end_value": 0.22, "grid_version": "g"})
+    assert " 0 m" not in build_fallback_insight(m, CONTEXT)["casual_text"] and "across" in build_fallback_insight(m, CONTEXT)["casual_text"]
+    assert "horizontal" in story_es(m, CONTEXT)["casual_text"]

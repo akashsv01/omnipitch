@@ -22,6 +22,31 @@ def insight_id_for(moment_id: str) -> str:
     return moment_id
 
 
+SKIP_MARKERS = ("no model configured", "fallback-only", "fallback only", "budget", "cap reached", "ai jobs")
+
+
+def classify(record: dict) -> tuple[str, str | None]:
+    """(generation_status, reason) for a stored insight record. New records carry the status; older ones are
+    classified from their trace and limitation text, so an intentional skip is never shown as an AI failure."""
+    insight = record["insight"]
+    if insight.get("generation_status"):
+        return insight["generation_status"], insight.get("generation_reason")
+    if insight["generation_mode"] == "ai":
+        return "ai_accepted", None
+    if insight["generation_mode"] == "fixture":
+        return "fixture", None
+    trace = record.get("trace") or {}
+    note = next((item for item in insight["limitations"] if item.startswith("AI narration unavailable (")), "")
+    reason = note[len("AI narration unavailable ("):note.find("); this text")] if note else None
+    if trace.get("rejected") or (reason and "validation" in reason):
+        return "rejected", reason
+    if reason and any(marker in reason.lower() for marker in SKIP_MARKERS):
+        return "skipped", reason
+    if trace.get("error") or reason:
+        return "provider_failure", reason
+    return "rule_based", None
+
+
 class SqliteInsightStore:
     def __init__(self, path: str | Path | None = None):
         path = str(path or os.getenv("OMNIPITCH_NARRATION_DB") or DEFAULT_PATH)

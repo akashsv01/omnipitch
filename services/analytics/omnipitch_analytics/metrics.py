@@ -58,6 +58,11 @@ def threat_value(point: dict) -> float:
     return threat_grid()["values"][cy][cx]
 
 
+def from_percent(point: dict) -> dict:
+    """Provider coordinates given as 0-100 percentages of the pitch, converted to metres before any distance."""
+    return {"x": point["x"] / 100 * PITCH_LENGTH, "y": point["y"] / 100 * PITCH_WIDTH}
+
+
 def pass_distance_m(event: dict) -> float:
     return round(math.hypot(event["end"]["x"] - event["start"]["x"], event["end"]["y"] - event["start"]["y"]), 2)
 
@@ -66,6 +71,25 @@ def forward_progress_m(event: dict) -> float:
     start = normalize(event["start"], event["attacking_direction"])
     end = normalize(event["end"], event["attacking_direction"])
     return round(end["x"] - start["x"], 2)
+
+
+def pass_difficulty(event: dict) -> dict | None:
+    """Explainable pass difficulty indicator, 0-100. A heuristic from recorded inputs only, NOT a completion
+    probability: no defender positions or pressure exist in this data. Components (points):
+    length up to 40 (40 m or longer = 40), forward gain up to 25 (30 m or more), destination 20 inside the box or
+    10 in the final third, and width up to 15 (a 25 m or wider switch). Bands: under 35 routine, 35-59 moderate,
+    60+ difficult. Mirrored in apps/web/src/lib/geometry.ts (passDifficulty)."""
+    if event["type"] != "pass" or not event.get("start") or not event.get("end") or not event.get("attacking_direction"):
+        return None
+    start = normalize(event["start"], event["attacking_direction"])
+    end = normalize(event["end"], event["attacking_direction"])
+    length = math.hypot(end["x"] - start["x"], end["y"] - start["y"])
+    parts = {"length": min(1.0, length / 40) * 40, "forward": min(1.0, max(0.0, end["x"] - start["x"]) / 30) * 25,
+             "destination": 20.0 if in_box(end) else 10.0 if end["x"] >= FINAL_THIRD_X else 0.0,
+             "width": min(1.0, abs(end["y"] - start["y"]) / 25) * 15}
+    score = round(sum(parts.values()))
+    return {"score": score, "band": "difficult" if score >= 60 else "moderate" if score >= 35 else "routine",
+            "parts": {k: round(v, 1) for k, v in parts.items()}}
 
 
 def threat_delta(event: dict) -> dict | None:

@@ -3,10 +3,11 @@ import type { Audience } from './prefs';
 import type { Moment, Player } from '../types/contracts';
 import { clockLabel, metricText } from './format';
 import { goalContext, transitionBranch, TRANSITION_MIN_PROGRESS_M } from './evidence';
+import { ES_UI } from './uiText';
 
-/** Explanation language. English is the source; Spanish versions of the rule-based stories are built here from
- * the same moment facts, branch for branch with services/agents/agents/narrate.py, so both languages state the
- * same numbers. AI-written text exists only in English and is shown as such, never machine-translated. */
+/** Explanation language. The server sends Spanish with every insight (insight.translations.es): a validated AI
+ * translation or its rule-based Spanish story (services/agents/agents/narrate_es.py). storyEs below is the same
+ * story built in the browser, used only when a snapshot carries no translation. */
 export type Language = 'en' | 'es';
 export const LanguageContext = createContext<Language>('en');
 export const useLanguage = () => useContext(LanguageContext);
@@ -40,7 +41,7 @@ export function storyEs(moment: Moment, roster: Player[]): Story {
     case 'chance': {
       const outcome = { saved: 'parado', blocked: 'bloqueado', off_target: 'fuera', goal: 'gol' }[String(facts.outcome)] ?? String(facts.outcome);
       return {
-        headline: `${team} ponen a prueba al portero`,
+        headline: facts.outcome === 'saved' ? `${team} obligan a parar al portero` : `${team} ponen a prueba al portero`,
         casual: `${player} dispara a puerta desde ${n('shot_distance', metric('shot_distance'))} m.`,
         analyst: `Disparo a puerta en el ${clock} desde ${n('shot_distance', metric('shot_distance'))} m, resultado: ${outcome}. No se aplica un modelo de calidad de disparo.`,
       };
@@ -48,9 +49,10 @@ export function storyEs(moment: Moment, roster: Player[]): Story {
     case 'threat_gain': {
       const where = facts.box_entry ? ' hasta el área' : facts.final_third_entry ? ' hasta el último tercio' : '';
       return {
-        headline: `${team} avanzan a una zona más peligrosa`,
-        casual: `${player} lleva el balón ${n('forward_progress', metric('forward_progress'))} m hacia delante${where}.`,
-        analyst: `Pase completado en el ${clock}: ${n('pass_distance', metric('pass_distance'))} m de largo, ${n('forward_progress', metric('forward_progress'))} m hacia delante. Amenaza ilustrativa de ${raw(facts.start_value)} a ${raw(facts.end_value)} (+${raw(metric('threat_delta'))}, ${facts.grid_version}).`,
+        headline: facts.box_entry ? `${team} pasan al área` : facts.final_third_entry ? `${team} llegan al último tercio` : `${team} avanzan a una zona más peligrosa`,
+        casual: metric('forward_progress') >= 1 ? `${player} lleva el balón ${n('forward_progress', metric('forward_progress'))} m hacia delante${where}.`
+          : `${player} mueve el balón en horizontal${where}.`,
+        analyst: `Pase completado en el ${clock}: ${n('pass_distance', metric('pass_distance'))} m de largo, ${n('forward_progress', metric('forward_progress'))} m hacia delante. Amenaza ilustrativa de ${raw(facts.start_value)} a ${raw(facts.end_value)} (+${raw(metric('threat_delta'))}).`,
       };
     }
     case 'transition': {
@@ -58,7 +60,7 @@ export function storyEs(moment: Moment, roster: Player[]): Story {
       const turnover = facts.turnover_type === 'interception' ? 'intercepción ganada' : 'entrada ganada';
       const fp = n('forward_progress', metric('forward_progress')), t = n('elapsed', metric('elapsed')), actions = Math.round(metric('actions'));
       const branch = transitionBranch(moment);
-      const headline = `${team} salen rápido tras recuperar el balón`;
+      const headline = { both: `${team} salen rápido y disparan`, progress: `${team} salen rápido tras recuperar el balón`, shot: `${team} disparan poco después de recuperar el balón` }[transitionBranch(moment)];
       if (branch === 'both') return { headline,
         casual: `${player} recupera el balón con ${won}; ${team} avanzan ${fp} m y disparan en menos de ${t} segundos.`,
         analyst: `Transición en el ${clock}: ${turnover}, luego ${actions} acciones, ${fp} m de progresión y un disparo en ${t} s.` };
@@ -73,9 +75,9 @@ export function storyEs(moment: Moment, roster: Player[]): Story {
     case 'pressing_change': {
       const w = facts.window ?? {};
       return {
-        headline: `${team} presionan más arriba`,
-        casual: `${team} cortan con más frecuencia la salida del rival en este tramo.`,
-        analyst: `El PPDA bajó de ${raw(metric('previous_ppda'))} a ${raw(metric('ppda'))} (${Math.round(metric('opponent_passes'))} pases rivales, ${Math.round(metric('defensive_actions'))} acciones defensivas, minutos ${Math.floor((w.start_ms ?? 0) / 60000)}-${Math.floor((w.end_ms ?? 0) / 60000)} del periodo ${moment.period}). Compatible con una mayor presión.`,
+        headline: `${team} permiten menos pases por acción defensiva`,
+        casual: `${team} hicieron una acción defensiva tras menos pases del rival que en su tramo anterior.`,
+        analyst: `El PPDA bajó de ${raw(metric('previous_ppda'))} a ${raw(metric('ppda'))} (${Math.round(metric('opponent_passes'))} pases rivales, ${Math.round(metric('defensive_actions'))} acciones defensivas, minutos ${Math.floor((w.start_ms ?? 0) / 60000)}-${Math.floor((w.end_ms ?? 0) / 60000)} del periodo ${moment.period}). El PPDA describe intensidad, no dónde fue la presión ni si funcionó.`,
       };
     }
   }
@@ -126,25 +128,38 @@ export function whyEs(moment: Moment, audience: Audience): string {
         : `Amenaza ilustrativa ${raw(facts.start_value)} → ${raw(facts.end_value)} (Δ ${raw(metric('threat_delta'))}, umbral ≥ 0,1); primer pase que lo cumple en esta posesión.`;
     }
     case 'pressing_change':
-      return fan ? `${TEAM[moment.team_id ?? ''] ?? 'El equipo'} permitió menos pases antes de cada acción defensiva que en su tramo anterior (${raw(metric('previous_ppda'))} → ${raw(metric('ppda'))}). Es compatible con presionar más arriba; no demuestra que la presión funcionara.`
+      return fan ? `${TEAM[moment.team_id ?? ''] ?? 'El equipo'} permitió menos pases antes de cada acción defensiva que en su tramo anterior (${raw(metric('previous_ppda'))} → ${raw(metric('ppda'))}). El rival dio menos pases antes de ser presionado. Estos datos no muestran dónde fue la presión ni si funcionó.`
         : `PPDA ${raw(metric('previous_ppda'))} → ${raw(metric('ppda'))} (umbral: como mucho el 60% de la ventana válida anterior). Un PPDA más bajo describe intensidad, no éxito.`;
   }
 }
 
 /** Interface words used around the explanations. */
 export const UI: Record<Language, Record<string, string>> = {
-  en: { whatHappened: 'What happened?', whyMatters: 'Why does it matter?', whyBtn: 'Why this matters', replay: 'Replay moment',
+  en: { whatHappened: 'What happened?', whyMatters: 'Why does it matter?', whyBtn: 'Why this matters', jump: 'Jump to moment',
     keyMoments: 'Key moments', aiEnglish: '', 'Forward progression': 'Forward progression', 'Sequence time': 'Sequence time',
-    'Shot distance': 'Shot distance', 'Pass length': 'Pass length', whyPrefix: 'Why it matters. ' },
-  es: { whatHappened: '¿Qué pasó?', whyMatters: '¿Por qué importa?', whyBtn: 'Por qué importa', replay: 'Repetir jugada',
+    'Shot distance': 'Shot distance', 'Pass length': 'Pass length', whyPrefix: 'Why it matters. ',
+    ruleBased: 'Rule-based', aiValidated: 'AI · validated', synthetic: 'Synthetic match data', recap: 'Match recap' },
+  es: { whatHappened: '¿Qué pasó?', whyMatters: '¿Por qué importa?', whyBtn: 'Por qué importa', jump: 'Ir a la jugada',
     keyMoments: 'Momentos clave', aiEnglish: 'Texto escrito por IA: disponible solo en inglés.', 'Forward progression': 'Progresión',
-    'Sequence time': 'Tiempo de la secuencia', 'Shot distance': 'Distancia del disparo', 'Pass length': 'Longitud del pase', whyPrefix: 'Por qué importa. ' },
+    'Sequence time': 'Tiempo de la secuencia', 'Shot distance': 'Distancia del disparo', 'Pass length': 'Longitud del pase', whyPrefix: 'Por qué importa. ',
+    ruleBased: 'Basado en reglas', aiValidated: 'IA · validado', synthetic: 'Datos de partido sintéticos', recap: 'Resumen' },
 };
 
 /** The story to show: the Spanish rule-based version, or the original when it is AI-written or English is chosen. */
 export function localStory(moment: Moment, roster: Player[], language: Language): Story & { englishOnly: boolean } {
   const original = { headline: moment.insight.headline, casual: moment.insight.casual_text, analyst: moment.insight.analyst_text };
   if (language === 'en') return { ...original, englishOnly: false };
+  // The server's Spanish: a validated AI translation, or the rule-based Spanish story from the same moment.
+  const es = moment.insight.translations?.es;
+  if (es) return { headline: es.headline, casual: es.casual_text, analyst: es.analyst_text, englishOnly: false };
   if (moment.insight.generation_mode === 'ai') return { ...original, englishOnly: true };
   return { ...storyEs(moment, roster), englishOnly: false };
 }
+
+/** tr('English label') returns the label in the viewer's language. */
+export function useTr() {
+  const language = useLanguage();
+  return (text: string) => language === 'es' ? ES_UI[text] ?? text : text;
+}
+
+export { num, setUiLanguage, t } from './uiText';
