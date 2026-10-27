@@ -12,7 +12,7 @@ import { MatchStage } from './components/MatchStage';
 import { MomentFeed } from './components/MomentFeed';
 import { Preferences } from './components/Preferences';
 import { ScoreStrip } from './components/Scoreboard';
-import { CommentaryBar } from './components/CommentaryBar';
+import { CommentaryBar, CommentarySubtitle } from './components/CommentaryBar';
 import { useCommentary } from './lib/useCommentary';
 import { INDICATOR } from './lib/motion';
 import { RULE_LABEL, clockLabel } from './lib/format';
@@ -227,7 +227,8 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
       <div className="desk">
         <MatchStage replay={replay} selected={selected} onSelect={selectEvent} prefs={prefs} updatePrefs={updatePrefs}
           goal={goal} animate={!reduced} audience={prefs.audience} inspect={inspect} onStopInspect={stopInspect}
-          onStart={start} startDisabled={disabled} commentary={<CommentaryBar c={commentary} language={prefs.language} />} />
+          onStart={start} startDisabled={disabled} commentary={<CommentaryBar c={commentary} language={prefs.language} />}
+          subtitle={<CommentarySubtitle c={commentary} language={prefs.language} />} />
         <div className="desk-film">
           <Filmstrip replay={replay} elapsed={elapsed} busy={live.busy} disabled={disabled} audience={prefs.audience}
             range={range} onReturn={stopInspect}
