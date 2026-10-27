@@ -2,12 +2,13 @@ import { createContext, useContext } from 'react';
 import type { Audience } from './prefs';
 import type { Moment, Player } from '../types/contracts';
 import { clockLabel, metricText } from './format';
-import { goalContext, transitionBranch, TRANSITION_MIN_PROGRESS_M } from './evidence';
+import { goalContext, transitionBranch, whyItMatters, TRANSITION_MIN_PROGRESS_M } from './evidence';
+import { storyFr, whyFr } from './i18n-fr';
 
-/** Explanation language. English is the source; Spanish versions of the rule-based stories are built here from
- * the same moment facts, branch for branch with services/agents/agents/narrate.py, so both languages state the
- * same numbers. AI-written text exists only in English and is shown as such, never machine-translated. */
-export type Language = 'en' | 'es';
+/** Explanation language. English is the source; Spanish (here) and French (i18n-fr.ts) versions of the rule-based
+ * stories are built from the same moment facts, branch for branch with services/agents/agents/narrate.py, so every
+ * language states the same numbers. AI-written text exists only in English and is shown as such, never machine-translated. */
+export type Language = 'en' | 'es' | 'fr';
 export const LanguageContext = createContext<Language>('en');
 export const useLanguage = () => useContext(LanguageContext);
 
@@ -139,12 +140,23 @@ export const UI: Record<Language, Record<string, string>> = {
   es: { whatHappened: '¿Qué pasó?', whyMatters: '¿Por qué importa?', whyBtn: 'Por qué importa', replay: 'Repetir jugada',
     keyMoments: 'Momentos clave', aiEnglish: 'Texto escrito por IA: disponible solo en inglés.', 'Forward progression': 'Progresión',
     'Sequence time': 'Tiempo de la secuencia', 'Shot distance': 'Distancia del disparo', 'Pass length': 'Longitud del pase', whyPrefix: 'Por qué importa. ' },
+  fr: { whatHappened: "Que s'est-il passé ?", whyMatters: "Pourquoi c'est important ?", whyBtn: "Pourquoi c'est important", replay: "Revoir l'action",
+    keyMoments: 'Moments clés', aiEnglish: "Texte écrit par l'IA : disponible en anglais uniquement.", 'Forward progression': 'Progression',
+    'Sequence time': 'Durée de la séquence', 'Shot distance': 'Distance du tir', 'Pass length': 'Longueur de la passe', whyPrefix: "Pourquoi c'est important. " },
 };
 
-/** The story to show: the Spanish rule-based version, or the original when it is AI-written or English is chosen. */
+/** "Why it matters" in the chosen language, from the same evidence. */
+export function whyLocal(moment: Moment, audience: Audience, language: Language): string {
+  return language === 'es' ? whyEs(moment, audience) : language === 'fr' ? whyFr(moment, audience) : whyItMatters(moment, audience);
+}
+
+/** Decimal separator for the chosen language (shown values only; the numbers themselves are unchanged). */
+export const localNumber = (value: string, language: Language) => language === 'en' ? value : value.replace('.', ',');
+
+/** The story to show: the translated rule-based version, or the original when it is AI-written or English is chosen. */
 export function localStory(moment: Moment, roster: Player[], language: Language): Story & { englishOnly: boolean } {
   const original = { headline: moment.insight.headline, casual: moment.insight.casual_text, analyst: moment.insight.analyst_text };
   if (language === 'en') return { ...original, englishOnly: false };
   if (moment.insight.generation_mode === 'ai') return { ...original, englishOnly: true };
-  return { ...storyEs(moment, roster), englishOnly: false };
+  return { ...(language === 'fr' ? storyFr(moment, roster) : storyEs(moment, roster)), englishOnly: false };
 }

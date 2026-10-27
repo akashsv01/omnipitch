@@ -28,6 +28,7 @@ export function Preferences({ prefs, update, roster, onClose }: {
       <select value={prefs.language} onChange={event => update({ language: event.target.value as Prefs['language'] })}>
         <option value="en">English</option>
         <option value="es" lang="es">Español (rule-based explanations)</option>
+        <option value="fr" lang="fr">Français (rule-based explanations)</option>
       </select>
     </label>
     <label className="field">Motion

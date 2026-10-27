@@ -52,6 +52,7 @@ export function catchUp(join: JoinPoint | null, state: MatchState, events: Event
 const TEXT: Record<Language, { eyebrow: string; joined: string; before: string; dismiss: string; none: string }> = {
   en: { eyebrow: 'Catch up', joined: 'You joined at', before: 'Before you arrived', dismiss: 'Dismiss catch-up', none: 'No moments were detected before you arrived.' },
   es: { eyebrow: 'Ponte al día', joined: 'Llegaste en el', before: 'Antes de que llegaras', dismiss: 'Cerrar resumen', none: 'No se detectaron momentos antes de que llegaras.' },
+  fr: { eyebrow: 'Rattrapage', joined: 'Vous êtes arrivé à', before: 'Avant votre arrivée', dismiss: 'Fermer le résumé', none: 'Aucun moment détecté avant votre arrivée.' },
 };
 
 function counts(language: Language, missed: Moment[]) {
@@ -61,6 +62,8 @@ function counts(language: Language, missed: Moment[]) {
   const part = (n: number, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : '');
   const parts = language === 'es'
     ? [part(goals, 'gol', 'goles'), part(chances, 'ocasión', 'ocasiones'), part(other, 'otro momento', 'otros momentos')]
+    : language === 'fr'
+    ? [part(goals, 'but', 'buts'), part(chances, 'occasion', 'occasions'), part(other, 'autre moment', 'autres moments')]
     : [part(goals, 'goal', 'goals'), part(chances, 'chance', 'chances'), part(other, 'other moment', 'other moments')];
   return parts.filter(Boolean).join(' · ');
 }

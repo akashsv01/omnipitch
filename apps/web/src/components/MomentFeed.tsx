@@ -4,12 +4,12 @@ import type { MatchState, Moment, Player, Rule } from '../types/contracts';
 import { CatchUpCard, type CatchUpData } from './CatchUp';
 import type { Audience } from '../lib/prefs';
 import { RULE_LABEL, TEAM_META, clockLabel, momentInvolves, teamTone } from '../lib/format';
-import { GENERATION_LABEL, GENERATION_SHORT, calculationRows, generation, keyValues, metricRows, whyItMatters } from '../lib/evidence';
+import { GENERATION_LABEL, GENERATION_SHORT, calculationRows, generation, keyValues, metricRows } from '../lib/evidence';
 
 // The insight source mode, for honest per-card generation labels without threading a prop through every row.
 const AiMode = createContext('off');
 import { Crest } from './Crest';
-import { UI, localStory, useLanguage, whyEs } from '../lib/i18n';
+import { UI, localNumber, localStory, useLanguage, whyLocal } from '../lib/i18n';
 
 // The roster, for player names in the Spanish stories, without threading it through every row.
 const RosterCtx = createContext<Player[]>([]);
@@ -176,10 +176,10 @@ function FanSpotlight({ moment, favorite, fresh, pinned, onEvidence, onJump, onI
     <h3 id={`spot-${moment.moment_id}`} lang={lang}>{story.headline}</h3>
     <div className="qa" lang={lang}>
       <p><span>{t.whatHappened}</span><span className="said" lang={story.englishOnly ? 'en' : lang}>{story.casual}</span>{story.englishOnly && <small className="en-only">{t.aiEnglish}</small>}</p>
-      <p><span>{t.whyMatters}</span>{language === 'es' ? whyEs(moment, 'fan') : whyItMatters(moment, 'fan')}</p>
+      <p><span>{t.whyMatters}</span>{whyLocal(moment, 'fan', language)}</p>
     </div>
     {values.length > 0 && <dl className="key-values">
-      {values.map(item => <div key={item.label}><dt>{t[item.label] ?? item.label}</dt><dd>{language === 'es' ? item.value.replace('.', ',') : item.value}{item.unit && <small>{item.unit}</small>}</dd></div>)}
+      {values.map(item => <div key={item.label}><dt>{t[item.label] ?? item.label}</dt><dd>{localNumber(item.value, language)}{item.unit && <small>{item.unit}</small>}</dd></div>)}
     </dl>}
     <div className="spot-actions">
       <button type="button" className="button primary" onClick={() => onEvidence(moment)}><FileSearch size={15} aria-hidden="true" />{t.whyBtn}</button>
@@ -205,7 +205,7 @@ function AnalystInspector({ moment, favorite, fresh, pinned, onEvidence, onJump,
       <tbody>
         {rows.map(row => <tr key={row.name}><th scope="row">{row.label}</th><td className="num">{row.shown}</td><td className="unit">{row.unit}</td></tr>)}
         {calc.map(([term, value]) => <tr key={term}><th scope="row">{term}</th><td colSpan={2}>{value}</td></tr>)}
-        <tr><th scope="row">Why flagged</th><td colSpan={2} lang={language}>{language === 'es' ? whyEs(moment, 'analyst') : whyItMatters(moment, 'analyst')}</td></tr>
+        <tr><th scope="row">Why flagged</th><td colSpan={2} lang={language}>{whyLocal(moment, 'analyst', language)}</td></tr>
         <tr><th scope="row">Source events</th><td colSpan={2} className="mono">{moment.evidence_ids.length} · {moment.evidence_ids[0]}{moment.evidence_ids.length > 1 ? ` … ${moment.evidence_ids[moment.evidence_ids.length - 1]}` : ''}</td></tr>
         <tr><th scope="row">Versions</th><td colSpan={2}>{moment.rule_version} · {moment.metric_version}</td></tr>
       </tbody>

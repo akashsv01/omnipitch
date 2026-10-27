@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 export type Audience = 'fan' | 'analyst';
 export type MotionPref = 'system' | 'reduced' | 'full';
-export type Language = 'en' | 'es';
+export type Language = 'en' | 'es' | 'fr';
 export interface Prefs {
   audience: Audience;
   /** Language of the moment explanations (rule-based stories); AI text stays in English. */

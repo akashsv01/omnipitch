@@ -4,12 +4,12 @@ import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import type { Event, Moment, Player } from '../types/contracts';
 import type { Audience } from '../lib/prefs';
 import { RULE_LABEL, TEAM_META, clockLabel, eventLabel, playerIndex, runningClock, surname, teamTone } from '../lib/format';
-import { GENERATION_LABEL, calculationRows, generation, metricRows, whyItMatters } from '../lib/evidence';
+import { GENERATION_LABEL, calculationRows, generation, metricRows } from '../lib/evidence';
 import { DUR, EASE_DRAWER, EASE_OUT, INDICATOR } from '../lib/motion';
 import { Pitch, PitchLegend } from './Pitch';
 import { RULE_ICON } from './MomentFeed';
 import type { CameraMode } from './Tactical3D';
-import { UI, localStory, useLanguage, whyEs } from '../lib/i18n';
+import { UI, localStory, useLanguage, whyLocal } from '../lib/i18n';
 
 // three.js lives in its own chunk and is fetched only when someone opens the 3D view.
 const Tactical3D = lazy(() => import('./Tactical3D'));
@@ -148,7 +148,7 @@ export function EvidenceDrawer({ moment, events, roster, audience, aiMode, onClo
           <h3 id="ev-what"><span className="step">1</span>{fan ? 'What happened, and why it matters' : 'Claim and explanation'}</h3>
           <p className="lead" lang={story.englishOnly ? 'en' : language}>{primary}</p>
           {story.englishOnly && <p className="hint">{UI[language].aiEnglish}</p>}
-          <p className="why" lang={language}><b>{UI[language].whyPrefix}</b>{language === 'es' ? whyEs(moment, audience) : whyItMatters(moment, audience)}</p>
+          <p className="why" lang={language}><b>{UI[language].whyPrefix}</b>{whyLocal(moment, audience, language)}</p>
           <button type="button" className="text-button quiet" aria-expanded={other} onClick={() => setOther(value => !value)} style={{ justifySelf: 'start' }}>
             {other ? 'Hide' : 'Show'} the {fan ? 'analyst' : 'fan'} explanation
           </button>

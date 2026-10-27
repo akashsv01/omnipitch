@@ -287,10 +287,11 @@ function SourceBadge({ replay }: { replay: Snapshot }) {
 }
 
 /** Language of the moment explanations. Interface chrome stays in English; AI-written text is English only. */
-function LanguageToggle({ value, onChange }: { value: 'en' | 'es'; onChange: (value: 'en' | 'es') => void }) {
+const LANGUAGE_NAME = { en: 'English explanations', es: 'Explicaciones en español', fr: 'Explications en français' } as const;
+function LanguageToggle({ value, onChange }: { value: 'en' | 'es' | 'fr'; onChange: (value: 'en' | 'es' | 'fr') => void }) {
   return <div className="segmented small lang-toggle" role="group" aria-label="Explanation language / Idioma de las explicaciones">
-    {(['en', 'es'] as const).map(code => <button key={code} type="button" aria-pressed={value === code} lang={code}
-      aria-label={code === 'en' ? 'English explanations' : 'Explicaciones en español'} onClick={() => onChange(code)}>
+    {(['en', 'es', 'fr'] as const).map(code => <button key={code} type="button" aria-pressed={value === code} lang={code}
+      aria-label={LANGUAGE_NAME[code]} onClick={() => onChange(code)}>
       {value === code && <motion.span layoutId="lang-thumb" className="thumb" transition={INDICATOR} />}{code.toUpperCase()}
     </button>)}
   </div>;
