@@ -232,11 +232,11 @@ def speech_moment(request: SpeechRequest) -> Response:
     return _audio_response(text, request.language)
 
 
-def _audio_response(text: str, language: str) -> Response:
+def _audio_response(text: str, language: str, rate: str | None = None) -> Response:
     """MP3 of accepted text, with the caption that was spoken (percent-encoded) for the transcript."""
     from urllib.parse import quote
     try:
-        audio, key = speech().audio(speakable(text, language), language)
+        audio, key = speech().audio(speakable(text, language), language, rate)
     except SpeechError as exc:
         raise HTTPException(exc.status, detail={"code": exc.code, "message": exc.message}) from exc
     return Response(audio, media_type="audio/mpeg", headers={"X-Narration-Key": key[:16], "X-Caption": quote(text),
@@ -244,6 +244,8 @@ def _audio_response(text: str, language: str) -> Response:
 
 
 COMMENTARY_RULES = {"transition": 50, "pressing_change": 45, "threat_gain": 30}
+# Live lines are read a little faster, as a commentator would; recaps and moment explanations keep the voice's pace.
+LIVE_RATE = "+12%"
 
 
 _playout = None
@@ -315,14 +317,17 @@ def _warm(lines: list[dict], language: str) -> None:
         return
     if _WARM is None:
         from concurrent.futures import ThreadPoolExecutor
-        _WARM = ThreadPoolExecutor(max_workers=2, thread_name_prefix="speech-warm")
-    for line in sorted(lines, key=lambda l: (-l["priority"], -l["sequence"]))[:3]:
+        _WARM = ThreadPoolExecutor(max_workers=3, thread_name_prefix="speech-warm")
+    # The player speaks major lines and, in quiet spells, the newest routine one: prepare both kinds.
+    likely = sorted(lines, key=lambda l: (-l["priority"], -l["sequence"]))[:4]
+    likely += [l for l in sorted(lines, key=lambda l: -l["sequence"])[:2] if l not in likely]
+    for line in likely:
         _WARM.submit(_safe_audio, speakable(line["text"], language), language)
 
 
 def _safe_audio(text: str, language: str) -> None:
     try:
-        speech().audio(text, language)
+        speech().audio(text, language, LIVE_RATE)
     except Exception:  # noqa: BLE001  (warming is best effort; the real request reports errors)
         pass
 
@@ -350,12 +355,12 @@ def commentary_audio(request: CommentaryAudio) -> Response:
             line = (f"{players.get(event.get('player_id') or '', '')} {'recupera el balón.' if request.language == 'es' else 'wins the ball.'}", 45)
         if not line:
             raise HTTPException(404, detail={"code": "line_not_available", "message": "Nothing to say for that action yet."})
-        return _audio_response(line[0], request.language)
+        return _audio_response(line[0], request.language, LIVE_RATE)
     if kind == "moment":
         moment = next((m for m in moments if m["moment_id"] == ref), None)
         if moment is None:
             raise HTTPException(404, detail={"code": "line_not_available", "message": "That moment is not revealed yet."})
-        return _audio_response(moment_line(moment, request.audience, request.language), request.language)
+        return _audio_response(moment_line(moment, request.audience, request.language), request.language, LIVE_RATE)
     if kind == "recap" and ref in ("first_half", "full_time"):
         period = 1 if ref == "first_half" else 2
         end = next((e for e in events if e["type"] == "period_end" and e["period"] == period), None)

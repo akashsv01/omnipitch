@@ -8,7 +8,8 @@ import type { RecapScope, ReplaySnapshot } from '../types/contracts';
  * - every snapshot, it asks the server for lines on what was revealed since its last position (play-by-play from
  *   events, context from moments), never for anything ahead of the replay;
  * - a short queue keeps the most important lines; routine lines that wait too long are dropped, and at high replay
- *   speeds only major lines are kept, so speech stays current and never piles up;
+ *   speeds only shot-level lines are queued; the newest routine line (a foul, a long ball, a pass into the box, a long
+ *   move) is held in reserve and said as soon as the voice is free, so speech stays current without long silences;
  * - when a half or the match actually ends during forward playback, the recap for that period is spoken once
  *   (remembered per run, period, audience and language, so reconnects and re-renders never repeat it);
  * - a seek back, a new run, or a language or audience change clears the queue and stops stale speech;
@@ -17,7 +18,7 @@ import type { RecapScope, ReplaySnapshot } from '../types/contracts';
 export interface Line { key: string; ref: string; kind: string; priority: number; sequence: number; period: number; clock: string; text: string; at: number }
 export interface Spoken { clock: string; text: string; kind: string }
 
-const MAX_QUEUE = 3, STALE_MS = 8000, MAJOR = 90;
+const MAX_QUEUE = 3, STALE_MS = 8000, MAJOR = 90, SHOT_LEVEL = 55, RESERVE_MS = 5000;
 const recapKey = (run: string, scope: RecapScope, audience: Audience, language: Language) => `omnipitch.recap.${run}.${scope}.${audience}.${language}`;
 const seen = (key: string) => { try { return sessionStorage.getItem(key) === '1'; } catch { return false; } };
 const remember = (key: string) => { try { sessionStorage.setItem(key, '1'); } catch { /* storage unavailable: at worst a repeat */ } };
@@ -40,6 +41,7 @@ export function useCommentary(replay: ReplaySnapshot | undefined, audience: Audi
   const cursor = useRef<{ run: string; seq: number }>({ run: '', seq: 0 });
   const busy = useRef(false);
   const last = useRef<Line | null>(null);
+  const reserve = useRef<Line | null>(null);  // the newest routine line, said when nothing more important is waiting
   const live = useRef({ enabled, paused, audience, language, focusPlayer, replay });
   live.current = { enabled, paused, audience, language, focusPlayer, replay };
 
@@ -72,9 +74,15 @@ export function useCommentary(replay: ReplaySnapshot | undefined, audience: Audi
     if (busy.current) return;
     busy.current = true;
     try {
-      while (live.current.enabled && !live.current.paused && queue.current.length) {
+      while (live.current.enabled && !live.current.paused) {
         if (speaking() === 'evidence') break;  // the viewer's own replay comes first
         const now = performance.now();
+        const spare = reserve.current;
+        if (!queue.current.length && spare && now - spare.at < RESERVE_MS && spare.sequence > (last.current?.sequence ?? -1)) {
+          queue.current.push(spare);
+        }
+        reserve.current = null;
+        if (!queue.current.length) break;
         queue.current = queue.current.filter(line => line.priority >= MAJOR || now - line.at < STALE_MS);
         // At high speed the newest important line wins; older routine lines are already out of date.
         if ((live.current.replay?.replay.speed ?? 1) >= 20 && queue.current.length > 1) {
@@ -91,11 +99,17 @@ export function useCommentary(replay: ReplaySnapshot | undefined, audience: Audi
   }, [say]);
   const needsTapRef = useRef(needsTap);
   needsTapRef.current = needsTap;
-  useEffect(() => onHubChange(() => { if (!speaking() && queue.current.length) void pump(); }), [pump]);
+  useEffect(() => onHubChange(() => { if (!speaking() && (queue.current.length || reserve.current)) void pump(); }), [pump]);
 
   const enqueue = useCallback((lines: Line[], speed: number) => {
-    // At 20x and above only major and shot-level lines; never more than a few waiting, most important first.
-    const kept = lines.filter(line => speed < 20 || line.priority >= 55);
+    // At 20x and above only shot-level lines are queued; the newest routine line waits in reserve for a quiet moment.
+    // Never more than a few waiting, most important first.
+    const kept = lines.filter(line => speed < 20 || line.priority >= SHOT_LEVEL);
+    const routine = lines.filter(line => !kept.includes(line));
+    if (routine.length) {
+      const best = routine.reduce((a, b) => b.sequence > a.sequence || (b.sequence === a.sequence && b.priority > a.priority) ? b : a);
+      if (!reserve.current || best.sequence > reserve.current.sequence) reserve.current = best;
+    }
     const all = [...queue.current, ...kept];
     all.sort((a, b) => b.priority - a.priority || a.sequence - b.sequence);
     queue.current = all.slice(0, MAX_QUEUE).sort((a, b) => a.sequence - b.sequence || b.priority - a.priority);
@@ -103,6 +117,7 @@ export function useCommentary(replay: ReplaySnapshot | undefined, audience: Audi
 
   const reset = useCallback((seq: number, run: string) => {
     queue.current = [];
+    reserve.current = null;
     cursor.current = { run, seq };
     narrator.current?.stop();
   }, []);
@@ -136,13 +151,13 @@ export function useCommentary(replay: ReplaySnapshot | undefined, audience: Audi
   }, [replay?.state.latest_event_sequence, replay?.state.run_id, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A language or audience change makes queued and playing lines obsolete.
-  useEffect(() => { queue.current = []; narrator.current?.stop(); }, [language, audience]);
+  useEffect(() => { queue.current = []; reserve.current = null; narrator.current?.stop(); }, [language, audience]);
   useEffect(() => () => { narrator.current?.stop(); recapVoice.current?.stop(); }, []);
 
   const enable = useCallback((on: boolean) => {
     setEnabled(on);
     try { sessionStorage.setItem('omnipitch.commentary', on ? '1' : '0'); } catch { /* per tab only */ }
-    if (!on) { queue.current = []; narrator.current?.stop(); recapVoice.current?.stop(); setCaption(null); return; }
+    if (!on) { queue.current = []; reserve.current = null; narrator.current?.stop(); recapVoice.current?.stop(); setCaption(null); return; }
     setNeedsTap(false);
     narrator.current?.prime(); recapVoice.current?.prime();  // inside the click: unlock audio for later lines
     // Start from where the match is now; a fresh kick-off gets its opening line.

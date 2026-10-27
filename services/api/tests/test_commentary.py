@@ -78,3 +78,32 @@ def test_audio_is_composed_from_references_and_cut_off(monkeypatch):
 def test_speakable_reads_minutes_metres_and_scores():
     assert speakable("Goal at 45+2': shot from 14 m. Score 1-0.", "en") == "Goal at minute 45 plus 2: shot from 14 metres. Score 1 to 0."
     assert speakable("Gol en el 25': 12,5 m en 4,5 s.", "es") == "Gol en el minuto 25: 12,5 metros en 4,5 segundos."
+
+
+def test_wording_varies_but_is_stable_per_event(monkeypatch):
+    client, store, _ = setup(monkeypatch, 1100)
+    first = lines(client, store)["lines"]
+    again = lines(client, store)["lines"]
+    assert [l["text"] for l in first] == [l["text"] for l in again]  # Same event, same words: caption and audio match.
+    shots = [l["text"] for l in first if l["kind"] == "shot"]
+    names = {p["name"] for p in __import__("app.sample_data", fromlist=["roster"]).roster()}
+
+    def shape(text):
+        for name in sorted(names, key=len, reverse=True):
+            text = text.replace(name, "P").replace(name.split(" ")[-1], "P")
+        return text.split(".")[0]
+    assert len({shape(t) for t in shots}) >= 5  # Not one sentence per outcome any more.
+    kinds = {l["kind"] for l in first}
+    assert {"foul", "pass"} <= kinds  # Fouls and passing play fill the gaps between shots.
+    es = lines(client, store, lang="es")["lines"]
+    assert any(l["kind"] == "foul" and "falta" in l["text"].lower() for l in es)
+
+
+def test_live_lines_are_spoken_faster_than_recaps(monkeypatch):
+    client, store, synth = setup(monkeypatch, 200)
+    first = lines(client, store)["lines"][0]
+    client.post("/api/v1/commentary/audio", json={"run_id": store.state.run_id, "ref": first["ref"], "audience": "fan", "language": "en"})
+    assert "<prosody rate='+12%'>" in synth.spoken[-1]
+    seek_to_sequence(store, first_period_end(store))
+    client.post("/api/v1/commentary/audio", json={"run_id": store.state.run_id, "ref": "recap:first_half", "audience": "fan", "language": "en"})
+    assert "prosody" not in synth.spoken[-1]

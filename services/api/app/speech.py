@@ -52,7 +52,7 @@ def check_translation(text: str, moment: dict) -> list[str]:
 
 class SpeechService:
     def __init__(self, synthesize: Callable[[str, str], bytes] | None, voices: dict[str, str] | None = None,
-                 reason: str | None = None, cache_size: int = 64):
+                 reason: str | None = None, cache_size: int = 256):
         self.synthesize, self.voices = synthesize, voices or dict(DEFAULT_VOICES)
         self.reason = reason if synthesize is None else None
         self.cache: OrderedDict[str, bytes] = OrderedDict()
@@ -63,17 +63,19 @@ class SpeechService:
         return {"configured": self.synthesize is not None, "reason": self.reason,
                 "voices": self.voices if self.synthesize else {}, "format": OUTPUT_FORMAT}
 
-    def audio(self, text: str, language: str) -> tuple[bytes, str]:
+    def audio(self, text: str, language: str, rate: str | None = None) -> tuple[bytes, str]:
+        """MP3 for text; `rate` (for example "+12%") speeds live commentary up, recaps keep the voice's own pace."""
         if self.synthesize is None:
             raise SpeechError("speech_not_configured", self.reason or "Azure Speech is not configured.", 503)
         voice = self.voices[language]
-        key = hashlib.sha256(f"{voice}|{language}|{OUTPUT_FORMAT}|{text}".encode()).hexdigest()
+        key = hashlib.sha256(f"{voice}|{language}|{OUTPUT_FORMAT}|{rate or ''}|{text}".encode()).hexdigest()
         with self.lock:
             if key in self.cache:
                 self.cache.move_to_end(key)
                 return self.cache[key], key
+        body = escape(text) if not rate else f"<prosody rate='{escape(rate)}'>{escape(text)}</prosody>"
         ssml = (f"<speak version='1.0' xml:lang='{'es-ES' if language == 'es' else 'en-GB'}'>"
-                f"<voice name='{voice}'>{escape(text)}</voice></speak>")
+                f"<voice name='{voice}'>{body}</voice></speak>")
         try:
             audio = self.synthesize(ssml, OUTPUT_FORMAT)
         except SpeechError:
