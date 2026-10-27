@@ -433,6 +433,11 @@ export const ES_UI: Record<string, string> = {
   "AI text is checked in code before it is shown: every number, player, team, event ID and claim (score, box, direction) must match the moment's evidence.": "El texto de la IA se comprueba en código antes de mostrarse: cada número, jugador, equipo, ID de acción y afirmación (marcador, área, dirección) debe coincidir con la evidencia del momento.",
   "Text that fails any check is rejected and the rule-based text stays on screen, labelled as such.": "Si falla alguna comprobación, se rechaza y se mantiene en pantalla el texto basado en reglas, indicado como tal.",
   "Recaps are marked Reconciled only after the period is checked against the pipeline's own records.": "Los resúmenes se marcan como conciliados solo después de comprobar el periodo con los registros del propio pipeline.",
+  // Audit fixes: announcements and units.
+  "Fan view: story-led moments.": "Vista fan: momentos contados como historia.",
+  "Analyst view: metrics, sources and layers.": "Vista analista: métricas, fuentes y capas.",
+  "events": "acciones",
+  "passes per defensive action": "pases por acción defensiva",
 };
 
 /** The interface language for code outside React hooks (pure helpers such as eventLabel). The match room and the

@@ -117,6 +117,8 @@ export type Generation = 'ai' | 'rule' | 'pending' | 'skipped' | 'rejected' | 'f
  * - failure: the AI service failed or timed out, so the template is shown. */
 export function generation(moment: Moment, aiMode: 'off' | 'cosmos' | string): Generation {
   const status = moment.insight.generation_status;
+  // A run narrated without the model on purpose (a cost cap or budget) is a skip, not a service failure.
+  if (status === 'provider_failure' && /cost cap|budget/i.test(moment.insight.generation_reason ?? '')) return 'skipped';
   if (status) return ({ ai_accepted: 'ai', rule_based: 'rule', pending: 'pending', skipped: 'skipped', rejected: 'rejected',
     provider_failure: 'failure', fixture: 'fixture' } as const)[status];
   const mode = moment.insight.generation_mode;
