@@ -104,6 +104,8 @@ def heal_default_run(replay) -> None:
         return
     if os.getenv("OMNIPITCH_ALLOW_REPLAY_CHANGES", "").strip() == "1":
         return
+    if _default_lock.locked():
+        return  # The start-up load is still running; it will put the default run in place itself.
     if not _heal_lock.acquire(blocking=False):
         return  # Another request is already reloading it.
     try:

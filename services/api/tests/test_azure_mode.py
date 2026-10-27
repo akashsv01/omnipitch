@@ -277,3 +277,16 @@ def test_self_check_waits_while_an_operator_allows_changes(monkeypatch):
     monkeypatch.setenv("OMNIPITCH_ALLOW_REPLAY_CHANGES", "1")
     store.generate(store.state.run_id, 7, "standard")
     assert client.get("/api/v1/replay").json()["replay"]["source"] == "simulator"
+
+
+def test_self_check_never_races_the_start_up_load(monkeypatch):
+    # While the first request is still loading the default run, other requests must not load it a second time.
+    events = simulate_match(7, "standard", run_id="gate-run")[:120]
+    store, client = _fresh_default(monkeypatch, FakeReader(events))
+    main._default_state["checked"] = True  # The start-up load has begun...
+    main._default_state["run"] = "gate-run"
+    with main._default_lock:  # ...and is still running.
+        main.heal_default_run(store)
+        assert store.meta["source"] != "eventhouse" and main._default_state["reloads"] == 0
+    main.heal_default_run(store)  # Once it has finished (or failed), the self-check may act.
+    assert store.meta["source"] == "eventhouse" and main._default_state["outcome"] == "reloaded"
