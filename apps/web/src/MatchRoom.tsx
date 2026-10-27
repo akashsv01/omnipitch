@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { RefreshCw, SlidersHorizontal, WifiOff, X } from 'lucide-react';
 import { AnalysisTabs, type TabRequest } from './components/AnalysisTabs';
 import { Brand } from './components/Crest';
+import { catchUp, readJoin, storeDismissed, type JoinPoint } from './components/CatchUp';
 import { LanguageContext, setUiLanguage, t, useTr } from './lib/i18n';
 import { Filmstrip, type FilmRange } from './components/ControlDock';
 import { EvidenceDrawer } from './components/EvidenceDrawer';
@@ -55,6 +56,18 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
     } catch { return; }
     requestAnimationFrame(() => document.getElementById('match')?.focus({ preventScroll: true }));
   }, [replay]);
+  // A shared replay can be mid-match when this viewer arrives: remember where, once per run, for the catch-up card.
+  const [join, setJoin] = useState<JoinPoint & { dismissed: boolean } | null>(null);
+  useEffect(() => {
+    if (replay && join?.run !== replay.state.run_id) setJoin(readJoin(replay.state.run_id, replay.state.latest_event_sequence));
+  }, [replay, join?.run]);
+  const missedSoFar = useMemo(() => replay && !join?.dismissed ? catchUp(join, replay.state, replay.events, replay.moments) : null,
+    [replay, join]);
+  const dismissCatchUp = useCallback(() => setJoin(current => {
+    if (current) storeDismissed(current);
+    return current && { ...current, dismissed: true };
+  }), []);
+
   // A backwards seek can remove the inspected moment; fall back to following live.
   useEffect(() => { if (inspectId && replay && !inspect) setInspectId(undefined); }, [inspectId, inspect, replay]);
 
@@ -222,7 +235,8 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
         <MomentFeed moments={replay.moments} audience={prefs.audience} favoriteTeam={prefs.favoriteTeam} favoritePlayer={prefs.favoritePlayer}
           focusMetric={prefs.focusMetric} analysis={replay.analysis} events={replay.events}
           roster={replay.replay.roster} chosenId={inspectId} onChoose={chooseMoment} onEvidence={setEvidence} onJump={jumpTo} aiMode={replay.insights.status === 'off' ? 'off' : replay.insights.mode} onRecap={openRecapNow}
-          nowClock={replay.state.latest_event_sequence ? clockLabel(replay.replay.clock_period, replay.replay.clock_ms) : null} />
+          nowClock={replay.state.latest_event_sequence ? clockLabel(replay.replay.clock_period, replay.replay.clock_ms) : null}
+          catchUp={missedSoFar} state={replay.state} onDismissCatchUp={dismissCatchUp} />
         <div className="desk-analysis">
         <AnalysisTabs replay={replay} audience={prefs.audience} favoritePlayer={prefs.favoritePlayer}
           busy={live.busy} onJumpMoment={jumpToMoment} tabRequest={tabRequest}

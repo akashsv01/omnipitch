@@ -1,7 +1,8 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, Crosshair, Eye, FileSearch, Goal, Radar, Repeat2, RotateCcw, ShieldCheck, Sparkles, Star } from 'lucide-react';
-import type { Analysis, Event, Moment, Player, Rule } from '../types/contracts';
+import type { Analysis, Event, MatchState, Moment, Player, Rule } from '../types/contracts';
 import type { Audience, FocusMetric } from '../lib/prefs';
+import { CatchUpCard, type CatchUpData } from './CatchUp';
 import { FocusPanel } from './FocusPanel';
 import { RULE_LABEL, TEAM_META, clockLabel, momentInvolves, teamTone } from '../lib/format';
 import { GENERATION_LABEL, GENERATION_SHORT, generation, keyValues, metricRows, whyItMatters } from '../lib/evidence';
@@ -46,13 +47,14 @@ export function episodes(list: Moment[]): { lead: Moment; related: Moment[] }[] 
   });
 }
 
-export const MomentFeed = memo(function MomentFeed({ moments, audience, favoriteTeam, favoritePlayer, focusMetric, analysis, events, roster, chosenId, onChoose, onEvidence, onJump, aiMode, onRecap, nowClock }: {
+export const MomentFeed = memo(function MomentFeed({ moments, audience, favoriteTeam, favoritePlayer, focusMetric, analysis, events, roster, chosenId, onChoose, onEvidence, onJump, aiMode, onRecap, nowClock, catchUp, state, onDismissCatchUp }: {
   moments: Moment[]; audience: Audience; favoriteTeam: string | null; favoritePlayer: string | null; roster: Player[]; aiMode: string;
   focusMetric: FocusMetric | null; analysis: Analysis; events: Event[];
   chosenId: string | undefined; onChoose: (moment: Moment | undefined) => void;
   onEvidence: (moment: Moment) => void; onJump: (moment: Moment) => void; onRecap: () => void;
   /** The replay's current minute (the action the pitch follows), to set the spotlight in time. */
   nowClock: string | null;
+  catchUp: CatchUpData | null; state: MatchState; onDismissCatchUp: () => void;
 }) {
   const tr = useTr();
   const fan = audience === 'fan';
@@ -122,6 +124,7 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
         : `${ordered.length} ${language === 'es' ? 'de' : 'of'} ${countLabel(shown.length, language)}`}</span>
       {shown.length > 0 && <button type="button" className="button ghost small" onClick={onRecap}>{UI[language].recap}</button>}
     </div>
+    {catchUp && <CatchUpCard data={catchUp} state={state} roster={roster} onChoose={onChoose} onDismiss={onDismissCatchUp} />}
     {featured
       ? <Spot key={featured.moment_id} moment={featured} fresh={fresh.has(featured.moment_id)} pinned={!!chosen} nowClock={nowClock}
           favorite={!!momentInvolves(featured, favoriteTeam, favoritePlayer)} onEvidence={onEvidence} onJump={onJump}

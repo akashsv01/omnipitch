@@ -278,6 +278,17 @@ main:focus { outline: none; } /* programmatic skip-link target only */
 @media (hover: hover) and (pointer: fine) { .moment-row:hover { background: var(--bg-2); } }
 .moment-enter { animation: moment-in var(--dur-enter) var(--ease-out) both; }
 @keyframes moment-in { from { opacity: 0; transform: translateY(-6px); } }
+.catch-up { flex: none; display: grid; gap: 6px; margin-top: var(--s3); padding: 10px 12px 4px; border: 1px solid rgba(242, 204, 98, .35); border-radius: var(--r3); background: var(--amber-soft);
+  animation: moment-in var(--dur-enter) var(--ease-out) both; }
+.catch-up-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.catch-up-head .icon-button { width: 30px; height: 30px; }
+.catch-up-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+.catch-up h3 { font: 800 22px/1.05 var(--display); letter-spacing: .01em; }
+.catch-up-score { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 13.5px; color: var(--text-2); }
+.catch-up-score b { color: var(--text); font-weight: 600; }
+.catch-up-score .num { color: var(--text-3); }
+.catch-up-list { list-style: none; margin: 2px 0 0; padding: 0; }
+.catch-up-list .moment-row { padding-block: 7px; }
 .quiet-note { padding: 10px 12px; font-size: 13px; color: var(--text-3); border-top: 1px solid var(--line); }
 .empty { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 28px 16px; color: var(--text-3); font-size: 14px; }
 .empty strong { color: var(--text-2); font-weight: 500; }

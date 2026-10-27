@@ -43,11 +43,12 @@ The demo address is in the submission form.
 
 1. Open it. The first load after a quiet period can take up to a minute while the app starts; if the page says it can't reach the match API, wait a few seconds and press **Try again**.
 2. Choose **Fan** or **Analyst** and select **Enter match room** (or open `/match` directly). Press **Start replay** (or Space); the filmstrip under the pitch shows where goals and moments are.
-3. Watch **Key moments**: each one says how its text was produced (**AI · validated** or **Rule-based**). The first AI-narrated moments appear around 25'; click a goal pin or a moment to jump or inspect it.
-4. Press **Why this matters** (Fan) or **Inspect evidence** (Analyst): the explanation, the numbered source sequence (2D, or 3D on demand), the values, the trigger and the limitations.
-5. Switch **Fan view** / **Analyst view** at the top: the same facts and replay position, presented for each audience. **EN / ES** switches the interface and the explanations to Spanish.
-6. Select **Match recap** (or **Match analysis → Recap**) for the half-time or full-time recap (marked **Reconciled** when final).
-7. On the `final-design` branch: press **Enable commentary** above the pitch to hear the match called live; the half-time recap is read out when the half ends. Diagnostics such as **Data quality** appear only in development builds.
+3. Arriving mid-match? A **Catch up** card above the moments says when you joined, the score at that point and up to three moments to open first; it only covers what happened before you arrived, and it is remembered for the browser tab.
+4. Watch **Key moments**: each one says how its text was produced (**AI · validated** or **Rule-based**). The first AI-narrated moments appear around 25'; click a goal pin or a moment to jump or inspect it.
+5. Press **Why this matters** (Fan) or **Inspect evidence** (Analyst): the explanation, the numbered source sequence (2D, or 3D on demand), the values, the trigger and the limitations.
+6. Switch **Fan view** / **Analyst view** at the top: the same facts and replay position, presented for each audience. **EN / ES** switches the interface and the explanations to Spanish.
+7. Select **Match recap** (or **Match analysis → Recap**) for the half-time or full-time recap (marked **Reconciled** when final).
+8. Press **Enable commentary** above the pitch to hear the match called live; the half-time recap is read out when the half ends. Diagnostics such as **Data quality** appear only in development builds.
 
 The replay is shared by everyone viewing the site, so another viewer's play, pause or seek moves yours too. All teams, players and events are synthetic.
 
