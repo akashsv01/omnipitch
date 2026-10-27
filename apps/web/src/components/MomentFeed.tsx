@@ -1,6 +1,7 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, Crosshair, Eye, FileSearch, Goal, Radar, Repeat2, RotateCcw, ShieldCheck, Sparkles, Star } from 'lucide-react';
-import type { Moment, Player, Rule } from '../types/contracts';
+import type { MatchState, Moment, Player, Rule } from '../types/contracts';
+import { CatchUpCard, type CatchUpData } from './CatchUp';
 import type { Audience } from '../lib/prefs';
 import { RULE_LABEL, TEAM_META, clockLabel, momentInvolves, teamTone } from '../lib/format';
 import { GENERATION_LABEL, GENERATION_SHORT, calculationRows, generation, keyValues, metricRows, whyItMatters } from '../lib/evidence';
@@ -24,10 +25,11 @@ const FILTERS: { id: 'all' | Rule; label: string; fan?: boolean }[] = [
 /** Moment spotlight above a compact history. The reader decides what is in the spotlight: a newly detected
  * moment never replaces one they picked; it waits behind an indicator. Fans get a story-led spotlight;
  * analysts get an inspector with aligned values, the trigger and the source events. Same moments either way. */
-export const MomentFeed = memo(function MomentFeed({ moments, audience, favoriteTeam, favoritePlayer, roster, chosenId, onChoose, onEvidence, onJump, aiMode, onRecap }: {
+export const MomentFeed = memo(function MomentFeed({ moments, audience, favoriteTeam, favoritePlayer, roster, chosenId, onChoose, onEvidence, onJump, aiMode, onRecap, catchUp, state, onDismissCatchUp }: {
   moments: Moment[]; audience: Audience; favoriteTeam: string | null; favoritePlayer: string | null; roster: Player[]; aiMode: string;
   chosenId: string | undefined; onChoose: (moment: Moment | undefined) => void;
   onEvidence: (moment: Moment) => void; onJump: (moment: Moment) => void; onRecap: () => void;
+  catchUp: CatchUpData | null; state: MatchState; onDismissCatchUp: () => void;
 }) {
   const fan = audience === 'fan';
   const language = useLanguage();
@@ -91,6 +93,7 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
       <p>{shown.length ? `${shown.length} detected so far` : 'Detected from the events'}{favoriteName ? `, ${favoriteName} first` : ''}
         {shown.length > 0 && <> · <button type="button" className="text-button inline" onClick={onRecap}>Match recap</button></>}</p>
     </div>
+    {catchUp && <CatchUpCard data={catchUp} state={state} roster={roster} onChoose={onChoose} onDismiss={onDismissCatchUp} />}
     {featured
       ? <Spot key={featured.moment_id} moment={featured} fresh={fresh.has(featured.moment_id)} pinned={!!chosen}
           favorite={!!momentInvolves(featured, favoriteTeam, favoritePlayer)} onEvidence={onEvidence} onJump={onJump}

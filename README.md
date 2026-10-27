@@ -30,10 +30,11 @@ The demo address is in the submission form.
 
 1. Open it. The first load after a quiet period can take up to a minute while the app starts; if the page says it can't reach the match API, wait a few seconds and press **Try again**.
 2. Choose **Fan** or **Analyst** and select **Enter match room** (or open `/match` directly). Press **Start replay** (or Space); the filmstrip under the pitch shows where goals and moments are.
-3. Watch **Key moments**: each one says how its text was produced (**AI · validated** or **Rule-based**). The first AI-narrated moments appear around 25'; click a goal pin or a moment to jump or inspect it.
-4. Press **Why this matters** (Fan) or **Inspect evidence** (Analyst): the explanation, the numbered source sequence (2D, or 3D on demand), the values, the trigger and the limitations.
-5. Switch **Fan view** / **Analyst view** at the top: the same facts and replay position, presented for each audience. **EN / ES** switches the rule-based explanations to Spanish (AI-written text stays in English).
-6. Select **Match recap** (or **Match analysis → Recap**) for the half-time or full-time recap (marked **Reconciled** when final), and **Data quality** for the live-push link and the count of AI-written and checked insights.
+3. Arriving mid-match? A **Catch up** card above the moments says when you joined, the score at that point and up to three moments to open first; it only covers what happened before you arrived, and it is remembered for the browser tab.
+4. Watch **Key moments**: each one says how its text was produced (**AI · validated** or **Rule-based**). The first AI-narrated moments appear around 25'; click a goal pin or a moment to jump or inspect it.
+5. Press **Why this matters** (Fan) or **Inspect evidence** (Analyst): the explanation, the numbered source sequence (2D, or 3D on demand), the values, the trigger and the limitations.
+6. Switch **Fan view** / **Analyst view** at the top: the same facts and replay position, presented for each audience. **EN / ES** switches the rule-based explanations to Spanish (AI-written text stays in English).
+7. Select **Match recap** (or **Match analysis → Recap**) for the half-time or full-time recap (marked **Reconciled** when final), and **Data quality** for the live-push link and the count of AI-written and checked insights.
 
 The replay is shared by everyone viewing the site, so another viewer's play, pause or seek moves yours too. All teams, players and events are synthetic.
 
