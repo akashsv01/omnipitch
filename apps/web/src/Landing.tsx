@@ -199,17 +199,17 @@ function HeroPitchFlat() {
   const path = HERO_STEPS.slice(0, -1).map(s => `${s.x} ${s.y}`).join(' ');
   const entry = HERO_STEPS[HERO_STEPS.length - 2];
   return <svg className="hero-flat" viewBox="-6 -6 117 80" aria-hidden="true">
-    <rect x="-4" y="-4" width="113" height="76" rx="1.5" fill="#123b2f" />
-    {Array.from({ length: 6 }, (_, i) => <rect key={i} x={i * 17.5} y="0" width="8.75" height="68" fill="#144232" />)}
-    <g fill="none" stroke="#f3f1e9" strokeOpacity=".75" strokeWidth=".3">
+    <rect x="-4" y="-4" width="113" height="76" rx="1.5" fill="#1a302a" />
+    {Array.from({ length: 6 }, (_, i) => <rect key={i} x={i * 17.5} y="0" width="8.75" height="68" fill="#1c342e" />)}
+    <g fill="none" stroke="#e9e7df" strokeOpacity=".75" strokeWidth=".3">
       <rect x="0" y="0" width="105" height="68" /><path d="M52.5 0V68" /><circle cx="52.5" cy="34" r="9.15" />
       <rect x="0" y="13.84" width="16.5" height="40.32" /><rect x="88.5" y="13.84" width="16.5" height="40.32" />
     </g>
-    <path d="M105 30.34v7.32" stroke="#f3f1e9" strokeWidth="1.1" />
-    <path d={`M${path}`} fill="none" stroke="#ff806a" strokeWidth=".7" strokeLinecap="round" strokeLinejoin="round" />
-    <path d={`M${entry.x} ${entry.y} ${GOAL.x} ${GOAL.y}`} fill="none" stroke="#ebcb70" strokeWidth=".8" strokeLinecap="round" />
-    {HERO_STEPS.slice(0, -1).map(s => <circle key={s.key} cx={s.x} cy={s.y} r=".9" fill="#ff806a" />)}
-    <circle cx={GOAL.x} cy={GOAL.y} r="2.3" fill="none" stroke="#ebcb70" strokeWidth=".35" />
+    <path d="M105 30.34v7.32" stroke="#e9e7df" strokeWidth="1.1" />
+    <path d={`M${path}`} fill="none" stroke="#d29a8c" strokeWidth=".7" strokeLinecap="round" strokeLinejoin="round" />
+    <path d={`M${entry.x} ${entry.y} ${GOAL.x} ${GOAL.y}`} fill="none" stroke="#cdbb92" strokeWidth=".8" strokeLinecap="round" />
+    {HERO_STEPS.slice(0, -1).map(s => <circle key={s.key} cx={s.x} cy={s.y} r=".9" fill="#d29a8c" />)}
+    <circle cx={GOAL.x} cy={GOAL.y} r="2.3" fill="none" stroke="#cdbb92" strokeWidth=".35" />
     <circle cx={GOAL.x - .6} cy={GOAL.y} r=".95" fill="#fbfaf4" />
   </svg>;
 }
@@ -221,7 +221,7 @@ function StadiumMotif() {
     <defs>
       <radialGradient id="stadium-light" cx="68%" cy="48%" r="38%">
         <stop offset="0" stopColor="#7f9bff" stopOpacity=".2" />
-        <stop offset=".6" stopColor="#3155e7" stopOpacity=".05" />
+        <stop offset=".6" stopColor="#4a62c2" stopOpacity=".05" />
         <stop offset="1" stopColor="#0b1018" stopOpacity="0" />
       </radialGradient>
     </defs>
@@ -235,15 +235,15 @@ function StadiumMotif() {
 
 function FollowGraphic() {
   return <svg className="how-art" viewBox="0 0 320 150" aria-hidden="true">
-    <rect x="0" y="0" width="320" height="104" rx="6" fill="#123b2f" />
-    <g fill="none" stroke="#f3f1e9" strokeOpacity=".55" strokeWidth="1"><rect x="10" y="8" width="300" height="88" /><path d="M160 8v88" /><circle cx="160" cy="52" r="18" /></g>
-    <path d="M60 70 120 40 182 58 236 34" fill="none" stroke="#ff806a" strokeWidth="2.4" strokeLinecap="round" strokeDasharray="5 5" />
-    <path d="M90 30 150 66" fill="none" stroke="#7dd8e7" strokeWidth="2.4" strokeLinecap="round" />
+    <rect x="0" y="0" width="320" height="104" rx="6" fill="#1a302a" />
+    <g fill="none" stroke="#e9e7df" strokeOpacity=".55" strokeWidth="1"><rect x="10" y="8" width="300" height="88" /><path d="M160 8v88" /><circle cx="160" cy="52" r="18" /></g>
+    <path d="M60 70 120 40 182 58 236 34" fill="none" stroke="#d29a8c" strokeWidth="2.4" strokeLinecap="round" strokeDasharray="5 5" />
+    <path d="M90 30 150 66" fill="none" stroke="#9bbcc2" strokeWidth="2.4" strokeLinecap="round" />
     <circle cx="236" cy="34" r="4.5" fill="#fbfaf4" />
     <rect x="0" y="118" width="320" height="10" rx="5" fill="#d8dee8" />
-    <rect x="0" y="118" width="196" height="10" rx="5" fill="#3155e7" />
+    <rect x="0" y="118" width="196" height="10" rx="5" fill="#4a62c2" />
     {[34, 90, 150, 248, 286].map(x => <rect key={x} x={x} y="113" width="2.5" height="20" fill={x === 150 ? '#b8901c' : '#14201f'} />)}
-    <circle cx="196" cy="123" r="8" fill="#3155e7" stroke="#f3efe5" strokeWidth="3" />
+    <circle cx="196" cy="123" r="8" fill="#4a62c2" stroke="#f3efe5" strokeWidth="3" />
   </svg>;
 }
 
@@ -265,14 +265,14 @@ function EvidenceGraphic() {
   return <svg className="how-art" viewBox="0 0 260 150" aria-hidden="true">
     {[0, 1, 2].map(i => <g key={i}>
       {i < 2 && <rect x="17" y={30 + i * 40} width="2" height="26" fill="#14201f" opacity=".3" />}
-      <circle cx="18" cy={20 + i * 40} r="13" fill={i === 1 ? '#3155e7' : '#f3efe5'} stroke="#3155e7" strokeWidth="2" />
+      <circle cx="18" cy={20 + i * 40} r="13" fill={i === 1 ? '#4a62c2' : '#f3efe5'} stroke="#4a62c2" strokeWidth="2" />
       <text x="18" y={25 + i * 40} textAnchor="middle" fontFamily="var(--display)" fontWeight="800" fontSize="15" fill={i === 1 ? '#f3efe5' : '#14201f'}>{i + 1}</text>
       <text x="42" y={25 + i * 40} fontFamily="var(--sans)" fontWeight={i === 1 ? 600 : 400} fontSize="13" fill="#14201f">{['Interception', 'Pass · 27 m', 'Shot saved'][i]}</text>
     </g>)}
     <rect x="150" y="6" width="110" height="128" rx="6" fill="#121b27" />
     {['event', 'action', 'from', 'to'].map((k, i) => <g key={k}>
       <text x="162" y={32 + i * 28} fontFamily="var(--mono)" fontSize="10" fill="#8f9cb0">{k}</text>
-      <rect x="204" y={24 + i * 28} width={[44, 34, 40, 40][i]} height="8" rx="2" fill="#f3f1e9" opacity=".7" />
+      <rect x="204" y={24 + i * 28} width={[44, 34, 40, 40][i]} height="8" rx="2" fill="#e9e7df" opacity=".7" />
     </g>)}
   </svg>;
 }

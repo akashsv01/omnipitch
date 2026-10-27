@@ -153,8 +153,8 @@ function MomentumBand({ replay, halfFraction }: { replay: ReplaySnapshot; halfFr
   return <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true">
     <line x1="0" y1="13" x2="100" y2="13" stroke="rgba(243,243,234,.1)" strokeWidth=".4" vectorEffect="non-scaling-stroke" />
     {values.map((slot, index) => slot.seen && <g key={index}>
-      <rect x={x(index) + .25} y={13 - Math.max(0, slot.harbor / max * 12)} width={Math.max(.2, w(index))} height={Math.max(0, slot.harbor / max * 12)} fill="var(--harbor)" opacity=".7" />
-      <rect x={x(index) + .25} y={13} width={Math.max(.2, w(index))} height={Math.max(0, slot.vale / max * 12)} fill="var(--vale)" opacity=".7" />
+      <rect x={x(index) + .25} y={13 - Math.max(0, slot.harbor / max * 12)} width={Math.max(.2, w(index))} height={Math.max(0, slot.harbor / max * 12)} fill="var(--harbor)" opacity=".55" />
+      <rect x={x(index) + .25} y={13} width={Math.max(.2, w(index))} height={Math.max(0, slot.vale / max * 12)} fill="var(--vale)" opacity=".55" />
     </g>)}
   </svg>;
 }

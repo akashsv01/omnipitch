@@ -12,7 +12,7 @@ import { HERO_STEPS as STEPS } from '../lib/heroSequence';
  * changes, paused when hidden or off screen, disposed on unmount. */
 export interface HeroControls { replay: () => void; setPaused: (paused: boolean) => void }
 
-const TONE = { harbor: '#ff806a', shot: '#ebcb70' };
+const TONE = { harbor: '#d29a8c', shot: '#cdbb92' };
 const tone = (index: number) => index === STEPS.length - 1 ? TONE.shot : TONE.harbor;
 const TOP = 1.25;
 const at = (x: number, y: number, lift = 0) => new Vector3(x - 52.5, TOP + lift, y - 34);
@@ -79,9 +79,9 @@ export default function HeroPitch3D({ reduced, onReady, onFail, onState, onStep,
     const slab = new Group();
     scene.add(slab);
     const side = keep(new MeshLambertMaterial({ color: '#0b2a21' }));
-    const top = keep(new MeshLambertMaterial({ color: '#123b2f' }));
+    const top = keep(new MeshLambertMaterial({ color: '#1a302a' }));
     slab.add(new Mesh(keep(new BoxGeometry(113, 2.5, 76)), [side, side, top, side, side, side]));
-    const band = keep(new MeshLambertMaterial({ color: '#144232' }));
+    const band = keep(new MeshLambertMaterial({ color: '#1c342e' }));
     for (let i = 0; i < 12; i += 2) {
       const stripe = new Mesh(keep(new PlaneGeometry(8.75, 68)), band);
       stripe.rotation.x = -Math.PI / 2;
@@ -102,7 +102,7 @@ export default function HeroPitch3D({ reduced, onReady, onFail, onState, onStep,
     slab.add(new LineSegments(lines, keep(new LineBasicMaterial({ color: '#f3efe5', transparent: true, opacity: .78 }))));
 
     // The attacked goal: two posts and a bar at real size (7.32 x 2.44 m), so the shot has a legible destination.
-    const frame = keep(new MeshLambertMaterial({ color: '#f3f1e9' }));
+    const frame = keep(new MeshLambertMaterial({ color: '#e9e7df' }));
     const post = keep(new BoxGeometry(.6, 2.44, .6));
     [30.34, 37.66].forEach(y => { const m = new Mesh(post, frame); m.position.copy(at(105.2, y, 1.22)); slab.add(m); });
     const bar = new Mesh(keep(new BoxGeometry(.6, .6, 7.92)), frame);
@@ -133,7 +133,7 @@ export default function HeroPitch3D({ reduced, onReady, onFail, onState, onStep,
       return material;
     });
     // The active step's halo; it moves to whichever step is active.
-    const haloMaterial = keep(new MeshBasicMaterial({ color: '#f3f1e9', transparent: true, opacity: 0, depthWrite: false }));
+    const haloMaterial = keep(new MeshBasicMaterial({ color: '#e9e7df', transparent: true, opacity: 0, depthWrite: false }));
     const halo = new Mesh(keep(new RingGeometry(2.2, 2.9, 40)), haloMaterial);
     halo.rotation.x = -Math.PI / 2;
     slab.add(halo);
@@ -176,7 +176,7 @@ export default function HeroPitch3D({ reduced, onReady, onFail, onState, onStep,
         const h = active === STEPS.length - 1 ? ease((elapsed - stepAt(active)) / HIGHLIGHT) : 1;
         haloMaterial.opacity = .9 - (active === STEPS.length - 1 ? .25 * h : 0);
         halo.scale.setScalar(active === STEPS.length - 1 ? .7 + .3 * h : .85);
-        halo.material.color.set(active === STEPS.length - 1 ? TONE.shot : '#f3f1e9');
+        halo.material.color.set(active === STEPS.length - 1 ? TONE.shot : '#e9e7df');
       } else haloMaterial.opacity = 0;
       return active;
     };
