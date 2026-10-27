@@ -80,6 +80,25 @@ def test_speakable_reads_minutes_metres_and_scores():
     assert speakable("Gol en el 25': 12,5 m en 4,5 s.", "es") == "Gol en el minuto 25: 12,5 metros en 4,5 segundos."
 
 
+def test_wording_varies_but_is_stable_per_event(monkeypatch):
+    client, store, _ = setup(monkeypatch, 1100)
+    first = lines(client, store)["lines"]
+    again = lines(client, store)["lines"]
+    assert [l["text"] for l in first] == [l["text"] for l in again]  # Same event, same words: caption and audio match.
+    shots = [l["text"] for l in first if l["kind"] == "shot"]
+    names = {p["name"] for p in __import__("app.sample_data", fromlist=["roster"]).roster()}
+
+    def shape(text):
+        for name in sorted(names, key=len, reverse=True):
+            text = text.replace(name, "P").replace(name.split(" ")[-1], "P")
+        return text.split(".")[0]
+    assert len({shape(t) for t in shots}) >= 5  # Not one sentence per outcome any more.
+    kinds = {l["kind"] for l in first}
+    assert {"foul", "pass"} <= kinds  # Fouls and passing play fill the gaps between shots.
+    es = lines(client, store, lang="es")["lines"]
+    assert any(l["kind"] == "foul" and "falta" in l["text"].lower() for l in es)
+
+
 def test_brief_moment_lines_keep_only_the_headline(monkeypatch):
     # Fast replays read a moment's headline only, so the line ends before the match has moved on.
     client, store, _ = setup(monkeypatch, 600)

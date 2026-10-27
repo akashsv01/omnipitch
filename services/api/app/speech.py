@@ -52,7 +52,7 @@ def check_translation(text: str, moment: dict) -> list[str]:
 
 class SpeechService:
     def __init__(self, synthesize: Callable[[str, str], bytes] | None, voices: dict[str, str] | None = None,
-                 reason: str | None = None, cache_size: int = 64):
+                 reason: str | None = None, cache_size: int = 256):
         self.synthesize, self.voices = synthesize, voices or dict(DEFAULT_VOICES)
         self.reason = reason if synthesize is None else None
         self.cache: OrderedDict[str, bytes] = OrderedDict()

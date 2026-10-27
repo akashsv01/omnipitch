@@ -315,8 +315,11 @@ def _warm(lines: list[dict], language: str) -> None:
         return
     if _WARM is None:
         from concurrent.futures import ThreadPoolExecutor
-        _WARM = ThreadPoolExecutor(max_workers=2, thread_name_prefix="speech-warm")
-    for line in sorted(lines, key=lambda l: (-l["priority"], -l["sequence"]))[:3]:
+        _WARM = ThreadPoolExecutor(max_workers=3, thread_name_prefix="speech-warm")
+    # The player speaks major lines and, in quiet spells, the newest routine one: prepare both kinds.
+    likely = sorted(lines, key=lambda l: (-l["priority"], -l["sequence"]))[:4]
+    likely += [l for l in sorted(lines, key=lambda l: -l["sequence"])[:2] if l not in likely]
+    for line in likely:
         _WARM.submit(_safe_audio, speakable(line["text"], language), language)
 
 
