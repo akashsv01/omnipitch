@@ -169,7 +169,7 @@ Direction: "OmniPitch — football, seen differently". A warm, editorial landing
 - **Accessibility:** skip links, landmarks, labelled controls, a keyboard slider, Space to play or pause, arrow-key tabs and radio groups. The evidence drawer traps focus, closes on Escape and restores focus. Crest tilt only applies with a fine pointer and without reduced motion.
 - **Preferences** (audience, favourites, per-audience layers, motion) live in `localStorage` and never change facts.
 
-## Final pass (2026-10-27, branch `final-design`, not deployed)
+## Final pass (2026-10-27, merged into `main`, not yet redeployed)
 
 ### Five-stage flow and who does what
 

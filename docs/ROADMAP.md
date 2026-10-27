@@ -4,7 +4,7 @@ Phases describe intended work, not committed completion dates. Implement only th
 
 ## Current state
 
-**Final pass (2026-10-27, branch `final-design`, local only, not merged or deployed).** This adds:
+**Final pass (2026-10-27, branch `final-design`, merged into `main` 2026-10-27; not yet redeployed).** This adds:
 
 - the midnight design;
 - honest generation states;
@@ -24,7 +24,7 @@ Phases describe intended work, not committed completion dates. Implement only th
 
 Not built, deliberately: auto-eventing from video (no video or vision pipeline).
 
-Details: Phase 6 → Final pass. Open: review and merge, then a redeploy, so that the live site and the video match this release. Narration audio is verified locally against a real Azure AI Speech resource (2026-10-27); the deployed API needs its own resource in its tenant. The licence is still pending.
+Details: Phase 6 → Final pass. Open: a redeploy, then re-recording the video, so that the live site and the video match this release. Narration audio is verified locally against a real Azure AI Speech resource (2026-10-27); the deployed API needs its own resource in its tenant. The licence is still pending.
 
 **Phase 5 complete (2026-10-25); Phase 6 next.** The deployed candidate runs the latest `main` with the default judge run, HTTP health probes and a budget alert. All gate tests pass: duplicates, late events, outages (including the bridge's store outage), reconnect, quiet runs and measured latency (`latency-20261025-a`). Scope is frozen: bug fixes only. Phase 6 in progress: fresh-clone check, live smoke test and judge runbook done (2026-10-25); cross-browser checks, video, release tag and submission remain.
 
@@ -471,7 +471,7 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
     - PASS (browser, production build): mode switches ×6 keep run, sequence, status and the inspected moment, with no extra polling; 2D/3D selection is identical after a camera change; local evidence playback leaves the shared replay unchanged; canvases are 1 while 3D is open and 0 after closing or route round trips; no future moments; the recap cites only revealed moments; no horizontal overflow at five sizes; filmstrip on screen in both audiences at 1440×900 and 1366×768.
     - Note: moments are frozen when first detected, so runs created before this change keep their old template text; new runs use the new wording.
 
-- [x] Final pass (Akash, 2026-10-27, branch `final-design`, local; not merged, not deployed).
+- [x] Final pass (Akash, 2026-10-27, branch `final-design`; merged into `main` 2026-10-27, not yet redeployed).
   - **Built:**
     - **Generation states:** `insight.generation_status` and reason. A skip is never labelled a failure; legacy records are classified; rule-based text is rebuilt from frozen evidence.
     - **Geometry:** `lib/geometry.ts` mirrors `metrics.py`, with `from_percent` / `fromPercent`.
@@ -498,7 +498,7 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
     - **Fixed:** Pause/Resume tracked only the visual sequence, so after a short sequence ended it read "Resume" while the narration was still speaking. It now covers both.
     - **Open:** the deployed API needs a Speech resource in its own tenant (its managed identity cannot use this one); a script for that is with the submission notes.
   - **UNVERIFIED:** Safari; screen readers. Not deployed, so the live site and the recorded video still show `main`.
-  - **Second pass (Akash, 2026-10-27, same branch, local; not merged, not deployed):**
+  - **Second pass (Akash, 2026-10-27, same branch; merged into `main` 2026-10-27 with the catch-up card from `main`, not yet redeployed):**
     - **Built:** live spoken commentary (server-composed play-by-play and moment context, priority queue, one audio controller); half-time and full-time recaps narrated once, never repeated after a reload; the full Spanish interface, background model translation of accepted AI text (checked in code) and a Spanish AI recap rewrite; server-side broadcast playout shared by every screen; a pass-difficulty indicator; simulated physical data labelled "sim."; implementation text removed from the public interface (Data quality and run tools are development-only); typography and Key moments, recap and stat-row improvements.
     - **Python (PASS):** 227 passed, 21 skipped. New: `test_commentary.py`, `test_broadcast.py`, `test_spanish.py`, `test_physical.py`; `test_geometry.py` and `test_recap_language.py` extended.
     - **Frontend (PASS):** typecheck, build, `test:contracts`, `test:pitch`, `test:push`, `test:replay:browser` (now checks the upload source through the API, since the source chip is no longer shown publicly).
@@ -510,6 +510,6 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
 ## Stretch
 
 - [ ] Export reusable synthetic datasets with provenance and schema version (was the repo's Phase 5).
-- [x] Basic producer selection and recap tools: `/producer` with queue, revisions and commentary (2026-10-27, branch `final-design`, not deployed).
+- [x] Basic producer selection and recap tools: `/producer` with queue, revisions and commentary (2026-10-27, merged into `main`, not yet redeployed).
 
 - [x] Simple 3D replay after the 2D path is reliable: evidence-drawer 3D view on branch `ui-matchdesk` (2026-10-25), not merged.
