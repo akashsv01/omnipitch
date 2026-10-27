@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { RefreshCw, SlidersHorizontal, WifiOff, X } from 'lucide-react';
 import { AnalysisTabs, type TabRequest } from './components/AnalysisTabs';
 import { Brand } from './components/Crest';
+import { TrustBar } from './components/TrustBar';
 import { catchUp, readJoin, storeDismissed, type JoinPoint } from './components/CatchUp';
 import { LanguageContext, setUiLanguage, t, useTr } from './lib/i18n';
 import { Filmstrip, type FilmRange } from './components/ControlDock';
@@ -221,6 +222,7 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
       </AnimatePresence>
       </div>
 
+      <TrustBar replay={replay} />
 
       <div className="desk">
         <MatchStage replay={replay} selected={selected} onSelect={selectEvent} prefs={prefs} updatePrefs={updatePrefs}

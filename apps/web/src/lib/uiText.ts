@@ -418,6 +418,21 @@ export const ES_UI: Record<string, string> = {
   'What remains unknown?': '¿Qué sigue sin saberse?',
   "Answered from this moment's recorded evidence and calculations only; no AI model is used.": 'Respondido solo con las acciones registradas y los cálculos de este momento; no se usa ningún modelo de IA.',
   'Sources: ': 'Fuentes: ',
+  // Fact-check panel (TrustBar).
+  "Checked before it is shown": "Comprobado antes de mostrarse",
+  "How we check": "Cómo lo comprobamos",
+  "moments, each from recorded events": "momentos, cada uno a partir de acciones registradas",
+  "figures computed in code, not by AI": "cifras calculadas en código, no por la IA",
+  "source events cited": "acciones de origen citadas",
+  "rule-based explanations": "explicaciones basadas en reglas",
+  "AI-written and checked": "escritos por IA y comprobados",
+  "AI texts rejected, rule-based kept": "textos de IA rechazados, se mantiene el texto basado en reglas",
+  "awaiting AI": "pendientes de la IA",
+  "Every number is computed in code from the recorded events; the AI never calculates.": "Cada número se calcula en código a partir de las acciones registradas; la IA nunca calcula.",
+  "A moment exists only when a rule's threshold is met, and its evidence is frozen when it is detected.": "Un momento solo existe cuando se cumple el umbral de una regla, y su evidencia se congela al detectarse.",
+  "AI text is checked in code before it is shown: every number, player, team, event ID and claim (score, box, direction) must match the moment's evidence.": "El texto de la IA se comprueba en código antes de mostrarse: cada número, jugador, equipo, ID de acción y afirmación (marcador, área, dirección) debe coincidir con la evidencia del momento.",
+  "Text that fails any check is rejected and the rule-based text stays on screen, labelled as such.": "Si falla alguna comprobación, se rechaza y se mantiene en pantalla el texto basado en reglas, indicado como tal.",
+  "Recaps are marked Reconciled only after the period is checked against the pipeline's own records.": "Los resúmenes se marcan como conciliados solo después de comprobar el periodo con los registros del propio pipeline.",
 };
 
 /** The interface language for code outside React hooks (pure helpers such as eventLabel). The match room and the

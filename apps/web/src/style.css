@@ -289,6 +289,16 @@ main:focus { outline: none; } /* programmatic skip-link target only */
 .catch-up-score .num { color: var(--text-3); }
 .catch-up-list { list-style: none; margin: 2px 0 0; padding: 0; }
 .catch-up-list .moment-row { padding-block: 7px; }
+.trust-bar { display: grid; gap: 6px; margin-top: var(--s3); padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--r3); background: var(--surface); }
+.trust-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.trust-head .text-button { white-space: nowrap; flex: none; }
+.trust-head h2 { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ok); }
+.trust-stats { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0; }
+.trust-stats div { display: flex; flex-direction: row-reverse; align-items: baseline; gap: 6px; }
+.trust-stats dd { margin: 0; font: 800 20px/1 var(--display); color: var(--text); }
+.trust-stats dt { font-size: 12.5px; color: var(--text-3); }
+.trust-stats [data-mode="ai"] dd { color: var(--vale); }
+.trust-how { margin: 4px 0 2px; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; color: var(--text-2); line-height: 1.45; }
 .quiet-note { padding: 10px 12px; font-size: 13px; color: var(--text-3); border-top: 1px solid var(--line); }
 .empty { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 28px 16px; color: var(--text-3); font-size: 14px; }
 .empty strong { color: var(--text-2); font-weight: 500; }
