@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Database, RefreshCw, SlidersHorizontal, WifiOff, X } from 'lucide-react';
 import { AnalysisTabs, type TabRequest } from './components/AnalysisTabs';
 import { Brand } from './components/Crest';
+import { TrustBar } from './components/TrustBar';
 import { catchUp, readJoin, storeDismissed, type JoinPoint } from './components/CatchUp';
 import { LanguageContext } from './lib/i18n';
 import { Filmstrip, type FilmRange } from './components/ControlDock';
@@ -210,6 +211,8 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
         </motion.div>}
       </AnimatePresence>
       </div>
+
+      <TrustBar replay={replay} />
 
       {replay.replay.backend_mode === 'azure' && replay.replay.source !== 'eventhouse' && <div className="alert" role="status"
         style={{ background: 'var(--amber-soft)', borderColor: 'rgba(242,204,98,.4)', color: 'var(--text)', marginTop: 10, display: 'grid' }}>
