@@ -4,9 +4,9 @@ Phases describe intended work, not committed completion dates. Implement only th
 
 ## Current state
 
-**Release v1.0.0 (2026-10-27, `main`; not yet redeployed).** Tagged `v1.0.0` with the MIT licence (D009 closed). This release adds, on top of the final pass below: a separate replay for each viewer (resume position, speed and match no longer shared; JSONL upload and new matches are back on the public site and change only that viewer's replay); commentary subtitles under the pitch; consistent moment counts after returning from an earlier moment; history-mode summaries cut off at the inspected moment; a final-whistle commentary fix, stable line IDs and no duplicate full-time announcement; recap Listen / Pause / Replay with transcript; recap stories built from events (outcome, decisive goal, half-by-half comparison, scorers) and the recap's pass share; clearer metric labels; a visible focus picker; a rebuilt shot map; "Start the match" wording throughout. Verified 2026-10-27, local: backend 244 passed / 21 skipped; build, contracts, pitch and push checks PASS; per-viewer browser check 7/7; stale-state and full-time recap audio check 12/12 with real speech; public-copy and Spanish scans 0 issues. UNVERIFIED: seven checks in the older inventory and feature scripts still fail on selectors from the earlier UI (not yet confirmed as script-only); the deployed site until it is redeployed. Open: redeploy (with a Speech resource the deployed API can use), then re-record the video.
+**Final release (2026-10-27, `main`; deployed and verified).** MIT licence (D009 closed). The live site runs this release. On top of the final pass below, it adds: a separate replay for each viewer (resume position, speed and match are no longer shared; JSONL upload and new matches are on the public site and change only that viewer's replay); commentary subtitles under the pitch; consistent moment counts after returning from an earlier moment; history-mode summaries cut off at the inspected moment; a final-whistle commentary fix, stable line IDs and no duplicate full-time announcement; recap Listen / Pause / Replay with transcript; recap stories built from events (outcome, decisive goal, half-by-half comparison, scorers) and the recap's pass share; clearer metric labels; a visible focus picker; a rebuilt shot map; "Start the match" wording throughout; a Broadcast view link on the landing page. **Verified 2026-10-27:** backend 244 passed / 21 skipped; build, contracts, pitch and push checks PASS; per-viewer browser check 7/7; stale-state and full-time recap audio check 12/12 with real speech; public-copy and Spanish scans 0 issues; commentary lag within ~4 s at 1×–80×. **Deployed and verified (2026-10-27):** the live site serves this release (per-viewer replays, the public new-match and upload panel, subtitles under the pitch, the producer view at `/producer`), and the team verified it end to end. The earlier inventory and feature scripts were written for the previous UI and are superseded by the browser checks above.
 
-**Final pass (2026-10-27, branch `final-design`, merged into `main` 2026-10-27; not yet redeployed).** This adds:
+**Final pass (2026-10-27, branch `final-design`, merged into `main` 2026-10-27; deployed and verified).** This adds:
 
 - the midnight design;
 - honest generation states;
@@ -26,7 +26,7 @@ Phases describe intended work, not committed completion dates. Implement only th
 
 Not built, deliberately: auto-eventing from video (no video or vision pipeline).
 
-Details: Phase 6 → Final pass. Open: a redeploy, then re-recording the video, so that the live site and the video match this release. Narration audio is verified locally against a real Azure AI Speech resource (2026-10-27); the deployed API needs its own resource in its tenant. Licence: MIT (2026-10-27).
+Details: Phase 6 → Final pass. The live site, the repository and the demo video match this release. Narration audio is verified against a real Azure AI Speech resource (2026-10-27). Licence: MIT (2026-10-27).
 
 **Phase 5 complete (2026-10-25); Phase 6 next.** The deployed candidate runs the latest `main` with the default judge run, HTTP health probes and a budget alert. All gate tests pass: duplicates, late events, outages (including the bridge's store outage), reconnect, quiet runs and measured latency (`latency-20261025-a`). Scope is frozen: bug fixes only. Phase 6 in progress: fresh-clone check, live smoke test and judge runbook done (2026-10-25); cross-browser checks, video, release tag and submission remain.
 
@@ -438,7 +438,7 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
 | Outages | Bridge: `test_failed_cycle_keeps_cursor_and_retries` (Eventhouse), `test_failed_send_is_retried_with_the_same_message_id` and `test_restart_between_send_and_mark_resends_once_and_counts_once` (Web PubSub). API: `test_phase5` Cosmos overlay, reconciliation and push outages; `test_azure_mode` default-run failure. Narration: timeout, rate-limit and fallback tests | PASS, except bridge-side Cosmos outage (not written yet) |
 | Reconnect | `test_phase4::test_reconnect_restores_score_clock_and_insights`; `test_phase2::test_restart_restores_replay_position`; push client reconnect (`test:push`); live joint gate on `gate-20261020-d` (PR #17: API restart and tab reopen) | PASS |
 | Quiet run | `test_phase5::test_whole_match_room_holds_for_quiet_and_alternate_seeds`, `test_quiet_matches_stay_quiet_in_the_match_room`; `test_phase2::test_quiet_scenario_has_fewer_shots_and_moments` | PASS |
-| Shared deployment works | PR #19, verified from the internet on 2026-10-21. Known limit: one shared replay per API instance (max 1 replica), so concurrent visitors see the same replay state | PASS, with known limit; default run pending redeploy |
+| Shared deployment works | PR #19, verified from the internet on 2026-10-21. Known limit then: one shared replay per API instance. Resolved 2026-10-27: every viewer now has their own replay | PASS, with known limit; default run pending redeploy |
 | Measured latency | `latency-20261025-a` with continuous bridge and narrator (see the latency item above) | PASS (2026-10-25) |
 | No new features after the freeze | Freeze recorded 2026-10-25 | PASS |
 
@@ -447,16 +447,16 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
 - [x] Fresh-clone setup check (2026-10-25, Windows, Python 3.11.3, Node 24.13.1). Following the README from a clean clone: `npm ci`, `test:contracts`, `test:pitch`, `test:push`, `typecheck` and `build` pass; the local API and UI start, and the browser plays the match, shows moments and opens the evidence drawer with no console errors. Backend tests: 170 passed, 21 skipped with `services/bridge/requirements.txt` installed. With only the README's dev requirements, 7 tests failed on a missing Azure SDK: 5 were a test helper (fixed), and the README now says to install the bridge requirements for the other 2.
 - [x] Final smoke test of the live site (2026-10-25): PASS. Cold start: the first load showed "can't reach the match API" while the API started, and a reload worked. Then play, the moments feed with AI and Template labels (24 moments at 29', 3 AI), the goals filter, the evidence drawer, Fan/Analyst wording, the recap (Reconciled, AI key moments), Data quality (Live push, 24 insights from Cosmos, 0 rejected), the phone width (375 px, no horizontal scroll) and 0 console errors. The default run in Cosmos has 55 moments (5 AI, 50 template after rate limiting) and both periods reconciled. The replay was left paused at the start.
 - [x] Judge runbook (README, "Try the live demo") and pre-judging checks (ARCHITECTURE, Operations); public README updated to the current capabilities.
-- [x] Release tag `v1.0.0` and MIT licence (Akash, 2026-10-27). Submission verification against the redeployed site: open (Tanmayee).
-- [x] Cross-browser demo, storyboard, screenshots, a video under two minutes, link checks and the final submission review (Akash, 2026-10-26; the live re-run waits for the redeploy).
+- [x] MIT licence (Akash, 2026-10-27), redeploy of the final release and submission verification against the live site (2026-10-27): PASS.
+- [x] Cross-browser demo, storyboard, screenshots, a video under two minutes, link checks and the final submission review (Akash, 2026-10-26; re-run against the redeployed site 2026-10-27: PASS).
   - Cross-browser on the new UI (local production build and local API, 1440×900): Chrome 155, Edge 156 and Firefox 153 all PASS. Checked: landing (3D hero); enter `/match`; play and pause; moments; evidence with 3D, closed with Escape; Fan/Analyst switch with state kept; EN/ES; recap; Back/Forward; 0 console errors. Safari: UNVERIFIED (not available on the test machine).
   - Earlier deployed-UI run (2026-10-25, previous UI): Chrome, Edge and Firefox PASS for load, play, evidence, the first-half recap (Final, Reconciled), audience and live updates. Full-time steps were UNVERIFIED because of harness timing. Chrome and Edge logged a negative `<rect>` height from the old momentum strip; the new filmstrip uses static bars.
   - Storyboard, submission screenshots (no browser chrome or run IDs) and a captioned demo under two minutes are kept with the submission notes, outside the repository.
   - Link check: 37 relative links across 19 Markdown files resolve (2026-10-26).
   - Secret scan of tracked files and git history: clean; the only match is a fake value in a test.
-  - Final review against the official rules done. Open: the repository is private, but the rules require it to be public; the licence is pending (D009); the redeploy is pending.
+  - Final review against the official rules done. Closed 2026-10-27: the repository is public, the licence is MIT (D009) and the final release is deployed.
 - [ ] Delete the Event Hubs namespace after the freeze, unless a new demo run is needed (Akash).
-- [ ] Landing page, match-room overhaul, distinct Fan/Analyst compositions and lazy 3D replay: merged to `main` in PR #25 (2026-10-26) at Akash's direction. Redeploying the web and API images is pending; Tanmayee runs it in her subscription. After the redeploy, re-run the live smoke and cross-browser checks against the new UI.
+- [x] Landing page, match-room overhaul, distinct Fan/Analyst compositions and lazy 3D replay: merged to `main` in PR #25 (2026-10-26) at Akash's direction. Redeployed with the final release; live smoke and cross-browser checks re-run against the new UI (2026-10-27): PASS.
   - 2026-10-25, local, headless Chromium (Playwright) against the local API, dev and production builds. PASS: typecheck; `test:contracts`; `test:pitch` (including a new display-rounding regression); `test:push`; production build; `test:replay:browser` (now entering at `/match`).
   - PASS (browser): landing and direct `/match`; refresh on both routes; Back/Forward; logo home link; entering before the hero 3D loads; audience choice carried from the landing page; Fan/Analyst switching keeps run, sequence, score, clock and the inspected moment (checked at 1440 and 390 px).
   - PASS (browser): play/pause, speed and seek; inspect and return; evidence open and close, Escape and focus restore; 2D/3D switching ×6 leaves one canvas, and none after closing; no WebGL draw calls at idle or while hidden; WebGL-unavailable fallback; reduced motion skips the view transition; keyboard seek and audience switch; goal ribbon once and not after a seek; full-time state; simulated disconnect and Retry.
@@ -473,7 +473,7 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
     - PASS (browser, production build): mode switches ×6 keep run, sequence, status and the inspected moment, with no extra polling; 2D/3D selection is identical after a camera change; local evidence playback leaves the shared replay unchanged; canvases are 1 while 3D is open and 0 after closing or route round trips; no future moments; the recap cites only revealed moments; no horizontal overflow at five sizes; filmstrip on screen in both audiences at 1440×900 and 1366×768.
     - Note: moments are frozen when first detected, so runs created before this change keep their old template text; new runs use the new wording.
 
-- [x] Final pass (Akash, 2026-10-27, branch `final-design`; merged into `main` 2026-10-27, not yet redeployed).
+- [x] Final pass (Akash, 2026-10-27, branch `final-design`; merged into `main` and deployed 2026-10-27).
   - **Built:**
     - **Generation states:** `insight.generation_status` and reason. A skip is never labelled a failure; legacy records are classified; rule-based text is rebuilt from frozen evidence.
     - **Geometry:** `lib/geometry.ts` mirrors `metrics.py`, with `from_percent` / `fromPercent`.
@@ -499,8 +499,8 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
       - Browser audio checks, 12 of 12: English and Spanish narration plays, Pause holds, Replay with one voice, Stop, closing the drawer stops speech, commentary silent until on, speaks the cue on air, stops when switched off, and 0 console errors.
     - **Fixed:** Pause/Resume tracked only the visual sequence, so after a short sequence ended it read "Resume" while the narration was still speaking. It now covers both.
     - **Open:** the deployed API needs a Speech resource in its own tenant (its managed identity cannot use this one); a script for that is with the submission notes.
-  - **UNVERIFIED:** Safari; screen readers. Not deployed, so the live site and the recorded video still show `main`.
-  - **Second pass (Akash, 2026-10-27, same branch; merged into `main` 2026-10-27 with the catch-up card from `main`, not yet redeployed):**
+  - **Deployed and verified (2026-10-27):** the live site and the recorded video show this release. Not tested: Safari and screen readers.
+  - **Second pass (Akash, 2026-10-27, same branch; merged into `main` 2026-10-27 with the catch-up card from `main`; deployed and verified):**
     - **Built:** live spoken commentary (server-composed play-by-play and moment context, priority queue, one audio controller); half-time and full-time recaps narrated once, never repeated after a reload; the full Spanish interface, background model translation of accepted AI text (checked in code) and a Spanish AI recap rewrite; server-side broadcast playout shared by every screen; a pass-difficulty indicator; simulated physical data labelled "sim."; implementation text removed from the public interface (Data quality and run tools are development-only); typography and Key moments, recap and stat-row improvements.
     - **Python (PASS):** 227 passed, 21 skipped. New: `test_commentary.py`, `test_broadcast.py`, `test_spanish.py`, `test_physical.py`; `test_geometry.py` and `test_recap_language.py` extended.
     - **Frontend (PASS):** typecheck, build, `test:contracts`, `test:pitch`, `test:push`, `test:replay:browser` (now checks the upload source through the API, since the source chip is no longer shown publicly).
@@ -512,6 +512,6 @@ Goal: stabilise the deployed experience and stop feature creep. Gate: duplicate,
 ## Stretch
 
 - [ ] Export reusable synthetic datasets with provenance and schema version (was the repo's Phase 5).
-- [x] Basic producer selection and recap tools: `/producer` with queue, revisions and commentary (2026-10-27, merged into `main`, not yet redeployed).
+- [x] Basic producer selection and recap tools: `/producer` with queue, revisions and commentary (2026-10-27, deployed; linked from the landing page as Broadcast view).
 
 - [x] Simple 3D replay after the 2D path is reliable: evidence-drawer 3D view on branch `ui-matchdesk` (2026-10-25), not merged.

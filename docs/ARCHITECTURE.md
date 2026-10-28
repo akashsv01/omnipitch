@@ -169,7 +169,7 @@ Direction: "OmniPitch — football, seen differently". A warm, editorial landing
 - **Accessibility:** skip links, landmarks, labelled controls, a keyboard slider, Space to play or pause, arrow-key tabs and radio groups. The evidence drawer traps focus, closes on Escape and restores focus. Crest tilt only applies with a fine pointer and without reduced motion.
 - **Preferences** (audience, favourites, per-audience layers, motion) live in `localStorage` and never change facts.
 
-## Final pass (2026-10-27, merged into `main`, not yet redeployed)
+## Final pass (2026-10-27, `main`, deployed and verified)
 
 ### Five-stage flow and who does what
 
@@ -184,6 +184,18 @@ synthetic events → football intelligence → grounded explanation → synchron
 | Personalization | Audience, focus and language selection in the browser; Spanish templates (`agents/narrate_es.py`) and interface text (`lib/uiText.ts`) | Background translation of accepted AI text (`translations.py`), checked in code |
 
 The three agents share one evidence packet and have bounded handoffs. The Analyst lists the supported facts and the Coach gives one hedged interpretation; the Broadcaster may only use what they return plus the packet. Each run has a 45 s budget, per-call deadlines, a lease, bounded retries with backoff, and create-only publication. On any failure, the deterministic text stands with an explicit status. The agents improve the wording and the audience fit, never the facts: every number, name, event ID and claim is checked in code first.
+
+### Per-viewer replays (`services/api/app/replay.py`, `main.py`)
+
+- Each browser keeps a random viewer ID in `localStorage` and sends it as `X-Viewer` on every API call (`apiFetch` in `apps/web/src/lib/api.ts`; `?viewer=` lets a broadcast tool share one).
+- The API keeps one in-memory `ReplayStore` per viewer, created from the shared match on first use: same events and run ID (so validated AI text and translations still match), paused at kick-off. A replay pauses itself if its viewer stops polling for 90 s while it plays; the least recently used are dropped beyond `OMNIPITCH_MAX_VIEWERS` (default 60).
+- Generate, JSONL upload and reset act on the viewer's own replay, so they are available on the deployment; requests without a viewer ID use the shared match, which stays protected (`guard_replay_change`). The broadcast playout is kept per viewer too, so `/producer` and `/overlay` follow that viewer's replay.
+- Tests: `test_viewers.py` (isolation, idle pause, protected shared match, bounded registry).
+
+### Recap stories and commentary lifecycle
+
+- `match_story` (`services/agents/agents/recap.py`) builds each recap from its own events: the outcome (including "came from behind"), the decisive goal, a half-by-half shot comparison when the share swung by at least 25 points, and the scorers. Pass share uses both teams' attempts. The spoken recap is the summary only, so the outcome is not announced twice. Tests: `test_recap_story.py`.
+- Commentary (`apps/web/src/lib/useCommentary.ts`) judges freshness in match time against the replay clock, checks again when the audio arrives, lets goals interrupt routine lines, gives each line a stable ID (never spoken twice in one pass), drops the separate whistle line when the recap follows it, and accepts the final batch at full time at any speed. Recaps also have Listen / Pause / Replay with a transcript in the Recap tab.
 
 ### Generation states (`insight.generation_status`, optional, contract 1.1)
 
@@ -311,7 +323,7 @@ Answers use the moment's trigger, metrics, calculation rows, limitations and the
 | Multilingual | Spanish interface text, templates, checked model translations of AI text, recaps (with AI rewrite), commentary, cues, transcripts | EN/ES switch, `?lang=es` | `test_spanish.py`, `test_recap_language.py`; browser scan of every tab, drawer and Ask answer in Spanish: 0 English lines (2026-10-27); 10 of 10 live translations accepted | verified locally |
 | Live commentary | Server-composed lines, priority queue, one audio controller | Commentary bar above the pitch | `test_commentary.py`; live commentary check 11 PASS (first line 0.8 s after play, one voice at 80×, recap narrated once, Spanish, off stops audio; 2026-10-27) | verified locally |
 | Broadcast output | `broadcast-cue-1.0`, server playout, `/overlay`, `/producer` | — | `test_broadcast.py`; overlay and producer feature checks | verified locally |
-| Narration | Speech proxy, Listen + replay | Evidence drawer, producer | `test_speech.py`; live audio checks (12 PASS, 2026-10-27) | verified locally; not on the deployed site yet |
+| Narration | Speech proxy, Listen + replay | Evidence drawer, producer | `test_speech.py`; live audio checks (12 PASS, 2026-10-27) | verified (2026-10-27) |
 | Follow-up questions | Deterministic Ask panel | Evidence drawer | feature walk-through | verified |
 | Pass difficulty | 0–100 heuristic, completion by band | Analysis → Players | `test_geometry.py` | verified (heuristic, labelled) |
 | Speed, running distance | Simulated physical data | Analysis → Players ("sim.") | `test_physical.py` | verified (simulated, labelled) |
@@ -748,7 +760,7 @@ The [archived decision log](archive/DECISIONS.md) preserves original rationale a
 | D006 | JSON Schema draft 2020-12 is the wire reference, with manually aligned models and boundary validation; no code generation. |
 | D007 | Add cloud SDKs only for an authorized integration that requires them. |
 | D008 | Share simulator, analytics and agents through repository-relative imports (`sample_data.py`, test `conftest.py`); independent packaging is future work. |
-| D009 | License remains pending the owner's decision. |
+| D009 | Licence: MIT (decided 2026-10-27). |
 | D010 | Keep the recorded tested dependency baseline and RFC3339 validation. |
 | D011 | Maintain README, AGENTS, ROADMAP and ARCHITECTURE; archive history. |
 | D012 | Atomic, server-timed, single-process replay snapshots; validate uploads before replacement; reject stale controls; new run IDs on load, reset and generate. |
