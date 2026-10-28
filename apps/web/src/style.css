@@ -198,7 +198,7 @@ main:focus { outline: none; } /* programmatic skip-link target only */
 .stage-mode b { color: var(--text); font-weight: 600; }
 .layer-chips { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
 .pitch-frame { position: relative; justify-self: center; width: min(100%, calc((100dvh - var(--stage-chrome)) * 113 / 76)); min-width: min(100%, 480px); }
-.pitch-frame svg { display: block; width: 100%; height: auto; }
+.pitch-frame > svg { display: block; width: 100%; height: auto; }  /* the pitch drawing only, never icons inside the frame */
 .pitch-wrap { position: relative; border-radius: var(--r2); overflow: hidden; background: var(--turf); }
 .pitch-wrap svg { display: block; width: 100%; height: auto; }
 .pitch-lines { fill: none; stroke: var(--chalk); stroke-width: .2; }
@@ -215,12 +215,14 @@ main:focus { outline: none; } /* programmatic skip-link target only */
 
 /* Pre-match / completed stage overlays */
 .stage-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: linear-gradient(180deg, rgba(9, 18, 17, .25), rgba(9, 18, 17, .75)); }
-.stage-card { display: grid; justify-items: center; gap: var(--s3); text-align: center; padding: var(--s5); max-width: 460px; }
-.stage-card .fixture { display: flex; align-items: center; gap: var(--s4); font: 800 34px/1 var(--display); letter-spacing: .01em; }
+.stage-card { display: grid; justify-items: center; gap: var(--s3); text-align: center; padding: var(--s5); max-width: 560px; }
+.stage-card .fixture { display: flex; align-items: center; gap: var(--s3); font: 800 clamp(22px, 3.2vw, 32px)/1 var(--display); letter-spacing: .01em; white-space: nowrap; }
+.stage-card .fixture svg { width: 40px; height: 40px; flex: none; }
 .stage-card .fixture small { font: 500 14px var(--sans); color: var(--text-3); }
 .stage-card p { color: var(--text-2); font-size: 14.5px; }
 .stage-card .button { min-height: 46px; padding: 0 22px; font-size: 15px; white-space: nowrap; }
-.stage-card .button svg { flex: none; }
+.stage-card .button { display: inline-flex; align-items: center; gap: 8px; }
+.stage-card .button svg { flex: none; width: 16px; height: 16px; }
 
 /* Goal ribbon: a short, team-coloured broadcast announcement on the stage edge */
 .goal-ribbon { position: absolute; top: 3.5%; left: 0; display: flex; align-items: center; gap: 14px; padding: 10px 22px 10px 16px; background: linear-gradient(90deg, var(--tone) 0, var(--tone) 6px, rgba(9, 18, 17, .94) 6px); box-shadow: 0 10px 30px rgba(0, 0, 0, .45); pointer-events: none; }
@@ -909,3 +911,9 @@ th .num small, th small { font-weight: 400; color: var(--text-3); }
 .shot-detail .button.small { justify-self: start; min-height: 30px; padding: 0 12px; font-size: 13.5px; margin-top: 4px; }
 .shot-map tr[aria-selected="true"] td { background: color-mix(in srgb, var(--amber) 14%, transparent); }
 .shot-map tr[data-goal] td:last-child { color: var(--amber); font-weight: 600; }
+@media (max-width: 520px) {
+  .stage-card { padding: var(--s3); gap: var(--s2); }
+  .stage-card .fixture { font-size: 19px; gap: 8px; }
+  .stage-card .fixture svg { width: 26px; height: 26px; }
+  .stage-card p { font-size: 13.5px; }
+}
