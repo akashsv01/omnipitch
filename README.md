@@ -409,6 +409,17 @@ Set `OMNIPITCH_BACKEND_MODE=azure` and the Eventhouse values in `services/api/.e
 
 ---
 
+## Contributors
+
+| Contributor | GitHub | Focus |
+| --- | --- | --- |
+| Akash | [@akashsv01](https://github.com/akashsv01) | Web app and match room, API and replay, agents and validation, commentary and narration, recaps |
+| Tanmayee Maram | [@tanmayee043](https://github.com/tanmayee043) | Cloud pipeline (Event Hubs, Fabric Eventstream and Eventhouse), bridge worker, Cosmos DB, Azure deployment |
+
+Built for the Microsoft *Inside the Game* hackathon. All teams, players and events in OmniPitch are synthetic.
+
+---
+
 ## Licence
 
 OmniPitch is released under the [MIT License](LICENSE).
