@@ -4,6 +4,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+**▶ Try it live: [OmniPitch demo](https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io/)**
+
 - **Live match room:** an animated 2D pitch (with a 3D evidence view), a score and timeline, key moments as they happen, and a match story.
 - **Grounded explanations:** every number is calculated in code; AI writes the words, and code checks them against the evidence before anyone sees them.
 - **Live spoken commentary:** play-by-play and moment context, read by Azure AI Speech, kept in step with the replay at any speed.
@@ -61,7 +63,7 @@ Optional extras:
 - **AI explanations and translations:** set the `AZURE_OPENAI_*` values in `services/api/.env`.
 - **Broadcast views:** `/producer` and `/overlay` (add `?audience=analyst&lang=es`).
 
-**Live demo:** the address is in the submission form. Every visitor gets their own replay; the first load after a quiet period can take up to a minute while the app starts.
+**Live demo:** [https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io/](https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io/). Every visitor gets their own replay; the first load after a quiet period can take up to a minute while the app starts.
 
 If Windows reserves port 5173, run `npm run dev -- --port 5212` and add that origin to `CORS_ORIGINS`.
 
