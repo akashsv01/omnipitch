@@ -136,7 +136,7 @@ flowchart LR
   WPS --> WEB
 ```
 
-All Azure access uses Microsoft Entra ID (managed identity in the deployment); the browser never sees credentials. The API and web app run on Azure Container Apps.
+The AI services (Azure OpenAI and Azure AI Speech) are Microsoft Foundry services; the rest of the pipeline is Azure and Microsoft Fabric. All Azure access uses Microsoft Entra ID (managed identity in the deployment); the browser never sees credentials. The API and web app run on Azure Container Apps.
 
 ### Local mode (no cloud)
 
@@ -361,7 +361,8 @@ More detail and dated history: [docs/ROADMAP.md](docs/ROADMAP.md). Technical ref
 
 ## Azure mode and deployment
 
-Microsoft services used:
+Microsoft services used. The **AI layer runs on Microsoft Foundry services**: Azure OpenAI (`gpt-4.1-mini`, the three narration roles, recap rewrite and Spanish translation) and Azure AI Speech (narration), both called with Microsoft Entra ID. The data and hosting layers use Azure Event Hubs, Microsoft Fabric, Azure Cosmos DB, Azure Web PubSub and Azure Container Apps, which sit outside Foundry.
+
 
 | Service | Role |
 | --- | --- |
