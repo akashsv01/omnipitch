@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { ArrowRight, Pause, Play, RotateCcw } from 'lucide-react';
+import { ArrowRight, MonitorPlay, Pause, Play, RotateCcw } from 'lucide-react';
 import { Brand } from './components/Crest';
 import type { HeroControls } from './components/HeroPitch3D';
 import type { Audience } from './lib/prefs';
@@ -74,6 +74,9 @@ export default function Landing({ audience, reduced, onEnter, onAudience, peek: 
       <Brand />
       <nav aria-label="Landing">
         <a href="#how">How it works</a>
+        {/* The broadcast producer view follows this browser's own replay: start the match, then watch the cues air. */}
+        <a href="/producer" target="_blank" rel="noopener" title="Broadcast producer view: on-air graphics, queue and log. Opens in a new tab and follows your replay.">
+          <MonitorPlay size={15} aria-hidden="true" style={{ marginRight: 6 }} />Broadcast view</a>
         <a className="l-nav-enter" href="/match" onClick={event => { if (event.button === 0 && !event.metaKey && !event.ctrlKey) { event.preventDefault(); enter(); } }}>
           Match room<ArrowRight size={15} aria-hidden="true" />
         </a>
@@ -159,6 +162,9 @@ export default function Landing({ audience, reduced, onEnter, onAudience, peek: 
           <button type="button" className="l-cta" onClick={enter}>{cta}<ArrowRight size={18} aria-hidden="true" /></button>
           <span>as <b>{mode === 'fan' ? 'a Fan' : 'an Analyst'}</b>. You can switch at any time.</span>
         </div>
+        <p className="how-broadcast"><MonitorPlay size={16} aria-hidden="true" />
+          <span><b>For broadcasters:</b> start the match in the match room, then open the <a href="/producer" target="_blank" rel="noopener">Broadcast view</a> in
+            another tab. It follows your replay and airs each key moment as an on-screen graphic, with a queue, a log and a keyable overlay.</span></p>
       </section>
     </main>
     <footer className="l-foot"><Brand /><span>Synthetic data only. No live feeds or player tracking.</span></footer>

@@ -19,6 +19,7 @@
 
 1. [Quick start](#quick-start)
 2. [What you can do](#what-you-can-do)
+   - [Broadcast view](#broadcast-view)
 3. [High-level design](#high-level-design)
 4. [Architecture](#architecture)
 5. [Low-level design](#low-level-design)
@@ -61,7 +62,7 @@ Optional extras:
 
 - **Narration audio:** set `SPEECH_REGION` and `SPEECH_RESOURCE_ID` in `services/api/.env` (template in `.env.example`), install `services/api/requirements-azure.txt`, and sign in with `az login`. Authentication is Microsoft Entra ID only; no keys.
 - **AI explanations and translations:** set the `AZURE_OPENAI_*` values in `services/api/.env`.
-- **Broadcast views:** `/producer` and `/overlay` (add `?audience=analyst&lang=es`).
+- **Broadcast views:** `/producer` and `/overlay` (add `?audience=analyst&lang=es`). See [Broadcast view](#broadcast-view).
 
 **Live demo:** [https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io/](https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io/). Every visitor gets their own replay; the first load after a quiet period can take up to a minute while the app starts.
 
@@ -84,6 +85,23 @@ If Windows reserves port 5173, run `npm run dev -- --port 5212` and add that ori
 | **Languages** | English and Spanish for the interface, explanations, recaps, commentary and captions. |
 | **New match / upload** | Generate a seeded match (four scenarios) or upload your own JSONL events. Only your replay changes. |
 | **Broadcast output** | `/overlay` (program output, `?clean=1` for a keyable background) and `/producer` (on air, queue and log), fed by a server-side playout. |
+
+### Broadcast view
+
+A producer view for broadcasters: OmniPitch's key moments aired as on-screen graphics, the way a TV gallery would run them.
+
+1. Open the **Match room** and press **Start the match** (or resume where you left off).
+2. Open the **Broadcast view**, either from the link in the landing page's top bar or at `/producer` ([live](https://omnipitch-web.politetree-022e7a46.westus.azurecontainerapps.io/producer)). It opens in a new tab.
+3. Keep the match playing. The broadcast view follows **your** replay (same browser), so each key moment airs as a lower-third graphic once the replay reaches it.
+
+What the producer sees:
+
+- **On air:** the current cue (minute, headline, one-line explanation and key numbers) over a pitch graphic of the move.
+- **Up next and Log:** the queue and what aired and ended. Goals pre-empt other cues; a cue more than 3 match minutes old is dropped rather than aired late; a rule-based cue is upgraded in place when checked AI text arrives.
+- **Switches:** Fan or Analyst wording, English or Spanish, and **Audio commentary** (reads each cue aloud).
+- **Outputs:** **Open program output** (`/overlay`, the graphic alone) and **Clean overlay (keyable)** (`/overlay?clean=1`, a transparent background for OBS or a vision mixer).
+
+If the match is paused or not started, the broadcast view waits: nothing airs until the replay reaches a moment. It is read-only; play, pause and seek from the match room.
 
 ---
 

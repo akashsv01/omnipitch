@@ -150,3 +150,10 @@ html[data-route="landing"] body { background-image: url("data:image/svg+xml,%3Cs
 
 @media (max-width: 1000px) and (min-width: 641px) { .hero-preview { width: min(320px, 44%); } }
 @media (prefers-reduced-motion: reduce) { .hero3d-labels span, .hero-steps li { transition: none; } }
+
+/* A pointer to the broadcast producer view, under "How it works". */
+.how-broadcast { display: flex; align-items: flex-start; gap: 10px; max-width: 760px; margin: 28px auto 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 14px; color: var(--text-2); font-size: 15px; line-height: 1.5; }
+.how-broadcast svg { flex: none; margin-top: 3px; color: var(--text-3); }
+.how-broadcast b { color: var(--text); }
+.how-broadcast a { color: var(--text); text-underline-offset: 3px; }
+@media (max-width: 700px) { .l-nav nav a[href="/producer"] { display: none; } }
