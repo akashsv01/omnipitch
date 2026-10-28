@@ -39,7 +39,7 @@ export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, on
   const playing = state.replay_status === 'playing';
   const finished = state.replay_status === 'finished';
   const [open, setOpen] = useState(false);
-  const label = playing ? tr('Pause replay') : finished ? tr('Watch again from kick-off') : state.latest_event_sequence ? tr('Resume replay') : tr('Play replay');
+  const label = playing ? tr('Pause replay') : finished ? tr('Watch again from kick-off') : state.latest_event_sequence ? tr('Resume replay') : tr('Start the match');
   // The same running clock as the score strip (26:02, not the broadcast minute 27'), so the two never disagree.
   const now = state.latest_event_sequence ? runningClock(info.clock_period, info.clock_ms) : '00:00';
   // One transport row: play on the left, the clock and timeline in the middle, the other controls on the right,
@@ -62,16 +62,16 @@ export function Filmstrip({ replay, elapsed, busy, disabled, audience, range, on
         onChange={event => onSpeed(Number(event.target.value) as Speed)}>
         {SPEEDS.map(speed => <option key={speed} value={speed}>{speed}×</option>)}
       </select>
-      {/* Match setup (seed, scenario, file upload) is developer tooling: dev server only, never on the public site. */}
-      {import.meta.env.DEV && <div className="film-sub" style={{ position: 'relative' }}>
-        <button type="button" className="icon-button" aria-expanded={open} aria-haspopup="dialog" aria-label="New match" title="New match"
+      {/* Each viewer has their own replay, so a new match or an uploaded file changes only theirs. */}
+      <div className="film-sub" style={{ position: 'relative' }}>
+        <button type="button" className="icon-button" aria-expanded={open} aria-haspopup="dialog" aria-label={tr('New match')} title={tr('New match')}
           onClick={() => setOpen(value => !value)} disabled={disabled}><Shuffle size={15} /></button>
         <AnimatePresence>
           {open && <NewMatch current={info} busy={busy} onClose={() => setOpen(false)} onReset={onReset}
             onGenerate={(seed, scenario) => { onGenerate(seed, scenario); setOpen(false); }}
             onLoad={file => { onLoad(file); setOpen(false); }} />}
         </AnimatePresence>
-      </div>}
+      </div>
       {actions}
     </div>
   </section>;
@@ -177,52 +177,46 @@ function NewMatch({ current, busy, onClose, onGenerate, onLoad, onReset }: {
   current: ReplaySnapshot['replay']; busy: boolean; onClose: () => void; onReset: () => void;
   onGenerate: (seed: number, scenario: Scenario) => void; onLoad: (file: File) => void;
 }) {
+  const tr = useTr();
   const [seed, setSeed] = useState(String(current.seed ?? 7));
   const [scenario, setScenario] = useState<Scenario>((current.scenario as Scenario) ?? 'standard');
   const valid = /^\d{1,9}$/.test(seed);
-  const azure = current.backend_mode === 'azure';
-  const reset = <button type="button" className="button" aria-label="Restart the match from kick-off" onClick={() => { onReset(); onClose(); }}>
-    <RotateCcw size={15} aria-hidden="true" />{azure ? 'Restart this replay' : 'Reset run'}</button>;
-  return <motion.div className="popover up" role="dialog" aria-label="New match" {...POPOVER}
+  return <motion.div className="popover up new-match" role="dialog" aria-label={tr('New match')} {...POPOVER}
     style={{ left: 0, right: 'auto', transformOrigin: 'bottom left' }}
     onKeyDown={event => { if (event.key === 'Escape') onClose(); }}>
-    <h3>{azure ? 'Match source' : 'Start a new match'}</h3>
-    {azure ? <>
-      <p className="hint">This deployment replays matches published to Fabric Eventhouse. Generating or uploading matches is turned off here.
-        Available replays are listed under <b>Match analysis → Data quality</b>.</p>
-      {reset}
-      <p className="hint">Restarting returns the match to kick-off for everyone watching.</p>
-    </> : <>
-      <div className="field">
-        <span>Scenario</span>
-        <div className="segmented small" role="radiogroup" aria-label="Scenario">
-          {SCENARIOS.map(item => <button key={item.id} type="button" role="radio" aria-checked={scenario === item.id} onClick={() => setScenario(item.id)}>
-            {scenario === item.id && <motion.span layoutId="scenario-thumb" className="thumb" transition={INDICATOR} />}{item.label}
-          </button>)}
-        </div>
-        <span className="hint">{SCENARIOS.find(item => item.id === scenario)?.hint}</span>
+    <h3>{tr('Start a new match')}</h3>
+    <p className="hint">{tr('Only your replay changes; anyone else watching keeps theirs.')}</p>
+    <div className="field">
+      <span>{tr('Match type')}</span>
+      <div className="segmented small" role="radiogroup" aria-label={tr('Match type')}>
+        {SCENARIOS.map(item => <button key={item.id} type="button" role="radio" aria-checked={scenario === item.id} onClick={() => setScenario(item.id)}>
+          {scenario === item.id && <motion.span layoutId="scenario-thumb" className="thumb" transition={INDICATOR} />}{tr(item.label)}
+        </button>)}
       </div>
-      <div className="field-row">
-        <label className="field">Seed
-          <input inputMode="numeric" name="seed" autoComplete="off" value={seed} onChange={event => setSeed(event.target.value.replace(/\D/g, '').slice(0, 9))} aria-invalid={!valid} />
-        </label>
-        <button type="button" className="icon-button" style={{ width: 38, height: 38 }} aria-label="Random seed"
-          onClick={() => setSeed(String(Math.floor(Math.random() * 100000)))}><Dices size={17} /></button>
-      </div>
-      <button type="button" className="button primary" disabled={!valid || busy} onClick={() => onGenerate(Number(seed), scenario)}>Generate match</button>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <label className="button file-button" style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-          <FileUp size={15} aria-hidden="true" />Load JSONL
-          <input type="file" accept=".jsonl,application/x-ndjson" aria-label="Load JSONL file" style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
-            onChange={event => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = '';
-              if (file) onLoad(file);
-            }} />
-        </label>
-        {reset}
-      </div>
-      <p className="hint">The same seed and scenario always produce the same match.</p>
-    </>}
+      <span className="hint">{tr(SCENARIOS.find(item => item.id === scenario)?.hint ?? '')}</span>
+    </div>
+    <div className="field-row">
+      <label className="field">{tr('Match number')}
+        <input inputMode="numeric" name="seed" autoComplete="off" value={seed} onChange={event => setSeed(event.target.value.replace(/\D/g, '').slice(0, 9))} aria-invalid={!valid} />
+      </label>
+      <button type="button" className="icon-button" style={{ width: 38, height: 38 }} aria-label={tr('Random match')}
+        onClick={() => setSeed(String(Math.floor(Math.random() * 100000)))}><Dices size={17} /></button>
+    </div>
+    <button type="button" className="button primary" disabled={!valid || busy} onClick={() => onGenerate(Number(seed), scenario)}>{tr('Generate match')}</button>
+    <p className="hint">{tr('The same number and type always give the same match.')}</p>
+    <div className="divider" role="separator" />
+    <label className="button file-button" style={{ position: 'relative', overflow: 'hidden' }}>
+      <FileUp size={15} aria-hidden="true" />{tr('Upload match events (.jsonl)')}
+      <input type="file" accept=".jsonl,application/x-ndjson" aria-label={tr('Upload match events (.jsonl)')} disabled={busy}
+        style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+        onChange={event => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          if (file) onLoad(file);
+        }} />
+    </label>
+    <p className="hint">{tr('One event per line, in the OmniPitch event format; up to 2 MB.')}</p>
+    <button type="button" className="button" aria-label={tr('Restart the match from kick-off')} onClick={() => { onReset(); onClose(); }}>
+      <RotateCcw size={15} aria-hidden="true" />{tr('Restart from kick-off')}</button>
   </motion.div>;
 }

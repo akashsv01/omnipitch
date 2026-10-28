@@ -4,6 +4,8 @@ import type { Analysis, Event, MatchState, Moment, Player, Rule } from '../types
 import type { Audience, FocusMetric } from '../lib/prefs';
 import { CatchUpCard, type CatchUpData } from './CatchUp';
 import { FocusPanel } from './FocusPanel';
+import { FocusPicker } from './FocusPicker';
+import type { Prefs } from '../lib/prefs';
 import { RULE_LABEL, TEAM_META, clockLabel, momentInvolves, teamTone } from '../lib/format';
 import { GENERATION_LABEL, GENERATION_SHORT, generation, keyValues, metricRows, whyItMatters } from '../lib/evidence';
 
@@ -47,7 +49,17 @@ export function episodes(list: Moment[]): { lead: Moment; related: Moment[] }[] 
   });
 }
 
-export const MomentFeed = memo(function MomentFeed({ moments, audience, favoriteTeam, favoritePlayer, focusMetric, analysis, events, roster, chosenId, onChoose, onEvidence, onJump, aiMode, onRecap, nowClock, catchUp, state, onDismissCatchUp }: {
+/** "No goals yet. 12 other moments are under All." in the viewer's language; null kind = the viewer's focus. */
+function emptyFilterNote(language: string, kind: string | null, others: number) {
+  if (language === 'es') {
+    const what = kind === null ? 'momentos de tu foco' : kind ? kind.toLowerCase() : 'momentos de origen';
+    return `Aún no hay ${what}. ${others} ${others === 1 ? 'momento más está' : 'momentos más están'} en Todos.`;
+  }
+  const what = kind === null ? 'moments for your focus' : kind ? kind.toLowerCase() : 'source moments';
+  return `No ${what} yet. ${others} other ${others === 1 ? 'moment is' : 'moments are'} under All.`;
+}
+
+export const MomentFeed = memo(function MomentFeed({ moments, audience, favoriteTeam, favoritePlayer, focusMetric, analysis, events, roster, chosenId, onChoose, onEvidence, onJump, aiMode, onRecap, nowClock, catchUp, state, onDismissCatchUp, onFocus }: {
   moments: Moment[]; audience: Audience; favoriteTeam: string | null; favoritePlayer: string | null; roster: Player[]; aiMode: string;
   focusMetric: FocusMetric | null; analysis: Analysis; events: Event[];
   chosenId: string | undefined; onChoose: (moment: Moment | undefined) => void;
@@ -55,6 +67,8 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
   /** The replay's current minute (the action the pitch follows), to set the spotlight in time. */
   nowClock: string | null;
   catchUp: CatchUpData | null; state: MatchState; onDismissCatchUp: () => void;
+  /** Changes who or what the viewer follows (the same preferences as the settings panel). */
+  onFocus: (patch: Partial<Prefs>) => void;
 }) {
   const tr = useTr();
   const fan = audience === 'fan';
@@ -87,26 +101,38 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
       return;
     }
     if (pending.length && !isReading()) acceptAll(false);
-    // A backwards seek removes moments; drop them from the accepted set too.
+    // A backwards seek removes moments (and may remove the one being inspected); drop them from the accepted set too.
     if ([...accepted].some(id => !present.has(id))) setAccepted(previous => new Set([...previous].filter(id => present.has(id))));
   }, [moments]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Returning to the current match (the inspected moment is let go) is an explicit "catch me up": everything that
+  // arrived meanwhile joins the list at once, so the list, counts and spotlight agree with the rest of the room.
+  const wasChosen = useRef(chosenId);
+  useEffect(() => {
+    if (wasChosen.current && !chosenId) {
+      reading.current = { scrolled: false, pointer: false, focus: false };
+      if (pending.length) acceptAll(true);
+    }
+    wasChosen.current = chosenId;
+  }, [chosenId]); // eslint-disable-line react-hooks/exhaustive-deps
   // A fan-hidden filter must not strand a fan with an empty list.
   useEffect(() => { if (fan && typeof filter === 'string' && filter !== 'focus' && !FILTERS.find(f => f.id === filter)?.fan) setFilter('all'); }, [fan, filter]);
   useEffect(() => { if (filter === 'focus' && !hasFocus) setFilter('all'); }, [filter, hasFocus]);
 
   const shown = useMemo(() => moments.filter(m => accepted.has(m.moment_id)), [moments, accepted]);
-  const ordered = useMemo(() => {
-    const visible = shown.filter(moment => filter === 'all' ? true : filter === 'focus' ? !!(favoritePlayer ? momentInvolves(moment, null, favoritePlayer) : momentInvolves(moment, favoriteTeam, null))
-      : Array.isArray(filter) ? filter.includes(moment.rule) : moment.rule === filter);
-    // Always match order, newest first, by the match time the moment describes (a pressing window is stamped
-    // with its start, though it is detected when the window closes). Focus is a filter and a star, never a reordering.
-    return [...visible].sort((a, b) => b.period - a.period || b.match_time_ms - a.match_time_ms
-      || b.source_sequence - a.source_sequence || b.priority - a.priority);
-  }, [shown, filter, favoriteTeam, favoritePlayer]);
-  const counts = useMemo(() => shown.reduce<Record<string, number>>((all, m) => ({ ...all, [m.rule]: (all[m.rule] ?? 0) + 1 }), {}), [shown]);
+  const matches = (moment: Moment) => filter === 'all' ? true : filter === 'focus' ? !!(favoritePlayer ? momentInvolves(moment, null, favoritePlayer) : momentInvolves(moment, favoriteTeam, null))
+    : Array.isArray(filter) ? filter.includes(moment.rule) : moment.rule === filter;
+  // Always match order, newest first, by the match time the moment describes (a pressing window is stamped
+  // with its start, though it is detected when the window closes). Focus is a filter and a star, never a reordering.
+  const newestFirst = (a: Moment, b: Moment) => b.period - a.period || b.match_time_ms - a.match_time_ms
+    || b.source_sequence - a.source_sequence || b.priority - a.priority;
+  const ordered = useMemo(() => shown.filter(matches).sort(newestFirst), [shown, filter, favoriteTeam, favoritePlayer]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Counts describe every revealed moment, whether or not its row has been inserted yet.
+  const matching = useMemo(() => moments.filter(matches).length, [moments, filter, favoriteTeam, favoritePlayer]); // eslint-disable-line react-hooks/exhaustive-deps
+  const counts = useMemo(() => moments.reduce<Record<string, number>>((all, m) => ({ ...all, [m.rule]: (all[m.rule] ?? 0) + 1 }), {}), [moments]);
   const favoriteName = roster.find(player => player.player_id === favoritePlayer)?.name;
   const chosen = chosenId ? moments.find(m => m.moment_id === chosenId) : undefined;
-  const featured = chosen ?? ordered[0];
+  // Following the match, the spotlight is always the newest moment, even while its row waits to be inserted.
+  const featured = chosen ?? [...moments].filter(matches).sort(newestFirst)[0];
   // Newer than the moment the reader picked: offered, never forced.
   const newer = chosen ? shown.filter(m => m.source_sequence > chosen.source_sequence).length : 0;
   const rest = ordered.filter(m => m !== featured).slice(0, fan ? 40 : 60);
@@ -120,9 +146,9 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
     <div className="spot-head">
       <h2 id="moments-title">{UI[language].keyMoments}</h2>
       {/* Counts only revealed moments of this run; not live-announced, so updates never interrupt a screen reader. */}
-      <span className="count-badge">{filter === 'all' || !shown.length ? countLabel(shown.length, language)
-        : `${ordered.length} ${language === 'es' ? 'de' : 'of'} ${countLabel(shown.length, language)}`}</span>
-      {shown.length > 0 && <button type="button" className="button ghost small" onClick={onRecap}>{UI[language].recap}</button>}
+      <span className="count-badge">{filter === 'all' || !moments.length ? countLabel(moments.length, language)
+        : `${matching} ${language === 'es' ? 'de' : 'of'} ${countLabel(moments.length, language)}`}</span>
+      {moments.length > 0 && <button type="button" className="button ghost small" onClick={onRecap}>{UI[language].recap}</button>}
     </div>
     {catchUp && <CatchUpCard data={catchUp} state={state} roster={roster} onChoose={onChoose} onDismiss={onDismissCatchUp} />}
     {featured
@@ -136,7 +162,8 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
     {newer > 0 && <div className="newer" style={{ background: 'none', paddingTop: 10 }}>
       <button type="button" onClick={() => onChoose(undefined)}>Show latest ({newer} newer moment{newer === 1 ? '' : 's'})</button>
     </div>}
-    <FocusPanel analysis={analysis} events={events} moments={shown} roster={roster} audience={audience}
+    <FocusPicker prefs={{ favoriteTeam, favoritePlayer, focusMetric }} update={onFocus} roster={roster} />
+    <FocusPanel analysis={analysis} events={events} moments={moments} roster={roster} audience={audience}
       team={favoriteTeam} player={favoritePlayer} metric={focusMetric} onJump={onJump}
       onFilter={next => { setFilter(next); body.current?.scrollTo({ top: 0 }); }} />
     <div className="history">
@@ -158,12 +185,14 @@ export const MomentFeed = memo(function MomentFeed({ moments, audience, favorite
         onFocus={() => { reading.current.focus = true; }}
         onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) reading.current.focus = false; }}>
         {pending.length > 0 && <div className="newer">
-          <button type="button" onClick={() => acceptAll(true)}>{pending.length} new moment{pending.length === 1 ? '' : 's'}: show</button>
+          <button type="button" onClick={() => acceptAll(true)}>{language === 'es'
+            ? `${pending.length} ${pending.length === 1 ? 'momento nuevo' : 'momentos nuevos'}: mostrar`
+            : `${pending.length} new ${pending.length === 1 ? 'moment' : 'moments'}: show`}</button>
         </div>}
         {rest.length === 0
-          ? <p className="quiet-note">{filter !== 'all' && shown.length > 0
-              ? `No ${typeof filter === 'string' ? filter === 'focus' ? 'moments for your focus' : FILTERS.find(f => f.id === filter)?.label.toLowerCase() : 'source moments'} yet. ${shown.length} other ${shown.length === 1 ? 'moment is' : 'moments are'} under All.`
-              : shown.length > 1 ? 'Earlier moments collect here.' : 'Earlier moments will collect here as the replay runs.'}</p>
+          ? <p className="quiet-note">{filter !== 'all' && moments.length > 0
+              ? emptyFilterNote(language, typeof filter === 'string' ? filter === 'focus' ? null : tr(FILTERS.find(f => f.id === filter)?.label ?? '') : '', moments.length)
+              : tr(moments.length > 1 ? 'Earlier moments collect here.' : 'Earlier moments will collect here as the replay runs.')}</p>
           : <ol className={fan ? 'moment-list' : 'moment-list dense'} aria-label={tr('Earlier moments')}>
             {grouped.map(({ lead: moment, related }) => <li key={moment.moment_id} className={fresh.has(moment.moment_id) ? 'moment-enter' : undefined}>
               <Row moment={moment} related={related} favorite={[moment, ...related].some(m => momentInvolves(m, favoriteTeam, favoritePlayer))}

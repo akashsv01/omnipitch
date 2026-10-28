@@ -1,5 +1,7 @@
 """OmniPitch API with explicit localhost CORS and an explicit local/azure backend mode."""
+from contextvars import ContextVar
 import os
+import re
 from threading import Lock
 import time
 from urllib.parse import urlparse
@@ -41,8 +43,22 @@ def cors_origins() -> list[str]:
 SETTINGS = settings()  # Invalid OMNIPITCH_BACKEND_MODE fails startup rather than guessing.
 app = FastAPI(title="OmniPitch API", version="0.3.0")
 app.add_middleware(CORSMiddleware, allow_origins=cors_origins(), allow_credentials=False,
-                   allow_methods=["GET", "POST"], allow_headers=["Accept", "Content-Type"],
+                   allow_methods=["GET", "POST"], allow_headers=["Accept", "Content-Type", "X-Viewer"],
                    expose_headers=["X-Caption"])
+
+# Each browser sends a random viewer ID (X-Viewer) and gets its own replay; without one, the shared replay is used.
+VIEWER_ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
+current_viewer: ContextVar[str | None] = ContextVar("current_viewer", default=None)
+
+
+@app.middleware("http")
+async def viewer_scope(request: Request, call_next):
+    viewer = request.headers.get("x-viewer", "")
+    token = current_viewer.set(viewer if VIEWER_ID.match(viewer) else None)
+    try:
+        return await call_next(request)
+    finally:
+        current_viewer.reset(token)
 
 
 _default_lock = Lock()
@@ -54,12 +70,14 @@ _now = time.monotonic
 
 
 def store():
+    """The requesting viewer's own replay (created from the shared match on first use), or the shared replay."""
     replay = replay_module.get_replay_store()
     if not _default_state["checked"]:
         load_default_run(replay)
     else:
         heal_default_run(replay)
-    return replay
+    viewer = current_viewer.get()
+    return replay_module.viewer_store(viewer) if viewer else replay
 
 
 def load_default_run(replay) -> None:
@@ -142,15 +160,15 @@ def http_error(exc: EventhouseError) -> HTTPException:
 
 
 def local_only(action: str) -> None:
-    if SETTINGS.azure:
+    if SETTINGS.azure and not current_viewer.get():  # A viewer's own replay can always be replaced.
         raise HTTPException(409, detail={"code": "azure_mode", "message": f"{action} is local-only. In azure mode, load a run from Eventhouse."})
 
 
 def guard_replay_change(action: str) -> None:
-    """The deployed site has one shared replay that every visitor watches. In azure mode, actions that replace it or
-    write into its ledger are refused unless OMNIPITCH_ALLOW_REPLAY_CHANGES=1 (for an operator); play, pause, seek, speed
-    and reloading an Eventhouse run keep working."""
-    if SETTINGS.azure and os.getenv("OMNIPITCH_ALLOW_REPLAY_CHANGES", "").strip() != "1":
+    """The shared replay (the match every new viewer starts from) is protected in azure mode: actions that replace it
+    or write into its ledger are refused unless OMNIPITCH_ALLOW_REPLAY_CHANGES=1 (for an operator). A viewer's own
+    replay (requests with X-Viewer) can always be reset, replaced or ingested into; it affects nobody else."""
+    if SETTINGS.azure and not current_viewer.get() and os.getenv("OMNIPITCH_ALLOW_REPLAY_CHANGES", "").strip() != "1":
         raise HTTPException(403, detail={"code": "replay_changes_disabled",
                                          "message": f"{action} is turned off on this deployment, so the shared match stays in place."})
 
@@ -291,7 +309,7 @@ def _audio_response(text: str, language: str) -> Response:
 COMMENTARY_RULES = {"transition": 50, "pressing_change": 45, "threat_gain": 30}
 
 
-_playout = None
+_playouts: dict = {}
 
 
 @app.get("/api/v1/replay/physical")
@@ -305,15 +323,17 @@ def replay_physical(sprint_alert_mps: float = Query(9.0, ge=5.0, le=12.0)) -> di
 
 @app.get("/api/v1/broadcast")
 def broadcast(audience: Literal["fan", "analyst"] = "fan", language: Literal["en", "es"] = Query("en", alias="lang")) -> dict:
-    """The shared playout for one audience and language: what is on air, what is queued, and the recent log."""
-    global _playout
+    """The playout for this viewer's replay, one audience and language: on air, queued, and the recent log."""
     from .broadcast import Playout
-    if _playout is None:
-        _playout = Playout()
+    key = current_viewer.get() or ""
+    playout = _playouts.pop(key, None) or Playout()
+    _playouts[key] = playout  # Most recent last; the oldest are dropped beyond the viewer limit.
+    while len(_playouts) > replay_module.MAX_VIEWERS + 1:
+        _playouts.pop(next(iter(_playouts)))
     snap = store().snapshot().model_dump(mode="json")
     state, info = snap["state"], snap["replay"]
     clock = clock_of({"period": info["clock_period"], "match_time_ms": info["clock_ms"]})
-    return _playout.feed(snap["moments"], state["run_id"], state["latest_event_sequence"], int(info["elapsed_ms"]), clock, audience, language)
+    return playout.feed(snap["moments"], state["run_id"], state["latest_event_sequence"], int(info["elapsed_ms"]), clock, audience, language)
 
 
 @app.get("/api/v1/commentary/lines")

@@ -85,7 +85,7 @@ export function momentInvolves(moment: Moment, favoriteTeam: string | null, favo
 }
 
 export const METRIC_LABEL: Record<string, string> = {
-  shot_distance: 'Shot distance', possession_actions: 'Possession actions', threat_delta: 'Threat change',
-  forward_progress: 'Forward progression', pass_distance: 'Pass length', elapsed: 'Sequence time', actions: 'Actions',
+  shot_distance: 'Distance to goal', possession_actions: 'Possession actions', threat_delta: 'Threat change',
+  forward_progress: 'Forward gain', pass_distance: 'Pass length', elapsed: 'Sequence time', actions: 'Actions',
   ppda: 'PPDA', previous_ppda: 'Previous PPDA', opponent_passes: 'Opponent passes', defensive_actions: 'Defensive actions',
 };

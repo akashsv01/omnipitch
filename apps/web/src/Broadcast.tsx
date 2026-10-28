@@ -5,7 +5,7 @@ import { Pitch } from './components/Pitch';
 import { BrandMark } from './components/Crest';
 import { useReplay } from './lib/useReplay';
 import type { Cue, Feed } from './lib/broadcast';
-import { API_BASE_URL } from './lib/api';
+import { apiFetch } from './lib/api';
 import { TEAM_META, runningClock } from './lib/format';
 import { LanguageContext, UI, setUiLanguage, useLanguage } from './lib/i18n';
 import { Narrator, UNAVAILABLE, speechStatus, type SpeechStatus } from './lib/narration';
@@ -70,7 +70,7 @@ function useFeed(audience: Audience, language: Language) {
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/v1/broadcast?audience=${audience}&lang=${language}`, { signal: AbortSignal.timeout(8000) });
+        const response = await apiFetch(`/api/v1/broadcast?audience=${audience}&lang=${language}`, { signal: AbortSignal.timeout(8000) });
         if (response.ok) { const next = await response.json() as Feed; if (active && next.audience === audience && next.language === language) setFeed(next); }
       } catch (error) { console.error('[omnipitch] broadcast', error); }
       if (active) timer = setTimeout(poll, document.hidden ? 2000 : 500);

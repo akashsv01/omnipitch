@@ -219,7 +219,8 @@ main:focus { outline: none; } /* programmatic skip-link target only */
 .stage-card .fixture { display: flex; align-items: center; gap: var(--s4); font: 800 34px/1 var(--display); letter-spacing: .01em; }
 .stage-card .fixture small { font: 500 14px var(--sans); color: var(--text-3); }
 .stage-card p { color: var(--text-2); font-size: 14.5px; }
-.stage-card .button { min-height: 46px; padding: 0 22px; font-size: 15px; }
+.stage-card .button { min-height: 46px; padding: 0 22px; font-size: 15px; white-space: nowrap; }
+.stage-card .button svg { flex: none; }
 
 /* Goal ribbon: a short, team-coloured broadcast announcement on the stage edge */
 .goal-ribbon { position: absolute; top: 3.5%; left: 0; display: flex; align-items: center; gap: 14px; padding: 10px 22px 10px 16px; background: linear-gradient(90deg, var(--tone) 0, var(--tone) 6px, rgba(9, 18, 17, .94) 6px); box-shadow: 0 10px 30px rgba(0, 0, 0, .45); pointer-events: none; }
@@ -767,18 +768,21 @@ main#match { animation: room-in var(--dur-enter) var(--ease-out) both; }
 .stat-rows td.num { font: 700 18px/1 var(--sans); font-variant-numeric: tabular-nums; color: var(--text); width: 22%; }
 .recap-origin summary { display: inline-flex; align-items: center; gap: 6px; }
 
-/* The spoken line as a broadcast subtitle: full text, centred over the bottom of the pitch, up to three lines. */
-.commentary-subtitle { position: absolute; left: 50%; bottom: 5.5%; z-index: 3; width: max-content; max-width: min(88%, 760px); transform: translateX(-50%); pointer-events: none;
-  transition: opacity .4s var(--ease-out); }
-.commentary-subtitle[data-faded] { opacity: 0; }
-.commentary-subtitle p { display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 8px 16px; border-radius: var(--r2); background: rgba(9, 18, 17, .9);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .35); color: var(--text); font-size: 16px; line-height: 1.4; text-wrap: pretty;
-  animation: subtitle-in var(--dur-enter) var(--ease-out) both; }
+/* With commentary on, the pitch gives up the subtitle strip's height so the whole stage still fits the screen. */
+@media (min-width: 761px) { .pitch-frame:has(.commentary-subtitle) { width: min(100%, calc((100dvh - var(--stage-chrome) - 72px) * 113 / 76)); } }
+/* The spoken line as a subtitle strip directly under the pitch: never over the play itself. The strip keeps its height
+   while commentary is on, so the pitch does not move when a line appears or fades. */
+.commentary-subtitle { min-height: 64px; margin-top: 8px; display: flex; align-items: flex-start; justify-content: center; transition: opacity .4s var(--ease-out); }
+.commentary-subtitle[data-faded] p { opacity: 0; }
+.commentary-subtitle p { display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 8px 16px; border-radius: var(--r2); background: var(--raised);
+  border: 1px solid var(--line); color: var(--text); font-size: 16px; line-height: 1.4; text-wrap: pretty; max-width: 760px; width: 100%;
+  transition: opacity .4s var(--ease-out); animation: subtitle-in var(--dur-enter) var(--ease-out) both; }
 .commentary-subtitle b { flex: none; color: var(--amber); font-weight: 700; font-variant-numeric: tabular-nums; }
-.commentary-subtitle span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-@keyframes subtitle-in { from { opacity: 0; transform: translateY(6px); } }
+.commentary-subtitle span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@keyframes subtitle-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .commentary-subtitle p { animation: none; } }
 @media (max-width: 760px) {
-  .commentary-subtitle { position: static; transform: none; width: auto; max-width: none; margin-top: 8px; }
+  .commentary-subtitle { min-height: 0; }
   .commentary-subtitle p { font-size: 14.5px; padding: 8px 12px; }
 }
 
@@ -874,3 +878,34 @@ th .num small, th small { font-weight: 400; color: var(--text-3); }
 @media (hover: hover) and (pointer: fine) { .spot-actions .button.primary:hover { background: rgba(205, 187, 146, .2); } }
 .now-intro { background: var(--surface); border-color: var(--line); }
 .now-actions .text-button, .stage-mode .text-button { color: var(--text-2); }
+
+.new-match .divider { height: 1px; background: var(--line); margin: 4px 0; }
+
+/* Recap narration: Listen / Pause / Replay beside the summary, with the transcript one click away. */
+.recap-listen { display: grid; gap: 6px; margin: 4px 0 2px; }
+.recap-listen-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.recap-transcript summary { cursor: pointer; font-size: 13.5px; color: var(--text-2); }
+.recap-transcript p { margin: 6px 0 0; font-size: 14px; color: var(--text-2); line-height: 1.5; }
+.recap-listen .button.small { min-height: 32px; padding: 0 12px; font-size: 13.5px; }
+
+/* Follow a club, player or metric, in plain view above the focus card. */
+.focus-picker { display: grid; gap: 8px; margin-top: var(--s3); }
+.focus-picker-row { display: flex; align-items: center; gap: 6px; }
+.focus-picker-row .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-picker-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r2); background: var(--surface); }
+.icon-button.small { width: 28px; height: 28px; }
+
+/* Shot map: filters, an attacking-right half pitch with outcome markers, and a linked table. */
+.shot-map { display: grid; gap: 12px; }
+.shot-filters { display: flex; flex-wrap: wrap; gap: 10px; }
+.shot-figure { margin: 0; display: grid; gap: 8px; }
+.shot-figure svg[role="img"] { width: 100%; height: auto; border-radius: var(--r2); background: var(--inset); }
+.shot-figure g[role="button"]:focus-visible { outline: none; }
+.shot-figure g[role="button"]:focus-visible > :last-child { stroke: var(--amber); stroke-width: .6; }
+.shot-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--text-2); }
+.shot-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.shot-detail { display: grid; gap: 4px; padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: var(--r2); background: var(--raised); }
+.shot-detail p { margin: 0; }
+.shot-detail .button.small { justify-self: start; min-height: 30px; padding: 0 12px; font-size: 13.5px; margin-top: 4px; }
+.shot-map tr[aria-selected="true"] td { background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.shot-map tr[data-goal] td:last-child { color: var(--amber); font-weight: 600; }

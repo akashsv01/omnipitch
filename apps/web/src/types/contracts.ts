@@ -204,6 +204,9 @@ export interface Recap {
   language?: 'en' | 'es';
   /** Team numbers at the recap's cutoff. */
   stats?: { home: RecapStats; away: RecapStats } | null;
+  /** Goals with the score after each, whether the leader came from behind, the deciding goal, shots per half. */
+  story?: { goals: RecapGoal[]; leader: string | null; came_from_behind: boolean; decisive_goal: RecapGoal | null;
+    shots_by_half: { first: { home: number; away: number }; second: { home: number; away: number } } | null } | null;
   schema_version: '1.1';
   run_id: string;
   match_id: string;
@@ -226,3 +229,5 @@ export interface RecapStats {
   goals: number; shots: number; shots_on_target: number; box_entries: number; final_third_entries: number;
   progression_m: number; completion_pct: number | null; pass_share_pct: number | null; turnovers_won: number;
 }
+
+export interface RecapGoal { team_id: string; player_id: string | null; period: number; clock: string; sequence: number; score: { home: number; away: number } }

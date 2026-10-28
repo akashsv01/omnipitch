@@ -85,11 +85,11 @@ GOAL_CONTEXT = {"en": {"opening": "The deadlock is broken.", "equaliser": "All s
                        "extend": "{t} amplían la ventaja.", "reduce": "{t} recortan distancias."}}
 BALL_WIN = {"en": ["{p} wins it back for {t} {how} in the opponent's half.", "Turnover! {p} steals it high up the pitch {how}.",
                    "{p} pounces {how}, and {t} have it back in the opponent's half.",
-                   "Great pressure from {p}, who wins it {how} deep in the opponent's half.",
+                   "{p} wins it {how} deep in the opponent's half.",
                    "{t} win it high: {p} {how}."],
             "es": ["{p} recupera el balón para {t} {how} en campo rival.", "¡Robo! {p} se la quita arriba {how}.",
                    "{p} aprieta y recupera {how}: {t} vuelven a tenerla en campo rival.",
-                   "Gran presión de {p}, que recupera {how} en campo contrario.",
+                   "{p} recupera {how} en campo contrario.",
                    "{t} la recuperan arriba: {p}, {how}."]}
 FOUL = {"en": ["Foul by {p}. Free kick to {o}.", "{p} brings a player down, and it's a free kick to {o}.",
                "The referee blows for a foul by {p}.", "{p} is penalised, and {o} have a free kick."],
@@ -103,8 +103,8 @@ LONG_BALL = {"en": ["{p} goes long, about {l} to find a teammate.", "A long ball
                     "{p} encuentra a un compañero con un pase de {l}."]}
 SWITCH = {"en": ["{p} switches the play to the other flank.", "A big switch from {p}, right across the pitch."],
           "es": ["{p} cambia el juego de banda.", "Gran cambio de orientación de {p}, de lado a lado."]}
-MOVE = {"en": ["{t} keeping the ball well: {n} passes in this move.", "Patient from {t}, {n} passes and counting."],
-        "es": ["{t} mueven bien el balón: {n} pases en esta jugada.", "Paciencia de {t}: {n} pases seguidos."]}
+MOVE = {"en": ["{t} on the ball: {n} passes in this move.", "{n} passes in a row now for {t}."],
+        "es": ["{t} encadenan {n} pases en esta jugada.", "{n} pases seguidos ya para {t}."]}
 
 
 def _shot_context(event: dict, events: list[dict], i: int, team: str, player: str, language: str) -> str:
@@ -227,7 +227,8 @@ def moment_line(moment: dict, audience: str, language: str, brief: bool = False)
 
 
 def recap_line(recap: dict) -> str:
-    return f"{recap['headline']}. {recap['summary']}"
+    """The recap as spoken: the summary already opens with the outcome, so the headline is not read as well."""
+    return recap["summary"]
 
 
 MINUTE = re.compile(r"\b(\d{1,3})\+(\d{1,2})'")

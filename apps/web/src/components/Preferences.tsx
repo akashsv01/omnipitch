@@ -37,7 +37,7 @@ export function Preferences({ prefs, update, roster, onClose }: {
     <label className="field">{tr('Explanation language')}
       <select value={prefs.language} onChange={event => update({ language: event.target.value as Prefs['language'] })}>
         <option value="en">English</option>
-        <option value="es" lang="es">Español (rule-based explanations)</option>
+        <option value="es" lang="es">Español</option>
       </select>
     </label>
     <label className="field">{tr('Motion')}

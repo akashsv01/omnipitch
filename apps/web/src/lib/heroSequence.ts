@@ -53,7 +53,7 @@ export function stepDetail(index: number): StepDetail {
   if (step.key === 'shot') {
     const progression = POINTS.slice(1, 3).reduce((sum, _, i) => sum + gain(i + 1), 0);
     return {
-      rows: [{ term: 'Event', value: step.event }, { term: 'Shot distance', value: m(goalDistance(from, DIRECTION)) },
+      rows: [{ term: 'Event', value: step.event }, { term: 'Distance to goal', value: m(goalDistance(from, DIRECTION)) },
         { term: 'Sequence progression', value: signed(progression) }],
       workings: [`Shot from ${at(from)} m to the goal centre (105, 34): √(${105 - from.x}² + ${34 - from.y}²).`,
         `Sequence progression sums the forward gain of both passes: ${metricText('forward_progress', gain(1))} + ${metricText('forward_progress', gain(2))} m.`],

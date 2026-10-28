@@ -13,6 +13,27 @@ import type { Negotiated, PushEnvelope } from './push';
 import type { Event, IngestResult, LedgerSummary, MatchState, Recap, RecapScope, ReplaySnapshot, Scenario, Speed } from '../types/contracts';
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
+
+/** A random ID for this browser, sent with every API call, so each viewer has their own replay (position, speed,
+ * match). Kept in localStorage so a reload resumes where this viewer was; ?viewer= lets a broadcast tool share one. */
+export const VIEWER_ID: string = (() => {
+  const fromUrl = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('viewer');
+  if (fromUrl && /^[A-Za-z0-9-]{8,64}$/.test(fromUrl)) return fromUrl;
+  try {
+    const stored = localStorage.getItem('omnipitch.viewer');
+    if (stored && /^[A-Za-z0-9-]{8,64}$/.test(stored)) return stored;
+    const created = crypto.randomUUID();
+    localStorage.setItem('omnipitch.viewer', created);
+    return created;
+  } catch { return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `viewer-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`; }
+})();
+
+/** fetch() against the API with this viewer's ID. */
+export function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set('X-Viewer', VIEWER_ID);
+  return fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+}
 const ajv = new Ajv2020({ allowUnionTypes: true });
 addFormats(ajv);
 for (const schema of [eventSchema, stateSchema, insightSchema, momentSchema, analysisSchema, reconciliationSchema]) ajv.addSchema(schema);
@@ -36,7 +57,7 @@ const EVENTHOUSE_TIMEOUT_MS = 45000;
 async function getJson(path: string, options: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<unknown> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+    response = await apiFetch(path, { ...options, signal: AbortSignal.timeout(timeoutMs) });
   } catch {
     throw new ApiError(`Network error reaching ${API_BASE_URL}`, 'network');
   }

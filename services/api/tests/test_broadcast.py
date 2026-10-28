@@ -59,7 +59,7 @@ def test_every_screen_gets_the_same_playout(monkeypatch):
     store, _ = make_store()
     seek_to_sequence(store, first_period_end(store))
     monkeypatch.setattr(replay_module, "replay_store", store)
-    monkeypatch.setattr(main, "_playout", None)
+    monkeypatch.setattr(main, "_playouts", {})
     client = TestClient(main.app)
     one = client.get("/api/v1/broadcast", params={"audience": "fan", "lang": "es"}).json()
     two = client.get("/api/v1/broadcast", params={"audience": "fan", "lang": "es"}).json()

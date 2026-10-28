@@ -3,7 +3,7 @@
  * stops a lower one; a lower one cannot start over a higher one. Text is always composed on the server; the browser
  * only names what to say (a moment, a commentary reference or a recap) and gets back audio plus the spoken caption.
  * Credentials stay on the server. Nothing plays until the viewer turns it on. */
-import { API_BASE_URL } from './api';
+import { apiFetch } from './api';
 import type { Audience, Language } from './prefs';
 
 export interface SpeechStatus { configured: boolean; reason: string | null }
@@ -15,7 +15,7 @@ const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQ
 
 let status: Promise<SpeechStatus> | null = null;
 export function speechStatus(): Promise<SpeechStatus> {
-  status ??= fetch(`${API_BASE_URL}/api/v1/speech/status`, { signal: AbortSignal.timeout(8000) })
+  status ??= apiFetch('/api/v1/speech/status', { signal: AbortSignal.timeout(8000) })
     .then(r => r.ok ? r.json() as Promise<SpeechStatus> : { configured: false, reason: null })
     .catch(() => ({ configured: false, reason: null }));
   return status;
@@ -72,7 +72,7 @@ export class Narrator {
     this.set('loading');
     const finished = new Promise<Outcome>(resolve => { this.done = resolve; });
     try {
-      const response = await fetch(`${API_BASE_URL}${path}`, {
+      const response = await apiFetch(path, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
         signal: AbortSignal.any([abort.signal, AbortSignal.timeout(25000)]),
       });

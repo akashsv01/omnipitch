@@ -79,7 +79,11 @@ def build_recap(events: list[dict], moments: list[dict], scope: str, context: di
     through = last["sequence"]
     teams, players = context["teams"], context["players"]
     stats = {team: team_stats(in_scope, team) for team in (home, away)}
+    attempts = sum(stats[team]["passes_attempted"] for team in (home, away))
+    for team in (home, away):  # Share of both teams' pass attempts, as in the team comparison.
+        stats[team]["pass_share_pct"] = round(100 * stats[team]["passes_attempted"] / attempts, 1) if attempts else None
     score = {"home": stats[home]["goals"], "away": stats[away]["goals"]}
+    story = match_story(in_scope, scope, home, away)
 
     # Key moments: strongest verified moments, one per possession, then shown in match order.
     possession = {e["event_id"]: e.get("possession_id") for e in in_scope}
@@ -104,26 +108,7 @@ def build_recap(events: list[dict], moments: list[dict], scope: str, context: di
     h, a = stats[home], stats[away]
     leader = home if score["home"] > score["away"] else away if score["away"] > score["home"] else None
     hi_lo = f"{max(score.values())}-{min(score.values())}"
-    if es:
-        when = ("al descanso" if scope == "first_half" else "al final") if final else f"tras el {clock} (provisional)"
-        summary = (f"{teams[home]} {score['home']}, {teams[away]} {score['away']} {when}. "
-                   f"{teams[home]} sumó {_count(h['shots'], 'tiro')} ({h['shots_on_target']} a puerta) frente a "
-                   f"{a['shots']} ({a['shots_on_target']}) de {teams[away]}.")
-        headline = (f"{teams[leader]} va ganando {hi_lo}" if leader and not final
-                    else f"{teams[leader]} gana {hi_lo}" if leader and scope == "full_time"
-                    else f"{teams[leader]} gana {hi_lo} al descanso" if leader
-                    else f"Termina en empate {score['home']}-{score['away']}" if final and scope == "full_time"
-                    else f"Empate {score['home']}-{score['away']}")
-    else:
-        when = ("at half-time" if scope == "first_half" else "at full-time") if final else f"after {clock} (provisional)"
-        summary = (f"{teams[home]} {score['home']}, {teams[away]} {score['away']} {when}. "
-                   f"{teams[home]} had {_count(h['shots'], 'shot')} ({h['shots_on_target']} on target) to {_possessive(teams[away])} "
-                   f"{a['shots']} ({a['shots_on_target']}).")
-        headline = (f"{teams[leader]} lead {hi_lo}" if leader and not final
-                    else f"{teams[leader]} win {hi_lo}" if leader and scope == "full_time"
-                    else f"{teams[leader]} lead {hi_lo} at the break" if leader
-                    else f"Ends level at {score['home']}-{score['away']}" if final and scope == "full_time"
-                    else f"Level at {score['home']}-{score['away']}")
+    headline, summary = _story_text(story, score, h, a, teams, players, home, away, leader, hi_lo, scope, final, clock, es)
 
     # Tactical trend: one supported claim or an explicit insufficient-data message.
     windows = [w for w in ppda_series(in_scope, [home, away]) if w["closed"] and w["status"] == "ok"]
@@ -177,7 +162,139 @@ def build_recap(events: list[dict], moments: list[dict], scope: str, context: di
             "headline": headline, "summary": summary, "key_moments": key_moments, "tactical_trend": trend,
             "player_focus": focus, "sources": [k["moment_id"] for k in key_moments],
             "generation_mode": "fallback", "limitations": list(LIMITATIONS[language]), "recap_version": RECAP_VERSION,
-            "language": language, "stats": {side: _comparable(stats[team]) for side, team in (("home", home), ("away", away))}}
+            "language": language, "stats": {side: _comparable(stats[team]) for side, team in (("home", home), ("away", away))},
+            "story": story}
+
+
+def match_story(in_scope: list[dict], scope: str, home: str, away: str) -> dict:
+    """The facts a recap is built around, from the recap's own events only: every goal with the score after it,
+    whether the eventual leader ever trailed, the goal that decided it, and shots per half (full time)."""
+    score, goals, trailed = {home: 0, away: 0}, [], {home: False, away: False}
+    for event in in_scope:
+        if event["type"] == "shot" and event.get("is_goal") and event.get("team_id") in score:
+            score[event["team_id"]] += 1
+            goals.append({"team_id": event["team_id"], "player_id": event.get("player_id"), "period": event["period"],
+                          "clock": clock_label(event["period"], event["match_time_ms"]), "sequence": event["sequence"],
+                          "score": {"home": score[home], "away": score[away]}})
+            for team, other in ((home, away), (away, home)):
+                trailed[team] = trailed[team] or score[team] < score[other]
+    leader = home if score[home] > score[away] else away if score[away] > score[home] else None
+    decisive = None
+    if leader:  # The goal after which the leader was ahead for good.
+        for goal in reversed(goals):
+            ahead = goal["score"]["home" if leader == home else "away"] > goal["score"]["away" if leader == home else "home"]
+            if not ahead:
+                break
+            decisive = goal
+    elif goals:
+        decisive = goals[-1]  # A draw: the last goal (the equaliser).
+    halves = None
+    if scope == "full_time":
+        shots = {p: {t: sum(1 for e in in_scope if e["period"] == p and e["type"] == "shot" and e.get("team_id") == t) for t in (home, away)}
+                 for p in (1, 2)}
+        halves = {"first": {"home": shots[1][home], "away": shots[1][away]}, "second": {"home": shots[2][home], "away": shots[2][away]}}
+    return {"goals": goals, "leader": leader, "came_from_behind": bool(leader and trailed[leader]),
+            "decisive_goal": decisive, "shots_by_half": halves}
+
+
+def _swing(halves: dict | None) -> str | None:
+    """Which side the shots swung to after the break, when the change is large enough to be the story."""
+    if not halves:
+        return None
+    first, second = halves["first"], halves["second"]
+    if sum(first.values()) < 4 or sum(second.values()) < 6:
+        return None
+    share = lambda half: half["home"] / max(1, half["home"] + half["away"])
+    change = share(second) - share(first)
+    return "home" if change >= .25 and second["home"] > second["away"] else "away" if change <= -.25 and second["away"] > second["home"] else None
+
+
+def _story_text(story: dict, score: dict, h: dict, a: dict, teams: dict, players: dict, home: str, away: str,
+                leader: str | None, hi_lo: str, scope: str, final: bool, clock: str, es: bool) -> tuple[str, str]:
+    """Outcome, turning point, supporting comparison and scorers, in that order; every number comes from the story."""
+    name = lambda pid: players.get(pid or "", "")
+    side = {home: "home", away: "away"}
+    other = {home: away, away: home}
+    scorers = []
+    for team in (home, away):
+        mine = [f"{name(g['player_id'])} {g['clock']}" for g in story["goals"] if g["team_id"] == team]
+        if mine:
+            joined = mine[0] if len(mine) == 1 else f"{', '.join(mine[:-1])} {'y' if es else 'and'} {mine[-1]}"
+            scorers.append(f"{joined} {'para' if es else 'for'} {teams[team]}")
+    decisive = story["decisive_goal"]
+    swing = _swing(story["shots_by_half"])
+    if es:
+        when = ("al descanso" if scope == "first_half" else "al final") if final else f"tras el {clock} (provisional)"
+        if not final:
+            outcome = f"{teams[home]} {score['home']}, {teams[away]} {score['away']} {when}."
+        elif leader and scope == "full_time":
+            outcome = (f"{teams[leader]} remontó para ganar a {teams[other[leader]]} {hi_lo}." if story["came_from_behind"]
+                       else f"{teams[leader]} ganó a {teams[other[leader]]} {hi_lo}.")
+        elif leader:
+            outcome = f"{teams[leader]} se va al descanso por delante, {hi_lo}."
+        else:
+            outcome = f"{teams[home]} y {teams[away]} empatan {score['home']}-{score['away']} {when}."
+        turning = ""
+        if final and decisive and leader and scope == "full_time" and len(story["goals"]) > 1:
+            turning = f" El gol decisivo llegó en el {decisive['clock']}, de {name(decisive['player_id'])}."
+        elif final and decisive and not leader and story["goals"]:
+            turning = f" {teams[decisive['team_id']]} empató en el {decisive['clock']} con gol de {name(decisive['player_id'])}."
+        if swing:
+            t, o = (home, away) if swing == "home" else (away, home)
+            first, second = story["shots_by_half"]["first"], story["shots_by_half"]["second"]
+            comparison = (f" Tras el descanso, {teams[t]} disparó {second[side[t]]} veces por {second[side[o]]} de {teams[o]}, "
+                          f"después de una primera parte de {first[side[t]]} a {first[side[o]]}.")
+        else:
+            comparison = (f" {teams[home]} sumó {_count(h['shots'], 'tiro')} ({h['shots_on_target']} a puerta) frente a "
+                          f"{a['shots']} ({a['shots_on_target']}) de {teams[away]}.")
+        goals_text = f" Goles: {'; '.join(scorers)}." if scorers else ""
+        headline = (f"{teams[leader]} va ganando {hi_lo}" if leader and not final
+                    else f"{teams[leader]} remonta y gana {hi_lo}" if leader and scope == "full_time" and story["came_from_behind"]
+                    else f"{teams[leader]} gana {hi_lo}" if leader and scope == "full_time"
+                    else f"{teams[leader]} gana {hi_lo} al descanso" if leader
+                    else f"Termina en empate {score['home']}-{score['away']}" if final and scope == "full_time"
+                    else f"Empate {score['home']}-{score['away']}")
+    else:
+        when = ("at half-time" if scope == "first_half" else "at full-time") if final else f"after {clock} (provisional)"
+        if not final:
+            outcome = f"{teams[home]} {score['home']}, {teams[away]} {score['away']} {when}."
+        elif leader and scope == "full_time":
+            outcome = (f"{teams[leader]} came from behind to beat {teams[other[leader]]} {hi_lo}." if story["came_from_behind"]
+                       else f"{teams[leader]} beat {teams[other[leader]]} {hi_lo}.")
+        elif leader:
+            outcome = f"{teams[leader]} lead {hi_lo} at half-time."
+        else:
+            outcome = f"{teams[home]} and {teams[away]} are level at {score['home']}-{score['away']} {when}."
+        turning = ""
+        if final and decisive and leader and scope == "full_time" and len(story["goals"]) > 1:
+            turning = f" The winning goal came at {decisive['clock']} from {name(decisive['player_id'])}."
+        elif final and decisive and not leader and story["goals"]:
+            turning = f" {teams[decisive['team_id']]} equalised at {decisive['clock']} through {name(decisive['player_id'])}."
+        if swing:
+            t, o = (home, away) if swing == "home" else (away, home)
+            first, second = story["shots_by_half"]["first"], story["shots_by_half"]["second"]
+            comparison = (f" After the break {teams[t]} had {second[side[t]]} shots to {second[side[o]]}, "
+                          f"having been out-shot {first[side[o]]} to {first[side[t]]} in the first half.")
+        else:
+            comparison = (f" {teams[home]} had {_count(h['shots'], 'shot')} ({h['shots_on_target']} on target) to {_possessive(teams[away])} "
+                          f"{a['shots']} ({a['shots_on_target']}).")
+        goals_text = f" Scorers: {'; '.join(scorers)}." if scorers else ""
+        headline = (f"{teams[leader]} lead {hi_lo}" if leader and not final
+                    else f"{teams[leader]} come from behind to win {hi_lo}" if leader and scope == "full_time" and story["came_from_behind"]
+                    else f"{teams[leader]} win {hi_lo}" if leader and scope == "full_time"
+                    else f"{teams[leader]} lead {hi_lo} at the break" if leader
+                    else f"Ends level at {score['home']}-{score['away']}" if final and scope == "full_time"
+                    else f"Level at {score['home']}-{score['away']}")
+    return headline, f"{outcome}{turning}{comparison}{goals_text}"
+
+
+def _story_facts(story: dict | None, context: dict) -> dict | None:
+    if not story:
+        return None
+    teams, players = context["teams"], context["players"]
+    return {"goals": [{"team": teams[g["team_id"]], "scorer": players.get(g["player_id"] or "", ""), "clock": g["clock"],
+                       "score_after": f"{g['score']['home']}-{g['score']['away']}"} for g in story["goals"]],
+            "came_from_behind": story["came_from_behind"], "shots_by_half": story["shots_by_half"]}
 
 
 def _comparable(stats: dict) -> dict:
@@ -194,7 +311,7 @@ def recap_facts(recap: dict, context: dict, home: str, away: str) -> dict:
             "score": {context["teams"][home]: recap["score"]["home"], context["teams"][away]: recap["score"]["away"]},
             "summary_facts": recap["summary"], "key_moments": [{k: m[k] for k in ("clock", "rule", "headline")} for m in recap["key_moments"]],
             "tactical_trend": recap["tactical_trend"]["text"], "player_focus": (recap["player_focus"] or {}).get("text"),
-            "synthetic": True}
+            "story": _story_facts(recap.get("story"), context), "synthetic": True}
 
 
 def validate_recap_text(headline: str, summary: str, recap: dict, context: dict, home: str, away: str) -> list[str]:

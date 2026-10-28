@@ -231,7 +231,7 @@ export default function MatchRoom({ prefs, updatePrefs, reduced, onHome }: {
           focusMetric={prefs.focusMetric} analysis={replay.analysis} events={replay.events}
           roster={replay.replay.roster} chosenId={inspectId} onChoose={chooseMoment} onEvidence={setEvidence} onJump={jumpTo} aiMode={replay.insights.status === 'off' ? 'off' : replay.insights.mode} onRecap={openRecapNow}
           nowClock={replay.state.latest_event_sequence ? clockLabel(replay.replay.clock_period, replay.replay.clock_ms) : null}
-          catchUp={null} state={replay.state} onDismissCatchUp={noop} />
+          catchUp={null} state={replay.state} onDismissCatchUp={noop} onFocus={updatePrefs} />
         <div className="desk-analysis">
         <AnalysisTabs replay={replay} audience={prefs.audience} favoritePlayer={prefs.favoritePlayer}
           busy={live.busy} onJumpMoment={jumpToMoment} tabRequest={tabRequest}

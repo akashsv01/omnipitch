@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { API_BASE_URL } from './api';
+import { apiFetch } from './api';
 import { Narrator, UNAVAILABLE, onHubChange, speaking, type NarratorState } from './narration';
 import type { Audience, Language } from './prefs';
 import type { RecapScope, ReplaySnapshot } from '../types/contracts';
@@ -58,6 +58,10 @@ export function useCommentary(replay: ReplaySnapshot | undefined, audience: Audi
   recapVoice.current ??= new Narrator('recap', (state, error) => setVoice({ state, note: error === 'autoplay' ? null : error }));
   const queue = useRef<Line[]>([]);
   const cursor = useRef<{ run: string; seq: number }>({ run: '', seq: 0 });
+  // Stable line identities said in this pass through the match: a line is never spoken twice, whatever polls,
+  // reconnects or re-renders deliver it again. A seek back or a new run starts a new pass.
+  const said = useRef(new Set<string>());
+  const lastStatus = useRef<string | null>(null);
   const busy = useRef(false);
   const last = useRef<Line | null>(null);
   const reserve = useRef<Line | null>(null);  // the newest routine line, said when nothing more important is waiting
@@ -81,6 +85,7 @@ export function useCommentary(replay: ReplaySnapshot | undefined, audience: Audi
     speaker.rate = isRecap ? 1 : voiceRate(speed);
     // The caption and transcript appear as the voice starts (or at once, when there is no audio).
     const show = (text: string) => {
+      if (!again) said.current.add(line.key);
       const spoken = { clock: line.clock, text, kind: line.kind };
       setCaption(spoken);
       if (!again) setTranscript(previous => [...previous.slice(-79), spoken]);
@@ -148,31 +153,44 @@ export function useCommentary(replay: ReplaySnapshot | undefined, audience: Audi
   const reset = useCallback((seq: number, run: string) => {
     queue.current = [];
     reserve.current = null;
+    said.current = new Set();
     cursor.current = { run, seq };
     narrator.current?.stop();
+    recapVoice.current?.stop();
   }, []);
 
   // Follow the match: new lines since the last position; a seek back or a new run starts from where the replay is.
   useEffect(() => {
     if (!replay || !enabled) return;
     const { run_id: run, latest_event_sequence: seq, replay_status: status } = replay.state;
+    const before = lastStatus.current;
+    lastStatus.current = status;
     const from = cursor.current;
     if (from.run !== run || seq < from.seq) { reset(seq, run); return; }
     if (seq === from.seq) return;
     cursor.current = { run, seq };
-    const forward = status === 'playing' || seq - from.seq < 40;
+    // Playing forward (including the poll that reaches the final whistle at speed) is followed; a jump while paused
+    // (a seek ahead) is not narrated after the fact.
+    const forward = status === 'playing' || (status === 'finished' && before === 'playing') || seq - from.seq < 40;
+    if (!forward) { queue.current = []; reserve.current = null; narrator.current?.stop(); }
     const query = new URLSearchParams({ run_id: run, after: String(from.seq), audience, lang: language, brief: String(replay.replay.speed >= 5),
       ...(focusPlayer ? { player_id: focusPlayer } : {}) });
-    fetch(`${API_BASE_URL}/api/v1/commentary/lines?${query}`, { signal: AbortSignal.timeout(8000) })
+    apiFetch(`/api/v1/commentary/lines?${query}`, { signal: AbortSignal.timeout(8000) })
       .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
       .then((body: { lines: Omit<Line, 'key'>[]; stale: boolean }) => {
         if (body.stale || cursor.current.run !== run || !forward) return;
-        const lines: Line[] = body.lines.map(line => ({ ...line, key: line.ref }));
-        // A half or the match ended during forward playback: its recap follows the whistle, once.
+        let lines: Line[] = body.lines.map(line => ({ ...line, key: line.ref }))
+          .filter(line => !said.current.has(line.key) && !queue.current.some(queued => queued.key === line.key));
+        // A half or the match ended during forward playback: its recap follows the whistle, once per viewer session.
+        // The recap opens with the score, so the separate whistle line is dropped rather than announced twice.
         for (const end of lines.filter(line => line.kind === 'period_end')) {
           const scope: RecapScope = end.period === 2 ? 'full_time' : 'first_half';
           const key = recapKey(run, scope, audience, language);
-          if (!seen(key)) { remember(key); lines.push({ ...end, key, ref: `recap:${scope}`, kind: 'recap', priority: 99, sequence: end.sequence + .5 }); }
+          if (!seen(key)) {
+            remember(key);
+            lines = lines.filter(line => line !== end);
+            lines.push({ ...end, key, ref: `recap:${scope}`, kind: 'recap', priority: 99, sequence: end.sequence + .5 });
+          }
         }
         enqueue(lines, replay.replay.speed);
         void pump();
