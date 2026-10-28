@@ -124,7 +124,7 @@ try {
   assert.equal(loaded.replay.source, 'upload');
   await post('/api/v1/replay/control', { run_id: loaded.state.run_id, action: 'speed', speed: 1 });
   await until(async () => (await state()).replay.source === 'upload' && (await state()).replay.speed === 1, 'speed applied');
-  await click('[aria-label="Play replay"]');
+  await click('[aria-label="Start the match"]');
   await until(async () => await revealed(1) && (await text()).includes('Watching replay'), 'first event arrival');
   await click('[aria-label="Pause replay"]');
   await until(async () => (await state()).state.replay_status === 'paused', 'pause confirmation');

@@ -376,6 +376,7 @@ class RecapPlayerFocus(WireModel):
 class Recap(WireModel):
     language: Literal["en", "es"] = "en"
     stats: dict | None = None
+    story: dict | None = None
     schema_version: Literal["1.1"]
     run_id: Identifier
     match_id: Identifier

@@ -7,11 +7,11 @@ import type { Audience } from '../lib/prefs';
 import { t, useTr } from '../lib/i18n';
 import { fetchLedger, fetchPhysical, ingestEvents, type LedgerView, type PhysicalView } from '../lib/api';
 import { passDifficulty } from '../lib/geometry';
-import { fmt, playerIndex, surname, teamTone } from '../lib/format';
+import { fmt, playerIndex, teamTone } from '../lib/format';
 import { INDICATOR } from '../lib/motion';
 import { EventhousePanel } from './EventhousePanel';
-import { Pitch } from './Pitch';
 import { RecapPanel } from './RecapPanel';
+import { ShotMap } from './ShotMap';
 import { momentumSlots, momentumSummary } from './Scoreboard';
 
 export type Tab = 'recap' | 'teams' | 'pressing' | 'players' | 'shots' | 'quality';
@@ -264,11 +264,13 @@ function Players({ replay, favoritePlayer, audience }: { replay: ReplaySnapshot;
   const [team, setTeam] = useState<'all' | 'harbor' | 'vale'>('all');
   const people = useMemo(() => playerIndex(replay.replay.roster), [replay.replay.roster]);
   const columns: { key: SortKey; label: string; analyst?: boolean }[] = [
-    { key: 'threat_gained', label: 'Threat', analyst: true }, { key: 'progression_m', label: 'Progress m' },
-    { key: 'passes', label: 'Passes' }, { key: 'shots', label: 'Shots' }, { key: 'defensive_actions', label: 'Def. actions' },
+    { key: 'threat_gained', label: 'Threat added', analyst: true }, { key: 'progression_m', label: 'Forward gain (m)' },
+    { key: 'passes', label: 'Passes' }, { key: 'shots', label: 'Shots' }, { key: 'defensive_actions', label: 'Defensive actions' },
   ];
   const visible = columns.filter(column => audience === 'analyst' || !column.analyst);
   const active = visible.some(column => column.key === sort) ? sort : 'progression_m';
+  // Simulated distance and speed only appear when this replay has them; never a column of empty cells.
+  const hasPhysical = audience === 'analyst' && !!physical && physical.players.length > 0;
   const rows = replay.analysis.players.filter(row => team === 'all' || row.team_id === team).sort((a, b) => b[active] - a[active]);
   return <div style={{ display: 'grid', gap: 12 }}>
     <div className="segmented small" role="group" aria-label={t('Team filter')} style={{ justifySelf: 'start' }}>
@@ -279,7 +281,8 @@ function Players({ replay, favoritePlayer, audience }: { replay: ReplaySnapshot;
     <div className="table-wrap"><table>
       <thead><tr><th>{t('Player')}</th>{visible.map(column => <th key={column.key} className="num" aria-sort={active === column.key ? 'descending' : undefined}>
         <button type="button" onClick={() => setSort(column.key)}>{t(column.label)}{active === column.key && <ArrowDown size={12} />}</button>
-      </th>)}{audience === 'analyst' && <><th className="num">{t('Completed')}</th><th className="num">{t('Distance')} <small>{t('sim.')}</small></th><th className="num">{t('Top speed')} <small>{t('sim.')}</small></th></>}</tr></thead>
+      </th>)}{audience === 'analyst' && <th className="num">{t('Pass completion')}</th>}
+        {hasPhysical && <><th className="num">{t('Distance')} <small>{t('sim.')}</small></th><th className="num">{t('Top speed')} <small>{t('sim.')}</small></th></>}</tr></thead>
       <tbody>
         {rows.length === 0 && <tr><td colSpan={7} className="hint">{t('No player actions yet.')}</td></tr>}
         {rows.map(row => {
@@ -288,8 +291,8 @@ function Players({ replay, favoritePlayer, audience }: { replay: ReplaySnapshot;
             <td><span className="player-cell"><span className="shirt" style={{ background: teamTone(row.team_id) }}>{person?.shirt}</span>
               <span>{person?.name ?? row.player_id} <span className="hint">{person?.position}</span></span></span></td>
             {visible.map(column => <td key={column.key} className="num">{fmt(row[column.key], column.key === 'threat_gained' ? 3 : column.key === 'progression_m' ? 0 : 1)}</td>)}
-            {audience === 'analyst' && <>
-              <td className="num">{row.passes ? `${Math.round(100 * row.passes_completed / row.passes)}%` : '–'}</td>
+            {audience === 'analyst' && <td className="num">{row.passes ? `${Math.round(100 * row.passes_completed / row.passes)}%` : '–'}</td>}
+            {hasPhysical && <>
               <td className="num">{body.get(row.player_id) ? `${fmt(body.get(row.player_id)!.distance_m / 1000, 1)} km` : '–'}</td>
               <td className="num">{body.get(row.player_id) ? `${fmt(body.get(row.player_id)!.top_speed_mps, 1)} m/s` : '–'}{alerted.has(row.player_id) ? <span className="speed-alert" title={`${t('Reached at least')} ${physical?.sprint_alert_mps} m/s ${t('in a window')}`}> ▲</span> : null}</td>
             </>}
@@ -297,32 +300,14 @@ function Players({ replay, favoritePlayer, audience }: { replay: ReplaySnapshot;
         })}
       </tbody>
     </table></div>
-    <p className="hint">{audience === 'analyst'
+    <p className="hint">{hasPhysical
       ? <>{t('Action counts come from recorded on-ball events. Distance and top speed are')} <b>{t('simulated')}</b> {t('with the match (not measured; there is no tracking), per 5-minute window up to the current time; ▲ marks a window at or above')} {physical?.sprint_alert_mps ?? 9} m/s.{physical && physical.ball_speeds.length > 0 && <> {t('Simulated ball speed: passes average')} {fmt(avg(physical.ball_speeds.filter(b => b.type === 'pass').map(b => b.speed_mps)), 1)} m/s; {t('fastest shot')} {fmt(Math.max(0, ...physical.ball_speeds.filter(b => b.type === 'shot').map(b => b.speed_mps)), 1)} m/s.</>}</>
       : t('Counts come from recorded on-ball events only.')}</p>
   </div>;
 }
 
 function Shots({ replay, onSelectEvent }: { replay: ReplaySnapshot; onSelectEvent: (event: Event) => void }) {
-  const shots = replay.events.filter(event => event.type === 'shot');
-  const people = playerIndex(replay.replay.roster);
-  return <div className="grid-2" style={{ alignItems: 'start' }}>
-    <div className="pitch-wrap" style={{ margin: 0 }}>
-      <Pitch events={replay.events} highlightIds={shots.map(shot => shot.event_id)} roster={replay.replay.roster} onSelect={onSelectEvent} compact />
-    </div>
-    <div className="card">
-      <h3>{shots.length} {t('shots')}</h3>
-      {shots.length === 0 ? <p className="hint">{t('No shots yet.')}</p> : <div className="table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}><table>
-        <thead><tr><th>{t('Min')}</th><th>{t('Player')}</th><th>{t('Outcome')}</th></tr></thead>
-        <tbody>{[...shots].reverse().map(shot => <tr key={shot.event_id} style={{ cursor: 'pointer' }} onClick={() => onSelectEvent(shot)}>
-          <td>{Math.floor(shot.match_time_ms / 60000) + (shot.period === 2 ? 46 : 1)}'</td>
-          <td><span className="player-cell"><i className="team-bar" style={{ background: teamTone(shot.team_id) }} />{surname(people.get(shot.player_id ?? ''))}</span></td>
-          <td style={{ color: shot.is_goal ? 'var(--flood)' : undefined }}>{t(shot.outcome.replace('_', ' '))}</td>
-        </tr>)}</tbody>
-      </table></div>}
-      <p className="hint">{t('Shot quality is not modelled. Lines show recorded start and end points.')}</p>
-    </div>
-  </div>;
+  return <ShotMap replay={replay} onSelectEvent={onSelectEvent} />;
 }
 
 const PUSH_LABEL: Record<PushStatus['state'], string> = {

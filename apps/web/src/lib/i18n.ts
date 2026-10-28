@@ -137,11 +137,11 @@ export function whyEs(moment: Moment, audience: Audience): string {
 export const UI: Record<Language, Record<string, string>> = {
   en: { whatHappened: 'What happened?', whyMatters: 'Why does it matter?', whyBtn: 'See the evidence', jump: 'Watch it again',
     keyMoments: 'Key moments', aiEnglish: '', 'Forward progression': 'Forward progression', 'Sequence time': 'Sequence time',
-    'Shot distance': 'Shot distance', 'Pass length': 'Pass length', whyPrefix: 'Why it matters. ',
+    'Shot distance': 'Shot distance', 'Distance to goal': 'Distance to goal', 'Forward gain': 'Forward gain', 'Sequence progression': 'Sequence progression', 'Pass length': 'Pass length', whyPrefix: 'Why it matters. ',
     ruleBased: 'Rule-based', aiValidated: 'AI · validated', synthetic: 'Synthetic match data', recap: 'Match story' },
   es: { whatHappened: '¿Qué pasó?', whyMatters: '¿Por qué importa?', whyBtn: 'Ver la evidencia', jump: 'Verla otra vez',
     keyMoments: 'Momentos clave', aiEnglish: 'Texto escrito por IA: disponible solo en inglés.', 'Forward progression': 'Progresión',
-    'Sequence time': 'Tiempo de la secuencia', 'Shot distance': 'Distancia del disparo', 'Pass length': 'Longitud del pase', whyPrefix: 'Por qué importa. ',
+    'Sequence time': 'Tiempo de la secuencia', 'Shot distance': 'Distancia del disparo', 'Distance to goal': 'Distancia a la portería', 'Forward gain': 'Avance', 'Sequence progression': 'Progresión de la secuencia', 'Pass length': 'Longitud del pase', whyPrefix: 'Por qué importa. ',
     ruleBased: 'Basado en reglas', aiValidated: 'IA · validado', synthetic: 'Datos de partido sintéticos', recap: 'Resumen' },
 };
 

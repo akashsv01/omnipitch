@@ -79,7 +79,7 @@ def parse_jsonl(text: str) -> list[Event]:
 class ReplayStore:
     def __init__(self, clock=monotonic, db: Database | None = None, source: list[Event] | None = None,
                  backend_mode: str = "local", overlay: InsightOverlay | None = None,
-                 translations: TranslationService | None = None):
+                 translations: TranslationService | None = None, meta: dict | None = None, run_id: str | None = None):
         self.clock = clock
         self.translations = translations or TranslationService()
         self.backend_mode = backend_mode
@@ -89,7 +89,7 @@ class ReplayStore:
         self._cache: tuple | None = None
         self.restored = False
         if source is not None:
-            self._replace(source, {"source": "upload", "seed": None, "scenario": None})
+            self._replace(source, meta or {"source": "upload", "seed": None, "scenario": None}, run_id=run_id)
         elif not self._restore():
             self._replace(self._simulate(DEFAULT_SEED, DEFAULT_SCENARIO),
                           {"source": "simulator", "seed": DEFAULT_SEED, "scenario": DEFAULT_SCENARIO})
@@ -340,6 +340,16 @@ class ReplayStore:
             self._persist()
             return self._snapshot()
 
+    def pause_at(self, at: float) -> None:
+        """Pause as of an earlier clock reading (a viewer who left while it played resumes where they were)."""
+        with self.lock:
+            if self.started_at is None:
+                return
+            self.elapsed_ms = min(self.elapsed_ms + max(0.0, at - self.started_at) * 1000 * self.speed, float(self.schedule[-1]))
+            self.started_at = None
+            self._reveal(self.elapsed_ms, "finished" if bisect_right(self.schedule, self.elapsed_ms) == len(self.events) else "paused")
+            self._persist()
+
     # Ingestion ------------------------------------------------------------
     def ingest(self, run_id: str, text: str) -> dict:
         events, rejected = parse_events(text)
@@ -373,3 +383,43 @@ def get_replay_store() -> ReplayStore:
         from .insight_overlay import from_env
         replay_store = ReplayStore(backend_mode=settings().mode, overlay=from_env(), translations=translations_from_env())
     return replay_store
+
+
+# Per-viewer replays ----------------------------------------------------------
+# Every viewer watches their own replay: play, pause, seek, speed, a new match or an uploaded file change only theirs.
+# A viewer's replay starts paused at kick-off from the shared match (same events and run ID, so validated AI text and
+# translations still match), lives in memory, pauses itself if its viewer stops polling while it plays, and the least
+# recently used replay is dropped beyond the limit.
+from collections import OrderedDict  # noqa: E402
+import os  # noqa: E402
+
+MAX_VIEWERS = int(os.getenv("OMNIPITCH_MAX_VIEWERS", "60"))
+IDLE_PAUSE_S = 90.0
+_viewers: "OrderedDict[str, list]" = OrderedDict()
+_viewers_lock = RLock()
+
+
+def viewer_store(viewer_id: str, clock=monotonic) -> ReplayStore:
+    base = get_replay_store()
+    now = clock()
+    with _viewers_lock:
+        entry = _viewers.get(viewer_id)
+        if entry is not None:
+            store, seen = entry
+            _viewers.move_to_end(viewer_id)
+            if store.started_at is not None and now - seen > IDLE_PAUSE_S:
+                store.pause_at(seen)
+            entry[1] = now
+            return store
+        with base.lock:
+            store = ReplayStore(clock=base.clock, db=Database(":memory:"), source=base.source, backend_mode=base.backend_mode,
+                                overlay=base.overlay, translations=base.translations, meta=dict(base.meta), run_id=base.state.run_id)
+        _viewers[viewer_id] = [store, now]
+        while len(_viewers) > MAX_VIEWERS:
+            _viewers.popitem(last=False)
+        return store
+
+
+def forget_viewers() -> None:
+    with _viewers_lock:
+        _viewers.clear()

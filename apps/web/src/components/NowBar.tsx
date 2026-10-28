@@ -24,8 +24,23 @@ export function NowBar({ replay, clockMs, language, inspect, disabled, onPlay, o
   const story = useMemo(() => {
     if (!state.latest_event_sequence) return es ? 'Cada momento clave se explica en cuanto ocurre.' : 'Each key moment is explained as it happens.';
     const short = (id?: string | null) => (id === state.home_team.id ? state.home_team.name : state.away_team.name).split(' ')[0];
+    const current = `${state.score.home}–${state.score.away}`;
+    if (inspect) {
+      // Looking back: the story stops at that moment's evidence; the live score is labelled as the current one.
+      const cutoff = inspect.source_sequence;
+      const at = { home: 0, away: 0 };
+      for (const event of replay.events) {
+        if (event.sequence > cutoff) break;
+        if (event.type === 'shot' && event.is_goal) at[event.team_id === state.home_team.id ? 'home' : 'away'] += 1;
+      }
+      const before = replay.moments.filter(m => m.rule === 'goal' && m.source_sequence <= cutoff).map(m => `${short(m.team_id)} ${clockLabel(m.period, m.match_time_ms)}`);
+      const then = before.length
+        ? (es ? `En ese momento, ${at.home}–${at.away} con goles de ${before.join(', ')}.` : `At that point it was ${at.home}–${at.away}, with goals from ${before.join(', ')}.`)
+        : (es ? `En ese momento, ${at.home}–${at.away}, todavía sin goles.` : `At that point it was ${at.home}–${at.away}, with no goals yet.`);
+      return `${then} ${es ? `Ahora el partido va ${current}, en el ${now}.` : `The match is now ${current} at ${now}.`}`;
+    }
     const goals = replay.moments.filter(m => m.rule === 'goal').map(m => `${short(m.team_id)} ${clockLabel(m.period, m.match_time_ms)}`);
-    const score = `${state.score.home}–${state.score.away}`;
+    const score = current;
     const lead = goals.length
       ? (es ? `${score} con goles de ${goals.join(', ')}.` : `${score}, with goals from ${goals.join(', ')}.`)
       : (es ? `${score}, todavía sin goles.` : `${score}, no goals yet.`);
@@ -39,13 +54,13 @@ export function NowBar({ replay, clockMs, language, inspect, disabled, onPlay, o
       : vale > harbor * 1.3 ? (es ? `${away} ha llevado más balones a zonas de peligro en los últimos 15 minutos.` : `${away} have moved the ball into danger more often in the last 15 minutes.`)
       : (es ? 'Los últimos 15 minutos han estado igualados.' : 'The last 15 minutes have been even.');
     return `${lead} ${trend}`;
-  }, [replay.moments, replay.analysis.momentum, state, es]);
+  }, [replay.moments, replay.events, replay.analysis.momentum, state, es, inspect, now]);
 
   // Where the match is, in words, and the one next step for that state.
   const where = inspect ? (es ? `Revisando el ${clockLabel(inspect.period, inspect.match_time_ms)}.` : `Looking back at ${clockLabel(inspect.period, inspect.match_time_ms)}.`)
     : status === 'pre' ? (es ? 'Listo para empezar.' : 'Ready to start.')
     : status === 'finished' ? (es ? 'Final del partido.' : 'Full-time.')
-    : status === 'playing' ? (es ? `En directo, ${now} · ${info.speed}×.` : `Watching live, ${now} · ${info.speed}×.`)
+    : status === 'playing' ? (es ? `Repetición en el ${now} · ${info.speed}×.` : `Replaying, ${now} · ${info.speed}×.`)
     : status === 'half' ? (es ? 'Descanso.' : 'Half-time.')
     : (es ? `En pausa en el ${now}.` : `Paused at ${now}.`);
   const action = inspect ? { label: es ? `Volver al ${now}` : `Back to ${now}`, icon: CornerDownLeft, run: onStopInspect }

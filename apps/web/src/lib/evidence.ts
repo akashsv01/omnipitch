@@ -149,20 +149,22 @@ export function keyValues(moment: Moment, audience: Audience): KeyValue[] {
   const facts = moment.facts as Record<string, unknown>;
   const fan = audience === 'fan';
   switch (moment.rule) {
-    case 'transition': return fan ? [...show('forward_progress', 'Forward progression'), ...show('elapsed', 'Sequence time')]
-      : [...show('forward_progress', 'Forward progression'), ...show('elapsed', 'Sequence time'),
+    // A transition's distance is the whole sequence's forward progress, not one pass's gain.
+    case 'transition': return fan ? [...show('forward_progress', 'Sequence progression'), ...show('elapsed', 'Sequence time')]
+      : [...show('forward_progress', 'Sequence progression'), ...show('elapsed', 'Sequence time'),
         ...(typeof facts.ended_in_shot === 'boolean' ? [{ label: 'Ends in', value: facts.ended_in_shot ? 'Shot' : 'No shot' }] : [])];
-    case 'goal': return fan ? show('shot_distance', 'Shot distance') : [...show('shot_distance', 'Shot distance'), ...show('possession_actions', 'Possession actions')];
-    case 'chance': return [...show('shot_distance', 'Shot distance'), ...(!fan && typeof facts.outcome === 'string' ? [{ label: 'Outcome', value: String(facts.outcome).replace('_', ' ') }] : [])];
-    case 'threat_gain': return fan ? [...show('forward_progress', 'Forward progression'), ...show('pass_distance', 'Pass length')]
-      : [...show('threat_delta', 'Threat Δ'), ...show('pass_distance', 'Pass length'), ...show('forward_progress', 'Forward progression')];
+    case 'goal': return fan ? show('shot_distance', 'Distance to goal') : [...show('shot_distance', 'Distance to goal'), ...show('possession_actions', 'Possession actions')];
+    case 'chance': return [...show('shot_distance', 'Distance to goal'), ...(!fan && typeof facts.outcome === 'string' ? [{ label: 'Outcome', value: String(facts.outcome).replace('_', ' ') }] : [])];
+    case 'threat_gain': return fan ? [...show('forward_progress', 'Forward gain'), ...show('pass_distance', 'Pass length')]
+      : [...show('threat_delta', 'Threat Δ'), ...show('pass_distance', 'Pass length'), ...show('forward_progress', 'Forward gain')];
     case 'pressing_change': return fan ? [] : [...show('ppda', 'PPDA'), ...show('previous_ppda', 'Before')];
   }
 }
 
 /** Every metric as an aligned row: label, displayed value, stored value, unit. */
 export function metricRows(moment: Moment) {
-  return moment.metrics.map(m => ({ name: m.name, label: METRIC_LABEL[m.name] ?? m.name, shown: metricText(m.name, m.value), stored: String(m.value), unit: m.unit }));
+  return moment.metrics.map(m => ({ name: m.name,
+    label: moment.rule === 'transition' && m.name === 'forward_progress' ? 'Sequence progression' : METRIC_LABEL[m.name] ?? m.name, shown: metricText(m.name, m.value), stored: String(m.value), unit: m.unit }));
 }
 
 /** How the rule's inputs combine, from the moment's own facts. */

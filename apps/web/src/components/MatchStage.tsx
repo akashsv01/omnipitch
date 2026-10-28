@@ -36,7 +36,7 @@ export const MatchStage = memo(function MatchStage({ replay, selected, onSelect,
   inspect: Moment | null; /** Returning to the replay lives in the Now bar and the moment card. */ onStopInspect?: () => void; onStart: () => void; startDisabled: boolean;
   /** Live commentary controls, in the header row so they cost no height above the pitch. */
   commentary?: React.ReactNode;
-  /** The spoken line as a subtitle over the bottom of the pitch (below it on phones). */
+  /** The spoken line as a subtitle strip directly under the pitch. */
   subtitle?: React.ReactNode;
 }) {
   const tr = useTr();
@@ -113,7 +113,7 @@ export const MatchStage = memo(function MatchStage({ replay, selected, onSelect,
             <Crest team={replay.state.home_team.id} />{replay.state.home_team.name}<small>v</small>{replay.state.away_team.name}<Crest team={replay.state.away_team.id} />
           </div>
           <p>{tr('A synthetic match, replayed event by event. Moments appear only when the recorded events support them.')}</p>
-          <button type="button" className="button primary" onClick={onStart} disabled={startDisabled}><Play size={16} fill="currentColor" aria-hidden="true" />{tr('Start replay')}</button>
+          <button type="button" className="button primary" onClick={onStart} disabled={startDisabled}><Play size={16} fill="currentColor" aria-hidden="true" />{tr('Start the match')}</button>
         </div>
       </div>}
       <AnimatePresence>
@@ -167,7 +167,7 @@ function EventInspector({ event, moment, events, name }: { event?: Event; moment
   return <dl className="inspector" aria-label={t('Selected event')}>
     <div><dt>{t('Event')}</dt><dd><b>{eventLabel(event)}</b> · {name ?? '–'}</dd></div>
     <div><dt>{t('Time')}</dt><dd className="num">{clockLabel(event.period, event.match_time_ms)} · P{event.period}</dd></div>
-    <div><dt>{t(event.type === 'shot' ? 'Shot length · towards goal' : 'Pass length · forward gain')}</dt><dd className="num">{length === null ? t('not recorded') : `${metricText('pass_distance', length)} m`}{forward === null ? '' : ` · ${forward >= 0 ? '+' : '−'}${metricText('forward_progress', Math.abs(forward))} m`}</dd></div>
+    <div><dt>{t(event.type === 'shot' ? 'Recorded shot path · towards goal' : 'Pass length · forward gain')}</dt><dd className="num">{length === null ? t('not recorded') : `${metricText('pass_distance', length)} m`}{forward === null ? '' : ` · ${forward >= 0 ? '+' : '−'}${metricText('forward_progress', Math.abs(forward))} m`}</dd></div>
     {difficulty && <div><dt>{t('Difficulty indicator')}</dt><dd title="A heuristic from length, forward gain, destination and width. Not a completion probability: no defender or pressure data exists.">{difficulty.score}/100 · {t(difficulty.band)}</dd></div>}
     <div><dt>{t('Attacking')}</dt><dd>{event.attacking_direction === 'positive_x' ? t('the right-hand goal') : event.attacking_direction ? t('the left-hand goal') : '–'}</dd></div>
     <div><dt>{t('Position (m)')}</dt><dd className="num">{event.start ? `${event.start.x}, ${event.start.y}` : '–'}{event.end ? ` → ${event.end.x}, ${event.end.y}` : ''}</dd></div>

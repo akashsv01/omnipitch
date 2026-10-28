@@ -42,7 +42,7 @@ Everything below also runs locally without cloud credentials:
 The demo address is in the submission form.
 
 1. Open it. The first load after a quiet period can take up to a minute while the app starts; if the page says it can't reach the match API, wait a few seconds and press **Try again**.
-2. Choose **Fan** or **Analyst** and select **Enter match room** (or open `/match` directly). Press **Start replay** (or Space); the filmstrip under the pitch shows where goals and moments are.
+2. Choose **Fan** or **Analyst** and select **Enter match room** (or open `/match` directly). Press **Start the match** (or Space); the filmstrip under the pitch shows where goals and moments are.
 3. Arriving mid-match? A **Catch up** card above the moments says when you joined, the score at that point and up to three moments to open first; it only covers what happened before you arrived, and it is remembered for the browser tab.
 4. Watch **Key moments**: each one says how its text was produced (**AI · validated** or **Rule-based**). The first AI-narrated moments appear around 25'; click a goal pin or a moment to jump or inspect it.
 5. Press **Why this matters** (Fan) or **Inspect evidence** (Analyst): the explanation, the numbered source sequence (2D, or 3D on demand), the values, the trigger and the limitations.
@@ -90,7 +90,7 @@ Open [localhost:5173](http://localhost:5173) and the [API docs](http://localhost
 
 Broadcast views: open `/producer` (add `?audience=analyst&lang=es` to switch) and, from it, the program output at `/overlay`. For narration audio, set `SPEECH_REGION` and `SPEECH_RESOURCE_ID` in `services/api/.env` (template in `.env.example`) and install `services/api/requirements-azure.txt`. The resource needs a custom subdomain, can have key auth disabled, and your identity needs *Cognitive Services Speech User* on it; the free F0 tier is enough for the demo. Without these settings, narration stays captions only. Local latency: `.venv/Scripts/python.exe services/api/tests/latency_local.py`.
 
-To try it, choose Fan or Analyst on the landing page and select **Enter match room** (or open `/match` directly). Press **Start replay** (or Space). Moments appear in the right column. **Why this matters** (Fan) or **Inspect evidence** (Analyst) opens the source sequence, values, calculation and limitations, with a 2D/3D switch. Switch between **Fan view** and **Analyst view** at the top at any time; the replay is unaffected. Use the shuffle button beside the filmstrip to generate another seed or scenario, or to load a JSONL file. Click a goal pin on the filmstrip, or **Jump to moment**, to jump.
+To try it, choose Fan or Analyst on the landing page and select **Enter match room** (or open `/match` directly). Press **Start the match** (or Space). Moments appear in the right column. **Why this matters** (Fan) or **Inspect evidence** (Analyst) opens the source sequence, values, calculation and limitations, with a 2D/3D switch. Switch between **Fan view** and **Analyst view** at the top at any time; the replay is unaffected. Use the shuffle button beside the filmstrip to generate another seed or scenario, or to load a JSONL file. Click a goal pin on the filmstrip, or **Jump to moment**, to jump.
 
 ### Azure mode (optional)
 

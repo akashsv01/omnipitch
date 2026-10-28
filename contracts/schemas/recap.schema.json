@@ -419,6 +419,187 @@
           }
         }
       }
+    },
+    "story": {
+      "description": "What the recap is built around, from the recap's own events: goals with the score after each, whether the leader came from behind, the deciding goal, and shots per half (full time only).",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "goals",
+        "leader",
+        "came_from_behind",
+        "decisive_goal",
+        "shots_by_half"
+      ],
+      "properties": {
+        "goals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "team_id",
+              "player_id",
+              "period",
+              "clock",
+              "sequence",
+              "score"
+            ],
+            "properties": {
+              "team_id": {
+                "type": "string"
+              },
+              "player_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "period": {
+                "type": "integer"
+              },
+              "clock": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "integer"
+              },
+              "score": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "home",
+                  "away"
+                ],
+                "properties": {
+                  "home": {
+                    "type": "integer"
+                  },
+                  "away": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "leader": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "came_from_behind": {
+          "type": "boolean"
+        },
+        "decisive_goal": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "team_id",
+                "player_id",
+                "period",
+                "clock",
+                "sequence",
+                "score"
+              ],
+              "properties": {
+                "team_id": {
+                  "type": "string"
+                },
+                "player_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "period": {
+                  "type": "integer"
+                },
+                "clock": {
+                  "type": "string"
+                },
+                "sequence": {
+                  "type": "integer"
+                },
+                "score": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "home",
+                    "away"
+                  ],
+                  "properties": {
+                    "home": {
+                      "type": "integer"
+                    },
+                    "away": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "shots_by_half": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "first",
+                "second"
+              ],
+              "properties": {
+                "first": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "home",
+                    "away"
+                  ],
+                  "properties": {
+                    "home": {
+                      "type": "integer"
+                    },
+                    "away": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "second": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "home",
+                    "away"
+                  ],
+                  "properties": {
+                    "home": {
+                      "type": "integer"
+                    },
+                    "away": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
     }
   }
 }

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { BookOpenText, Info, RefreshCw, UserRound } from 'lucide-react';
+import { BookOpenText, Info, Pause, Play, RefreshCw, RotateCcw, UserRound, Volume2 } from 'lucide-react';
 import type { Recap, RecapScope, ReplaySnapshot } from '../types/contracts';
 import type { Audience } from '../lib/prefs';
 import { fetchRecap, publicMessage, type RecapResult } from '../lib/api';
 import { METRIC_LABEL, RULE_LABEL, TEAM_META, fmt, teamTone } from '../lib/format';
 import { RULE_ICON } from './MomentFeed';
 import { UI, localStory, useLanguage, useTr } from '../lib/i18n';
+import { Narrator, UNAVAILABLE, type NarratorState } from '../lib/narration';
 
 const SCOPES: { id: RecapScope; label: string }[] = [{ id: 'first_half', label: 'First half' }, { id: 'full_time', label: 'Full time' }];
 
@@ -113,6 +114,8 @@ export function RecapPanel({ replay, audience, onJump, request }: {
           <h3 lang={recap.language ?? 'en'}>{recap.headline}</h3>
         </div>
         <p className="recap-summary" lang={recap.language ?? 'en'}>{recap.summary}</p>
+        {recap.status === 'final' && <RecapListen runId={replay.state.run_id} scope={recap.scope} audience={audience} language={language}
+          fallback={`${recap.headline}. ${recap.summary}`} es={es} />}
 
         {recap.stats && <StatRows stats={recap.stats} audience={audience} es={es} />}
 
@@ -210,4 +213,43 @@ function TrendValues({ values }: { values: Record<string, unknown> }) {
   return <dl className="facts trend-values">
     {Object.entries(values).map(([key, value]) => <div key={key} style={{ display: 'contents' }}><dt>{label(key)}</dt><dd>{show(value)}</dd></div>)}
   </dl>;
+}
+
+/** Listen / Pause / Replay for a finished period's recap, with its transcript. It goes through the same audio hub as
+ * live commentary (one voice at a time); when speech is unavailable the transcript stays and the controls say so.
+ * The automatic narration at the whistle happens once per viewer session; these controls replay it on demand. */
+function RecapListen({ runId, scope, audience, language, fallback, es }: {
+  runId: string; scope: RecapScope; audience: Audience; language: 'en' | 'es'; fallback: string; es: boolean;
+}) {
+  const [state, setState] = useState<NarratorState>('idle');
+  const [failed, setFailed] = useState(false);
+  const [caption, setCaption] = useState<string | null>(null);
+  const voice = useRef<Narrator>(undefined);
+  voice.current ??= new Narrator('recap', (next, error) => { setState(next); if (next === 'error' && error === UNAVAILABLE) setFailed(true); });
+  useEffect(() => () => voice.current?.stop(), []);
+  useEffect(() => { voice.current?.stop(); setCaption(null); setFailed(false); }, [runId, scope, language, audience]);
+  const listen = () => {
+    setFailed(false);
+    voice.current!.prime();
+    void voice.current!.play('/api/v1/commentary/audio', { run_id: runId, ref: `recap:${scope}`, audience, language },
+      text => setCaption(text));
+  };
+  const busy = state === 'playing' || state === 'loading';
+  return <div className="recap-listen">
+    <div className="recap-listen-controls" role="group" aria-label={es ? 'Escuchar el resumen' : 'Listen to the recap'}>
+      {state === 'paused'
+        ? <button type="button" className="button small" onClick={() => voice.current?.resume()}><Play size={14} aria-hidden="true" />{es ? 'Seguir' : 'Resume'}</button>
+        : busy
+          ? <button type="button" className="button small" onClick={() => voice.current?.pause()} disabled={state === 'loading'}>
+              <Pause size={14} aria-hidden="true" />{state === 'loading' ? (es ? 'Preparando…' : 'Preparing…') : (es ? 'Pausa' : 'Pause')}</button>
+          : <button type="button" className="button small" onClick={listen}>
+              {caption ? <RotateCcw size={14} aria-hidden="true" /> : <Volume2 size={14} aria-hidden="true" />}
+              {caption ? (es ? 'Escuchar otra vez' : 'Replay') : (es ? 'Escuchar' : 'Listen')}</button>}
+      {failed && <span className="hint" role="status">{es ? 'El audio no está disponible ahora; el texto completo está abajo.' : 'Audio is unavailable right now; the full text is below.'}</span>}
+    </div>
+    <details className="recap-transcript">
+      <summary>{es ? 'Transcripción' : 'Transcript'}</summary>
+      <p lang={language}>{caption ?? fallback}</p>
+    </details>
+  </div>;
 }

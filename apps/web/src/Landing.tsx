@@ -25,7 +25,7 @@ export interface ReplayPeek { status: 'paused' | 'playing' | 'finished'; seq: nu
 function ctaLabel(peek: ReplayPeek | null) {
   if (!peek) return 'Enter match room';
   if (peek.status === 'finished') return 'Explore finished match';
-  if (peek.seq === 0 || (peek.period === 1 && peek.clockMs === 0)) return 'Start demo';
+  if (peek.seq === 0 || (peek.period === 1 && peek.clockMs === 0)) return 'Start the match';
   if (peek.status === 'playing') return 'Join the replay';
   return `Resume replay · ${runningClock(peek.period, peek.clockMs)}`;
 }
@@ -86,7 +86,7 @@ export default function Landing({ audience, reduced, onEnter, onAudience, peek: 
         <div className="hero-copy">
           <p className="eyebrow">Synthetic match intelligence</p>
           <h1 id="hero-title"><span>Every move.</span><span>A bigger story.</span></h1>
-          <p className="hero-lede">Replay a match event by event. Rules flag the moments that matter, and each one shows its evidence.</p>
+          <p className="hero-lede">A synthetic football match, replayed event by event, with explained highlights and live commentary. Every highlight shows the evidence behind it.</p>
           <fieldset className="audience-pick">
             <legend>View as</legend>
             {AUDIENCES.map(item => <label key={item.id} data-checked={mode === item.id || undefined}>
